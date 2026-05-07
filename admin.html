@@ -942,7 +942,7 @@ function handleCellClick(e, staffId, staffName, day, gridId) {
   const key = `${staffId}|${day}`;
 
   if (ctrl) {
-    // ⌘クリック：複数選択
+    // ⌘クリック：複数選択トグル
     e.stopPropagation();
     e.preventDefault();
     selectCell(staffId, day, 'toggle');
@@ -953,18 +953,26 @@ function handleCellClick(e, staffId, staffName, day, gridId) {
     // Shiftクリック：範囲選択
     e.stopPropagation();
     e.preventDefault();
-    selectCell(staffId, day, 'range');
+    // lastSelectedCellがない場合は単独選択として扱う
+    if (!lastSelectedCell) {
+      selectCell(staffId, day, 'single');
+    } else {
+      selectCell(staffId, day, 'range');
+    }
     return;
   }
 
   // 通常クリック
-  const alreadySelected = selectedCells.size === 1 && selectedCells.has(key);
+  const alreadySelected = selectedCells.has(key);
 
-  if (alreadySelected) {
+  if (alreadySelected && selectedCells.size === 1) {
     // 同じセルを2回クリック → モーダルを開く
     openShiftEditModal(staffId, staffName, day, gridId);
+  } else if (alreadySelected && selectedCells.size > 1) {
+    // 複数選択中の選択済みセルをクリック → モーダルを開く（複数選択維持）
+    openShiftEditModal(staffId, staffName, day, gridId);
   } else {
-    // 別のセルをクリック → ハイライトのみ
+    // 別のセルをクリック → ハイライトのみ、lastSelectedCellを更新
     selectedCells.clear();
     selectCell(staffId, day, 'single');
   }
@@ -1059,6 +1067,40 @@ function showRequestTooltip(el, requestedShift) {
   tip.style.left = `${rect.left - tip.offsetWidth/2}px`;
   tip.style.top = `${rect.top - tip.offsetHeight - 6}px`;
   setTimeout(() => tip.remove(), 2000);
+}
+
+
+// シフトデータからセルのみ再描画（DB読み込みなし）
+function rebuildShiftCells() {
+  const deptStaff = allStaff.filter(s => s.dept_id === currentDept);
+  const daysInMonth = new Date(shiftYear, shiftMonth, 0).getDate();
+  deptStaff.forEach(staff => {
+    for (let d = 1; d <= daysInMonth; d++) {
+      const key = `${staff.id}|${d}`;
+      const shift = shiftData[key] || '';
+      const el = getCellEl(staff.id, d);
+      if (!el) continue;
+      el.className = `shift-cell ${SHIFT_COLORS[shift]||'empty'}`;
+      el.style.flexDirection = 'column';
+      el.style.minHeight = '34px';
+      el.style.boxShadow = lockedCells[key] ? 'inset 0 0 0 2px #f59e0b' : '';
+      // spanテキスト更新
+      const sp = el.querySelector('span:first-child');
+      if (sp && sp.tagName === 'SPAN') sp.textContent = shift || '+';
+      // ロックアイコン
+      const lockEl = el.querySelector('.lock-icon');
+      if (lockEl) lockEl.remove();
+      if (lockedCells[key]) {
+        const lk = document.createElement('span');
+        lk.className = 'lock-icon';
+        lk.style.cssText = 'position:absolute;top:-3px;right:-3px;font-size:11px;line-height:1;z-index:2;pointer-events:none';
+        lk.textContent = '🔒';
+        el.appendChild(lk);
+      }
+    }
+  });
+  refreshSummaryRows();
+  highlightSelected();
 }
 
 function escapeJs(str) { return str.replace(/'/g, "\'"); }
@@ -1444,7 +1486,8 @@ document.addEventListener('keydown', (e) => {
     if (undoStack.length===0) { showToast('これ以上戻れません'); return; }
     redoStack.push(JSON.parse(JSON.stringify(shiftData)));
     shiftData = undoStack.pop();
-    loadShiftGrid();
+    // loadShiftGridを呼ばずセルだけ更新
+    rebuildShiftCells();
     showToast('元に戻しました');
     return;
   }
@@ -1453,7 +1496,7 @@ document.addEventListener('keydown', (e) => {
     if (redoStack.length===0) { showToast('これ以上進めません'); return; }
     undoStack.push(JSON.parse(JSON.stringify(shiftData)));
     shiftData = redoStack.pop();
-    loadShiftGrid();
+    rebuildShiftCells();
     showToast('やり直しました');
     return;
   }
