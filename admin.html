@@ -463,7 +463,6 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -743,6 +742,8 @@ async function loadShiftGrid() {
       sb(`wednesday_types?year=eq.${shiftYear}&month=eq.${shiftMonth}&select=day,wed_type`)
     ]);
 
+    // shiftDataは全リセット、lockedCellsはDBのロック状態を保持（ローカルのロックも維持）
+    const prevLockedCells = {...lockedCells};
     shiftData = {};
     lockedCells = {};
     existingShifts.forEach(s => {
@@ -750,6 +751,8 @@ async function loadShiftGrid() {
       shiftData[key] = s.shift_type_id;
       if (s.is_locked) lockedCells[key] = true;
     });
+    // ローカルでロックしたものも維持
+    Object.assign(lockedCells, prevLockedCells);
 
     const reqMap = {};
     requestData.forEach(r => { reqMap[`${r.staff_id}|${r.day}`] = r.request_type; });
@@ -1108,6 +1111,10 @@ function toggleColumnLock(day) {
     else lockedCells[key] = true;
   });
   showToast(allLocked ? `${day}日のロックを解除` : `${day}日をロック 🔒`);
+  // DB再読み込みせずセルのみ更新
+  const deptStaff2 = allStaff.filter(s => s.dept_id === currentDept);
+  deptStaff2.forEach(s => updateCellDisplay(`${s.id}|${day}`));
+  // ヘッダーのロックアイコンを更新
   loadShiftGrid();
 }
 
@@ -1120,6 +1127,9 @@ function toggleRowLock(staffId, daysInMonth) {
     else lockedCells[key] = true;
   }
   showToast(allLocked ? 'ロックを解除しました' : '行全体をロックしました 🔒');
+  // DB再読み込みせずセルのみ更新
+  const daysInMonth2 = new Date(shiftYear, shiftMonth, 0).getDate();
+  for (let d = 1; d <= daysInMonth2; d++) updateCellDisplay(`${staffId}|${d}`);
   loadShiftGrid();
 }
 
