@@ -746,13 +746,13 @@ async function loadShiftGrid() {
     shiftData = {};
     lockedCells = {};
     existingShifts.forEach(s => {
-      const key = `${s.staff_id}-${s.day}`;
+      const key = `${s.staff_id}|${s.day}`;
       shiftData[key] = s.shift_type_id;
       if (s.is_locked) lockedCells[key] = true;
     });
 
     const reqMap = {};
-    requestData.forEach(r => { reqMap[`${r.staff_id}-${r.day}`] = r.request_type; });
+    requestData.forEach(r => { reqMap[`${r.staff_id}|${r.day}`] = r.request_type; });
 
     // 必要人数マップ
     shiftGridRequirements = {};
@@ -811,7 +811,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
     const cls = (dow===0||isHoliday)?'day-sun':dow===6?'day-sat':'';
     const wedLabel = dow===3 ? (wt[d]==='cc'?'<div style="font-size:8px;color:#92400e;font-weight:700">CC</div>':wt[d]==='cho'?'<div style="font-size:8px;color:#5b21b6;font-weight:700">CHO</div>':'') : '';
     // 列ロック状態チェック
-    const colLocked = editable && deptStaff.every(s => lockedCells[`${s.id}-${d}`]);
+    const colLocked = editable && deptStaff.every(s => lockedCells[`${s.id}|${d}`]);
     const colStyle = colLocked ? 'background:#fef3c7;' : '';
     if (editable) {
       html += `<th style="min-width:32px;cursor:pointer;${colStyle}" onclick="toggleColumnLock(${d})" title="${d}日 列ロック">
@@ -834,7 +834,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
   deptStaff.forEach(staff => {
     let totalH = 0;
     // 行ロック状態チェック
-    const rowLocked = editable && Array.from({length:daysInMonth},(_,i)=>i+1).every(d => lockedCells[`${staff.id}-${d}`]);
+    const rowLocked = editable && Array.from({length:daysInMonth},(_,i)=>i+1).every(d => lockedCells[`${staff.id}|${d}`]);
 
     if (editable) {
       const rowLockStyle = rowLocked ? 'background:#fef9c3;' : '';
@@ -846,7 +846,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
     }
 
     for (let d = 1; d <= daysInMonth; d++) {
-      const key = `${staff.id}-${d}`;
+      const key = `${staff.id}|${d}`;
       const confirmedShift = shifts[key] || '';
       const requestedShift = reqMap[key] || '';
       const dispShift = confirmedShift || (editable ? '' : requestedShift);
@@ -914,7 +914,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
           continue;
         }
         const covered = deptStaff.filter(s => {
-          const shift = shifts[`${s.id}-${d}`];
+          const shift = shifts[`${s.id}|${d}`];
           return shift && SHIFT_COVERS[shift]?.includes(period);
         }).length;
         const ok = covered >= req;
@@ -939,7 +939,7 @@ function handleCellClick(e, staffId, staffName, day, gridId) {
   const isMac = navigator.platform.toUpperCase().includes('MAC');
   const ctrl = isMac ? e.metaKey : e.ctrlKey;
   const shift = e.shiftKey;
-  const key = `${staffId}-${day}`;
+  const key = `${staffId}|${day}`;
 
   if (ctrl) {
     // ⌘クリック：複数選択
@@ -971,7 +971,7 @@ function handleCellClick(e, staffId, staffName, day, gridId) {
 }
 
 function openShiftEditModal(staffId, staffName, day, gridId) {
-  const key = `${staffId}-${day}`;
+  const key = `${staffId}|${day}`;
   const date = new Date(shiftYear, shiftMonth-1, day);
   const isLocked = lockedCells[key];
   const multiLabel = selectedCells.size > 1 ? ` 他${selectedCells.size-1}セル` : '';
@@ -1025,7 +1025,7 @@ function toggleLock(key) {
   }
   closeModal('shiftEditModal');
   // loadShiftGridは呼ばず、セルの見た目だけ更新
-  const [staffId, day] = key.split('-');
+  const [staffId, day] = parseKey(key);
   const el = getCellEl(staffId, day);
   if (el) {
     const shift = shiftData[key] || '';
@@ -1066,9 +1066,9 @@ function escapeJs(str) { return str.replace(/'/g, "\'"); }
 // 列ロック（日ごと全スタッフ）
 function toggleColumnLock(day) {
   const deptStaff = allStaff.filter(s => s.dept_id === currentDept);
-  const allLocked = deptStaff.every(s => lockedCells[`${s.id}-${day}`]);
+  const allLocked = deptStaff.every(s => lockedCells[`${s.id}|${day}`]);
   deptStaff.forEach(s => {
-    const key = `${s.id}-${day}`;
+    const key = `${s.id}|${day}`;
     if (allLocked) delete lockedCells[key];
     else lockedCells[key] = true;
   });
@@ -1078,9 +1078,9 @@ function toggleColumnLock(day) {
 
 // 行ロック（スタッフごと全日）
 function toggleRowLock(staffId, daysInMonth) {
-  const allLocked = Array.from({length:daysInMonth},(_,i)=>i+1).every(d => lockedCells[`${staffId}-${d}`]);
+  const allLocked = Array.from({length:daysInMonth},(_,i)=>i+1).every(d => lockedCells[`${staffId}|${d}`]);
   for (let d = 1; d <= daysInMonth; d++) {
-    const key = `${staffId}-${d}`;
+    const key = `${staffId}|${d}`;
     if (allLocked) delete lockedCells[key];
     else lockedCells[key] = true;
   }
@@ -1236,6 +1236,11 @@ function getCellEl(staffId, day) {
   return document.querySelector(`[data-staff="${staffId}"][data-day="${day}"][data-grid="shiftGrid"]`);
 }
 
+function parseKey(key) {
+  const idx = key.lastIndexOf('|');
+  return [key.substring(0, idx), key.substring(idx+1)];
+}
+
 function highlightSelected() {
   // 全セルのハイライトをリセット
   document.querySelectorAll('[data-grid="shiftGrid"]').forEach(el => {
@@ -1246,7 +1251,7 @@ function highlightSelected() {
   });
   // 選択セルをハイライト
   selectedCells.forEach(key => {
-    const [sid, d] = key.split('-');
+    const [sid, d] = parseKey(key);
     const el = getCellEl(sid, d);
     if (el) {
       el.style.outline = '3px solid #0f4c81';
@@ -1258,7 +1263,7 @@ function highlightSelected() {
 }
 
 function selectCell(staffId, day, mode) {
-  const key = `${staffId}-${day}`;
+  const key = `${staffId}|${day}`;
   if (mode === 'toggle') {
     if (selectedCells.has(key)) selectedCells.delete(key);
     else selectedCells.add(key);
@@ -1299,7 +1304,7 @@ function applyShiftToSelected(shiftId) {
     if (lockedCells[key]) return;
     if (shiftId === null) delete shiftData[key];
     else shiftData[key] = shiftId;
-    const [sid, d] = key.split('-');
+    const [sid, d] = parseKey(key);
     const el = getCellEl(sid, d);
     if (el) {
       el.className = `shift-cell ${SHIFT_COLORS[shiftId]||'empty'}`;
@@ -1336,7 +1341,7 @@ function refreshSummaryRows() {
       if (!td) continue;
       const req = shiftGridRequirements[period]?.[getShiftDayType(d)] ?? null;
       if (req === null) { td.innerHTML = '<span style="color:#d1d5db;font-size:10px">—</span>'; continue; }
-      const covered = deptStaff.filter(s => { const shift = shiftData[`${s.id}-${d}`]; return shift && SHIFT_COVERS[shift]?.includes(period); }).length;
+      const covered = deptStaff.filter(s => { const shift = shiftData[`${s.id}|${d}`]; return shift && SHIFT_COVERS[shift]?.includes(period); }).length;
       const ok = covered >= req;
       const bg = req===0?'#f3f4f6':ok?'#d1fae5':'#fee2e2';
       const color = req===0?'#9ca3af':ok?'#065f46':'#be123c';
@@ -1367,7 +1372,7 @@ document.addEventListener('keydown', (e) => {
     selectedCells.forEach(key => {
       if (!lockedCells[key]) {
         delete shiftData[key];
-        const [sid,d] = key.split('-');
+        const [sid,d] = parseKey(key);
         const el = getCellEl(sid,d);
         if (el) { el.className='shift-cell empty'; const sp=el.querySelector('span:first-child'); if(sp&&sp.tagName==='SPAN')sp.textContent='+'; else if(el.childNodes[0]&&el.childNodes[0].nodeType===3)el.childNodes[0].textContent='+'; }
       }
@@ -1391,7 +1396,7 @@ document.addEventListener('keydown', (e) => {
       targets.forEach(key => {
         if (lockedCells[key]) return;
         if (shiftId) shiftData[key] = shiftId; else delete shiftData[key];
-        const [sid,d] = key.split('-');
+        const [sid,d] = parseKey(key);
         const el = getCellEl(sid,d);
         if (el) {
           el.className=`shift-cell ${SHIFT_COLORS[shiftId]||'empty'}`;
@@ -1457,7 +1462,7 @@ document.addEventListener('keydown', (e) => {
     const deptStaff = allStaff.filter(s=>s.dept_id===currentDept);
     const daysInMonth = new Date(shiftYear,shiftMonth,0).getDate();
     selectedCells.clear();
-    deptStaff.forEach(s => { for(let d=1;d<=daysInMonth;d++) selectedCells.add(`${s.id}-${d}`); });
+    deptStaff.forEach(s => { for(let d=1;d<=daysInMonth;d++) selectedCells.add(`${s.id}|${d}`); });
     highlightSelected();
     showToast(`全${selectedCells.size}セルを選択`);
     return;
@@ -1479,7 +1484,7 @@ document.getElementById('saveShiftBtn').addEventListener('click', async () => {
       await sb(`shifts?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}`, { method:'DELETE' });
     }
     const inserts = Object.entries(shiftData).map(([key, shiftId]) => {
-      const [staffId, day] = key.split('-');
+      const [staffId, day] = parseKey(key);
       return { staff_id:staffId, year:shiftYear, month:shiftMonth, day:parseInt(day), shift_type_id:shiftId, is_locked:!!lockedCells[key] };
     });
     if (inserts.length > 0) {
@@ -1614,11 +1619,11 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
 
     // 希望マップ
     const reqMap = {};
-    requests.forEach(r => { reqMap[`${r.staff_id}-${r.day}`] = r.request_type; });
+    requests.forEach(r => { reqMap[`${r.staff_id}|${r.day}`] = r.request_type; });
 
     // ロックマップ
     const lockMap = {};
-    existingShifts.forEach(s => { if (s.is_locked) lockMap[`${s.staff_id}-${s.day}`] = s.shift_type_id; });
+    existingShifts.forEach(s => { if (s.is_locked) lockMap[`${s.staff_id}|${s.day}`] = s.shift_type_id; });
 
     // 必要人数マップ
     const reqCountMap = {};
@@ -1660,7 +1665,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     if (optKeepLocked) {
       Object.entries(lockMap).forEach(([key, shift]) => {
         result[key] = shift;
-        const [sid] = key.split('-');
+        const [sid] = parseKey(key);
         staffHours[sid] = (staffHours[sid]||0) + (SHIFT_HOURS[shift]||0);
         if (NIGHT_SHIFTS.includes(shift)) staffNightCount[sid] = (staffNightCount[sid]||0) + 1;
         if (LONG_SHIFTS.includes(shift)) staffLongCount[sid] = (staffLongCount[sid]||0) + 1;
@@ -1672,7 +1677,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     if (optRespectRequest) {
       deptStaff.forEach(staff => {
         for (let d = 1; d <= daysInMonth; d++) {
-          const key = `${staff.id}-${d}`;
+          const key = `${staff.id}|${d}`;
           if (result[key]) continue;
           const req = reqMap[key];
           if (req && OFF_SHIFTS.includes(req)) {
@@ -1692,7 +1697,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
         if (!required || required === 0) continue;
 
         const covered = deptStaff.filter(s => {
-          const shift = result[`${s.id}-${d}`];
+          const shift = result[`${s.id}|${d}`];
           return shift && SHIFT_COVERS[shift]?.includes('evening');
         }).length;
         if (covered >= required) return;
@@ -1703,7 +1708,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
         // 夜勤候補：夜勤NGでない・時間に余裕・上限未満
         const candidates = deptStaff
           .filter(s => {
-            const key = `${s.id}-${d}`;
+            const key = `${s.id}|${d}`;
             if (result[key]) return false;
             if (isNoNightAuto(s)) return false;
             const planH = getStaffPlanHours(s);
@@ -1724,7 +1729,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
 
         const need = required - covered;
         candidates.slice(0, need).forEach(s => {
-          const key = `${s.id}-${d}`;
+          const key = `${s.id}|${d}`;
           const shift = selectEveningShift(currentDept, dayType);
           result[key] = shift;
           staffHours[s.id] = (staffHours[s.id]||0) + (SHIFT_HOURS[shift]||0);
@@ -1744,14 +1749,14 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
           if (!required || required === 0) return;
 
           const covered = deptStaff.filter(s => {
-            const shift = result[`${s.id}-${d}`];
+            const shift = result[`${s.id}|${d}`];
             return shift && SHIFT_COVERS[shift]?.includes(period);
           }).length;
           if (covered >= required) return;
 
           const candidates = deptStaff
             .filter(s => {
-              const key = `${s.id}-${d}`;
+              const key = `${s.id}|${d}`;
               if (result[key]) return false;
               const planH = getStaffPlanHours(s);
               const shift = selectDayShift(period, currentDept, dayType);
@@ -1769,7 +1774,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
 
           const need = required - covered;
           candidates.slice(0, need).forEach(s => {
-            const key = `${s.id}-${d}`;
+            const key = `${s.id}|${d}`;
             const shift = selectDayShift(period, currentDept, dayType);
             result[key] = shift;
             staffHours[s.id] = (staffHours[s.id]||0) + (SHIFT_HOURS[shift]||0);
@@ -1782,7 +1787,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     if (optRespectRequest) {
       deptStaff.forEach(staff => {
         for (let d = 1; d <= daysInMonth; d++) {
-          const key = `${staff.id}-${d}`;
+          const key = `${staff.id}|${d}`;
           if (result[key]) continue;
           const req = reqMap[key];
           if (!req) continue;
@@ -1800,7 +1805,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       const planH = getStaffPlanHours(staff);
       if (planH <= 0) return;
       for (let d = 1; d <= daysInMonth; d++) {
-        const key = `${staff.id}-${d}`;
+        const key = `${staff.id}|${d}`;
         if (result[key]) continue;
         if ((staffHours[staff.id]||0) >= planH) break;
         const dow = new Date(genYear, genMonth-1, d).getDay();
@@ -1816,7 +1821,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       }
       // 残りは休み
       for (let d = 1; d <= daysInMonth; d++) {
-        const key = `${staff.id}-${d}`;
+        const key = `${staff.id}|${d}`;
         if (!result[key]) result[key] = '休み';
       }
     });
@@ -1829,7 +1834,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
 
     // プレビュー表示
     const reqMapForPreview = {};
-    requests.forEach(r => { reqMapForPreview[`${r.staff_id}-${r.day}`] = r.request_type; });
+    requests.forEach(r => { reqMapForPreview[`${r.staff_id}|${r.day}`] = r.request_type; });
     renderShiftGrid('previewGrid', deptStaff, daysInMonth, genYear, genMonth, result, reqMapForPreview, lockMap, false);
 
     document.getElementById('previewCard').style.display = 'block';
@@ -1869,7 +1874,7 @@ function showGenerateSummary(deptStaff, result, staffHours, staffNightCount, day
       if (!req || req === 0) return;
       totalRequired += req;
       const covered = deptStaff.filter(s => {
-        const shift = result[`${s.id}-${d}`];
+        const shift = result[`${s.id}|${d}`];
         return shift && SHIFT_COVERS[shift]?.includes(period);
       }).length;
       totalCovered += Math.min(covered, req);
@@ -1945,7 +1950,7 @@ document.getElementById('applyGenerateBtn').addEventListener('click', async () =
     await sb(`shifts?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}`, { method:'DELETE' });
 
     const inserts = Object.entries(generatedShifts).map(([key, shiftId]) => {
-      const [staffId, day] = key.split('-');
+      const [staffId, day] = parseKey(key);
       return { staff_id:staffId, year:genYear, month:genMonth, day:parseInt(day), shift_type_id:shiftId, is_locked:false };
     });
 
