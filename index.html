@@ -610,9 +610,10 @@
       <label class="form-label">部門</label>
       <select class="dept-select" id="deptSelect">
         <option value="">選択してください</option>
-        <option value="0">医療事務</option>
-        <option value="2">リハビリ</option>
-        <option value="3">放射線</option>
+<option value="0">医療事務</option>
+<option value="1">看護</option>
+<option value="2">リハビリ</option>
+<option value="3">放射線</option>
       </select>
     </div>
     <div class="form-group">
@@ -757,6 +758,12 @@ async function supabaseRequest(path, options = {}) {
 
 // ===== STAFF DATA =====
 const STAFF_DATA = {
+  1: [
+  {code:1,name:'吉家'},{code:2,name:'岡本'},{code:3,name:'雅子'},
+  {code:4,name:'飛田'},{code:5,name:'上村'},{code:6,name:'高田'},
+  {code:7,name:'石黒'},{code:8,name:'青柳'},{code:9,name:'横山'},
+  {code:10,name:'加藤'},
+],
   0: [
     {code:1,name:'水島'},{code:2,name:'住元'},{code:3,name:'内山'},
     {code:4,name:'関'},{code:5,name:'小川'},{code:6,name:'泉'},
