@@ -463,7 +463,6 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -1079,50 +1078,21 @@ function updateCellDisplay(key) {
   const [staffId, day] = parseKey(key);
   const el = getCellEl(staffId, day);
   if (!el) return;
+
   const shift = shiftData[key] || '';
   const isLocked = !!lockedCells[key];
-  const reqShift = el.dataset.request || '';
 
-  // クラスのみ更新（onclickなどは維持）
+  // 1. セル色を更新
   el.className = `shift-cell ${SHIFT_COLORS[shift]||'empty'}`;
+
+  // 2. ロック枠を更新
   el.style.boxShadow = isLocked ? 'inset 0 0 0 2px #f59e0b' : '';
-  // req-textがある場合のみcolumn方向
-  if (reqShift) {
-    el.style.flexDirection = 'column';
-    el.style.minHeight = '36px';
-    el.classList.add('has-req');
-  } else {
-    el.style.flexDirection = '';
-    el.style.minHeight = '';
-    el.classList.remove('has-req');
-  }
 
-  // シフト名span（最初のspan）を更新または作成
-  let shiftSpan = el.querySelector('.shift-text');
-  if (!shiftSpan) {
-    // 既存の最初のテキストノードをspanに置換
-    el.querySelectorAll('.shift-text,.req-text,.lock-icon').forEach(e => e.remove());
-    shiftSpan = document.createElement('span');
-    shiftSpan.className = 'shift-text';
-    el.insertBefore(shiftSpan, el.firstChild);
-  }
-  shiftSpan.textContent = shift || '+';
+  // 3. シフト文字を更新
+  const shiftText = el.querySelector('.shift-text');
+  if (shiftText) shiftText.textContent = shift || '+';
 
-  // 希望マーク
-  let reqDiv = el.querySelector('.req-text');
-  if (reqShift) {
-    if (!reqDiv) {
-      reqDiv = document.createElement('div');
-      reqDiv.className = 'req-text';
-      reqDiv.style.cssText = 'font-size:8px;color:#f59e0b;line-height:1;margin-top:1px;pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-      el.insertBefore(reqDiv, shiftSpan.nextSibling);
-    }
-    reqDiv.textContent = `⭐${reqShift}`;
-  } else if (reqDiv) {
-    reqDiv.remove();
-  }
-
-  // ロックアイコン
+  // 4. 🔒アイコンを更新
   let lockEl = el.querySelector('.lock-icon');
   if (isLocked) {
     if (!lockEl) {
@@ -1132,8 +1102,8 @@ function updateCellDisplay(key) {
       el.appendChild(lockEl);
     }
     lockEl.textContent = '🔒';
-  } else if (lockEl) {
-    lockEl.remove();
+  } else {
+    if (lockEl) lockEl.remove();
   }
 }
 
