@@ -2155,15 +2155,17 @@ async function loadStaffTable() {
 
           <!-- 能力フラグ -->
           <div style="display:flex;gap:4px">
-            ${['normal','beginner','no_count'].map(sk => `
-              <button onclick="updateStaffField('${staff.id}','skill_level','${sk}')"
+            ${['normal','beginner','no_count'].map(sk => {
+              const currentSkill = staff.skill_level || 'normal';
+              const isSelected = currentSkill === sk;
+              return `<button onclick="updateStaffField('${staff.id}','skill_level','${sk}')"
                 style="padding:4px 10px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;
-                border:1.5px solid ${staff.skill_level===sk?'var(--primary)':'var(--border)'};
-                background:${staff.skill_level===sk?'var(--primary)':'white'};
-                color:${staff.skill_level===sk?'white':'var(--text-muted)'}">
+                border:2px solid ${isSelected?'var(--primary)':'var(--border)'};
+                background:${isSelected?'var(--primary)':'white'};
+                color:${isSelected?'white':'var(--text-muted)'}">
                 ${SKILL_LABELS[sk]}
-              </button>
-            `).join('')}
+              </button>`;
+            }).join('')}
           </div>
 
           <!-- 雇用形態 -->
@@ -2266,17 +2268,21 @@ async function loadStaffTable() {
           <!-- 曜日固定シフト -->
           <div style="background:var(--bg);border-radius:10px;padding:12px;grid-column:span 2">
             <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;font-weight:600">曜日固定シフト</div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">
               ${[0,1,2,3,4,5,6].map(dow => `
                 <div style="text-align:center">
                   <div style="font-size:10px;color:${dow===0||dow===6?'#ef4444':'var(--text-muted)'};margin-bottom:3px">${DOW_LABELS[dow]}</div>
-                  <select onchange="saveFixedShift('${staff.id}',${dow},this.value)"
+                  <select id="fixedShift-${staff.id}-${dow}"
                     style="width:52px;padding:4px 2px;border:1.5px solid var(--border);border-radius:6px;font-size:10px;font-family:inherit;text-align:center">
                     <option value="">―</option>
                     ${SHIFT_OPTIONS.map(s => `<option value="${s}" ${fixedShifts[dow]===s?'selected':''}>${s}</option>`).join('')}
                   </select>
                 </div>
               `).join('')}
+              <button onclick="saveAllFixedShifts('${staff.id}')"
+                style="padding:6px 14px;background:var(--primary);color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">
+                保存
+              </button>
             </div>
           </div>
 
@@ -2329,21 +2335,21 @@ async function saveStaffSetting(staffId, field, value) {
   hideLoading();
 }
 
-async function saveFixedShift(staffId, dow, shiftId) {
+async function saveAllFixedShifts(staffId) {
   showLoading();
   try {
-    const staffItem = allStaff.find(s => s.id === staffId);
-    if (!staffItem) return;
-    const fixedShifts = { ...(staffItem.fixed_shifts || {}) };
-    if (shiftId === '') delete fixedShifts[dow];
-    else fixedShifts[dow] = shiftId;
+    const fixedShifts = {};
+    [0,1,2,3,4,5,6].forEach(dow => {
+      const el = document.getElementById(`fixedShift-${staffId}-${dow}`);
+      if (el && el.value !== '') fixedShifts[dow] = el.value;
+    });
     await sb(`staff?id=eq.${staffId}`, {
       method: 'PATCH',
       headers: { 'Prefer': 'return=representation' },
       body: JSON.stringify({ fixed_shifts: fixedShifts })
     });
     await loadStaff();
-    showToast(`${['日','月','火','水','木','金','土'][dow]}曜日を${shiftId||'解除'}しました ✓`, 'success');
+    showToast('曜日固定シフトを保存しました ✓', 'success');
   } catch(e) { console.error(e); showToast('保存エラー','error'); }
   hideLoading();
 }
