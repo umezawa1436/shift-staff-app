@@ -405,6 +405,25 @@
             <div id="requirementsGrid"></div>
             <button class="btn btn-primary" style="margin-top:16px" id="saveRequirementsBtn">保存</button>
           </div>
+          <div class="card">
+            <div class="card-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+              祝日・特殊日管理
+            </div>
+            <div class="month-nav" style="margin-bottom:16px">
+              <button class="btn-nav" id="specialPrevMonth">◀</button>
+              <div class="month-nav-title" id="specialMonthTitle"></div>
+              <button class="btn-nav" id="specialNextMonth">▶</button>
+            </div>
+            <div id="specialDaysGrid"></div>
+          </div>
+          <div class="card">
+            <div class="card-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+              木曜日の設定
+            </div>
+            <div id="thursdayGrid"></div>
+          </div>
         </div>
 
         <!-- STAFF -->
@@ -463,6 +482,7 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -2021,9 +2041,213 @@ document.getElementById('discardGenerateBtn').addEventListener('click', () => {
 });
 
 // ===== SETTINGS =====
+
+// ===== 祝日・特殊日管理 =====
+let specialYear = new Date().getFullYear();
+let specialMonth = new Date().getMonth() + 1;
+let holidayData = {}; // {day: 'open'|'closed'} 祝日の診療状況
+let thursdayData = {}; // {day: true|false} 木曜の診療状況
+
+// 日本の祝日（2026年）
+const JAPAN_HOLIDAYS_2026 = {
+  '2026-1': [1],
+  '2026-2': [11,23],
+  '2026-3': [20],
+  '2026-4': [29],
+  '2026-5': [3,4,5,6],
+  '2026-7': [20],
+  '2026-8': [11],
+  '2026-9': [21,22],
+  '2026-10': [12],
+  '2026-11': [3,23],
+  '2026-12': [],
+};
+
+// 2027年も対応
+const JAPAN_HOLIDAYS_2027 = {
+  '2027-1': [1],
+  '2027-2': [11,23],
+  '2027-3': [20],
+  '2027-4': [29],
+  '2027-5': [3,4,5,6],
+  '2027-7': [19],
+  '2027-8': [11],
+  '2027-9': [20,23],
+  '2027-10': [11],
+  '2027-11': [3,23],
+  '2027-12': [],
+};
+
+function getDefaultHolidays(year, month) {
+  const key = `${year}-${month}`;
+  if (year === 2026) return new Set(JAPAN_HOLIDAYS_2026[key] || []);
+  if (year === 2027) return new Set(JAPAN_HOLIDAYS_2027[key] || []);
+  return new Set();
+}
+
+async function loadSpecialDays() {
+  try {
+    const [holidays, thursdays] = await Promise.all([
+      sb(`special_days?year=eq.${specialYear}&month=eq.${specialMonth}&select=day,is_holiday,is_closed,label`),
+      sb(`thursday_types?year=eq.${specialYear}&month=eq.${specialMonth}&select=day,is_open`)
+    ]);
+    holidayData = {};
+    holidays.forEach(h => { holidayData[h.day] = h.is_closed ? 'closed' : 'open'; });
+    thursdayData = {};
+    thursdays.forEach(t => { thursdayData[t.day] = t.is_open; });
+  } catch(e) { console.error(e); }
+}
+
+async function renderSpecialDaysGrid() {
+  await loadSpecialDays();
+  const daysInMonth = new Date(specialYear, specialMonth, 0).getDate();
+  const defaultHolidays = getDefaultHolidays(specialYear, specialMonth);
+  const DOW_JP = ['日','月','火','水','木','金','土'];
+  const el = document.getElementById('specialDaysGrid');
+  if (!el) return;
+
+  // 祝日一覧
+  const holidayDays = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    if (defaultHolidays.has(d)) holidayDays.push(d);
+    // カスタム祝日（special_daysにis_holiday=trueで登録）
+  }
+
+  if (holidayDays.length === 0) {
+    el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:8px">この月に祝日はありません</div>';
+  } else {
+    el.innerHTML = `
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">祝日はデフォルトで診療日扱い（土日と同じ必要人数）。休診に変更できます。</div>
+      ${holidayDays.map(d => {
+        const dow = new Date(specialYear, specialMonth-1, d).getDay();
+        const status = holidayData[d] || 'open';
+        return `
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+          <div style="min-width:120px;font-size:14px;font-weight:600;color:#ef4444">
+            ${specialMonth}/${d}（${DOW_JP[dow]}・祝）
+          </div>
+          <div style="display:flex;gap:8px">
+            <button onclick="setHolidayStatus(${d},'open')"
+              style="padding:6px 14px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;
+              border:1.5px solid ${status==='open'?'var(--primary)':'var(--border)'};
+              background:${status==='open'?'var(--primary)':'white'};
+              color:${status==='open'?'white':'var(--text-muted)'}">
+              診療日
+            </button>
+            <button onclick="setHolidayStatus(${d},'closed')"
+              style="padding:6px 14px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;
+              border:1.5px solid ${status==='closed'?'var(--danger)':'var(--border)'};
+              background:${status==='closed'?'#fef2f2':'white'};
+              color:${status==='closed'?'var(--danger)':'var(--text-muted)'}">
+              休診
+            </button>
+          </div>
+          <div style="font-size:12px;color:var(--text-muted)">
+            ${status==='open'?'土日と同じ必要人数':'必要人数なし（スタッフは休み）'}
+          </div>
+        </div>`;
+      }).join('')}
+    `;
+  }
+
+  // 木曜グリッド
+  renderThursdayGrid(daysInMonth);
+}
+
+function renderThursdayGrid(daysInMonth) {
+  const DOW_JP = ['日','月','火','水','木','金','土'];
+  const el = document.getElementById('thursdayGrid');
+  if (!el) return;
+
+  const thursDays = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dow = new Date(specialYear, specialMonth-1, d).getDay();
+    if (dow === 4) thursDays.push(d);
+  }
+
+  el.innerHTML = `
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">木曜はデフォルトで休診。診療日に変更すると土日と同じ必要人数が適用されます。</div>
+    ${thursDays.map(d => {
+      const isOpen = thursdayData[d] === true;
+      return `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="min-width:120px;font-size:14px;font-weight:600">
+          ${specialMonth}/${d}（木）
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="setThursdayStatus(${d},false)"
+            style="padding:6px 14px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;
+            border:1.5px solid ${!isOpen?'var(--danger)':'var(--border)'};
+            background:${!isOpen?'#fef2f2':'white'};
+            color:${!isOpen?'var(--danger)':'var(--text-muted)'}">
+            休診
+          </button>
+          <button onclick="setThursdayStatus(${d},true)"
+            style="padding:6px 14px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;
+            border:1.5px solid ${isOpen?'var(--primary)':'var(--border)'};
+            background:${isOpen?'var(--primary)':'white'};
+            color:${isOpen?'white':'var(--text-muted)'}">
+            診療日
+          </button>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted)">
+          ${isOpen?'土日と同じ必要人数':'必要人数なし'}
+        </div>
+      </div>`;
+    }).join('')}
+  `;
+}
+
+async function setHolidayStatus(day, status) {
+  showLoading();
+  try {
+    await sb(`special_days?year=eq.${specialYear}&month=eq.${specialMonth}&day=eq.${day}`, {method:'DELETE'});
+    await sb('special_days', {method:'POST', body:JSON.stringify([{
+      year: specialYear, month: specialMonth, day,
+      is_holiday: true,
+      is_closed: status === 'closed',
+      label: status === 'closed' ? '休診' : '診療日'
+    }])});
+    holidayData[day] = status;
+    await renderSpecialDaysGrid();
+    showToast(`${specialMonth}/${day}を${status==='closed'?'休診':'診療日'}に設定しました ✓`, 'success');
+  } catch(e) { console.error(e); showToast('保存エラー','error'); }
+  hideLoading();
+}
+
+async function setThursdayStatus(day, isOpen) {
+  showLoading();
+  try {
+    await sb(`thursday_types?year=eq.${specialYear}&month=eq.${specialMonth}&day=eq.${day}`, {method:'DELETE'});
+    await sb('thursday_types', {method:'POST', body:JSON.stringify([{
+      year: specialYear, month: specialMonth, day, is_open: isOpen
+    }])});
+    thursdayData[day] = isOpen;
+    renderThursdayGrid(new Date(specialYear, specialMonth, 0).getDate());
+    showToast(`${specialMonth}/${day}（木）を${isOpen?'診療日':'休診'}に設定しました ✓`, 'success');
+  } catch(e) { console.error(e); showToast('保存エラー','error'); }
+  hideLoading();
+}
+
+// 月ナビ
+document.getElementById('specialPrevMonth')?.addEventListener('click', async () => {
+  specialMonth--; if(specialMonth<1){specialMonth=12;specialYear--;}
+  document.getElementById('specialMonthTitle').textContent = `${specialYear}年${specialMonth}月`;
+  await renderSpecialDaysGrid();
+});
+document.getElementById('specialNextMonth')?.addEventListener('click', async () => {
+  specialMonth++; if(specialMonth>12){specialMonth=1;specialYear++;}
+  document.getElementById('specialMonthTitle').textContent = `${specialYear}年${specialMonth}月`;
+  await renderSpecialDaysGrid();
+});
+
 async function loadSettings() {
   showLoading();
   try {
+    // 祝日・木曜管理の初期化
+    document.getElementById('specialMonthTitle').textContent = `${specialYear}年${specialMonth}月`;
+    await renderSpecialDaysGrid();
+
     const hours = await sb(`monthly_hours?year=eq.${currentYear}&dept_id=is.null&order=month&select=month,hours`);
     const hoursMap = {};
     hours.forEach(h => { hoursMap[h.month] = h.hours; });
