@@ -461,6 +461,7 @@
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
 
+
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -860,15 +861,15 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
 
       if (editable) {
         const lockBorder = isLocked ? 'box-shadow:inset 0 0 0 2px #f59e0b;' : '';
-        const reqLabel = hasRequest ? `<div style="font-size:8px;color:#f59e0b;line-height:1;margin-top:1px;pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">⭐${requestedShift}</div>` : '';
-        const lockIcon = isLocked ? `<span style="position:absolute;top:-3px;right:-3px;font-size:11px;line-height:1;z-index:2;pointer-events:none">🔒</span>` : '';
+        const reqLabel = hasRequest ? `<div class="req-text" style="font-size:8px;color:#f59e0b;line-height:1;margin-top:1px;pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">⭐${requestedShift}</div>` : '';
+        const lockIcon = isLocked ? `<span class="lock-icon" style="position:absolute;top:-3px;right:-3px;font-size:11px;line-height:1;z-index:2;pointer-events:none">🔒</span>` : '';
         html += `<td style="padding:2px;position:relative">
           <div class="shift-cell ${colorClass||'empty'}"
             data-staff="${staff.id}" data-day="${d}" data-grid="${gridId}"
             data-request="${requestedShift}"
             onclick="handleCellClick(event,'${staff.id}','${escapeJs(staff.name)}',${d},'${gridId}')"
             style="position:relative;cursor:pointer;${lockBorder};flex-direction:column;min-height:34px;"
-          ><span>${dispShift||'+'}</span>${reqLabel}${lockIcon}</div>
+          ><span class="shift-text">${dispShift||'+'}</span>${reqLabel}${lockIcon}</div>
         </td>`;
       } else {
         html += `<td><div class="shift-cell ${colorClass||'empty'}" style="font-size:9px">${dispShift||''}</div></td>`;
@@ -1080,33 +1081,49 @@ function updateCellDisplay(key) {
   const isLocked = !!lockedCells[key];
   const reqShift = el.dataset.request || '';
 
-  // クラスとスタイルをリセット
+  // クラスのみ更新（onclickなどは維持）
   el.className = `shift-cell ${SHIFT_COLORS[shift]||'empty'}`;
-  el.style.cssText = `position:relative;cursor:pointer;flex-direction:column;min-height:34px;${isLocked?'box-shadow:inset 0 0 0 2px #f59e0b;':''}`;
+  el.style.boxShadow = isLocked ? 'inset 0 0 0 2px #f59e0b' : '';
+  el.style.flexDirection = 'column';
+  el.style.minHeight = '34px';
 
-  // 内容を再構築
-  el.innerHTML = '';
-
-  // シフト名
-  const shiftSpan = document.createElement('span');
+  // シフト名span（最初のspan）を更新または作成
+  let shiftSpan = el.querySelector('.shift-text');
+  if (!shiftSpan) {
+    // 既存の最初のテキストノードをspanに置換
+    el.querySelectorAll('.shift-text,.req-text,.lock-icon').forEach(e => e.remove());
+    shiftSpan = document.createElement('span');
+    shiftSpan.className = 'shift-text';
+    el.insertBefore(shiftSpan, el.firstChild);
+  }
   shiftSpan.textContent = shift || '+';
-  el.appendChild(shiftSpan);
 
   // 希望マーク
+  let reqDiv = el.querySelector('.req-text');
   if (reqShift) {
-    const starDiv = document.createElement('div');
-    starDiv.style.cssText = 'font-size:8px;color:#f59e0b;line-height:1;margin-top:1px;pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-    starDiv.textContent = `⭐${reqShift}`;
-    el.appendChild(starDiv);
+    if (!reqDiv) {
+      reqDiv = document.createElement('div');
+      reqDiv.className = 'req-text';
+      reqDiv.style.cssText = 'font-size:8px;color:#f59e0b;line-height:1;margin-top:1px;pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      el.insertBefore(reqDiv, shiftSpan.nextSibling);
+    }
+    reqDiv.textContent = `⭐${reqShift}`;
+  } else if (reqDiv) {
+    reqDiv.remove();
   }
 
   // ロックアイコン
+  let lockEl = el.querySelector('.lock-icon');
   if (isLocked) {
-    const lockSpan = document.createElement('span');
-    lockSpan.className = 'lock-icon';
-    lockSpan.style.cssText = 'position:absolute;top:-3px;right:-3px;font-size:11px;line-height:1;z-index:2;pointer-events:none';
-    lockSpan.textContent = '🔒';
-    el.appendChild(lockSpan);
+    if (!lockEl) {
+      lockEl = document.createElement('span');
+      lockEl.className = 'lock-icon';
+      lockEl.style.cssText = 'position:absolute;top:-3px;right:-3px;font-size:11px;line-height:1;z-index:2;pointer-events:none';
+      el.appendChild(lockEl);
+    }
+    lockEl.textContent = '🔒';
+  } else if (lockEl) {
+    lockEl.remove();
   }
 }
 
