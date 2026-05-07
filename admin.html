@@ -717,6 +717,10 @@ async function showRequestDetail(staffId, staffName) {
 }
 
 // ===== SHIFT GRID =====
+let shiftGridRequirements = {};
+let shiftGridPlanHours = 171.4;
+let shiftGridStaffSettings = {};
+
 async function loadShiftGrid() {
   showLoading();
   try {
@@ -725,9 +729,13 @@ async function loadShiftGrid() {
     const ids = deptStaff.map(s => `"${s.id}"`).join(',');
     const daysInMonth = new Date(shiftYear, shiftMonth, 0).getDate();
 
-    const [existingShifts, requestData] = await Promise.all([
+    const [existingShifts, requestData, requirements, monthlyHoursData, staffSettingsData, wedData] = await Promise.all([
       sb(`shifts?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,day,shift_type_id,is_locked`),
-      sb(`shift_requests?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,day,request_type`)
+      sb(`shift_requests?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,day,request_type`),
+      sb(`staffing_requirements?dept_id=eq.${currentDept}&select=period_id,day_type,min_count`),
+      sb(`monthly_hours?month=eq.${shiftMonth}&year=eq.${shiftYear}&dept_id=is.null&select=hours`),
+      sb(`staff_settings?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,planned_hours`),
+      sb(`wednesday_types?year=eq.${shiftYear}&month=eq.${shiftMonth}&select=day,wed_type`)
     ]);
 
     shiftData = {};
@@ -741,41 +749,137 @@ async function loadShiftGrid() {
     const reqMap = {};
     requestData.forEach(r => { reqMap[`${r.staff_id}-${r.day}`] = r.request_type; });
 
-    renderShiftGrid('shiftGrid', deptStaff, daysInMonth, shiftYear, shiftMonth, shiftData, reqMap, lockedCells, true);
+    // 必要人数マップ
+    shiftGridRequirements = {};
+    requirements.forEach(r => {
+      if (!shiftGridRequirements[r.period_id]) shiftGridRequirements[r.period_id] = {};
+      shiftGridRequirements[r.period_id][r.day_type] = r.min_count;
+    });
+
+    // 所定時間
+    shiftGridPlanHours = monthlyHoursData.length > 0 ? monthlyHoursData[0].hours : 171.4;
+
+    // スタッフ個別設定
+    shiftGridStaffSettings = {};
+    staffSettingsData.forEach(s => { shiftGridStaffSettings[s.staff_id] = s; });
+
+    // 水曜種別
+    const shiftWedTypes = {};
+    wedData.forEach(w => { shiftWedTypes[w.day] = w.wed_type; });
+
+    renderShiftGrid('shiftGrid', deptStaff, daysInMonth, shiftYear, shiftMonth, shiftData, reqMap, lockedCells, true, shiftWedTypes);
   } catch(e) { console.error(e); showToast('シフト表読み込みエラー','error'); }
   hideLoading();
 }
 
-function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, reqMap, locked, editable) {
+function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, reqMap, locked, editable, wedTypesMap) {
   const grid = document.getElementById(gridId);
-  let html = '<thead><tr><th class="staff-col">スタッフ</th>';
+  const holidays = getJapaneseHolidays(year, month);
+  const wt = wedTypesMap || wedTypes || {};
+
+  function getShiftDayType(d) {
+    const dow = new Date(year, month-1, d).getDay();
+    if (holidays.has(d)) return 'holiday_jp';
+    if (dow === 0 || dow === 6) return 'weekend';
+    if (dow === 3) return wt[d] === 'cc' ? 'wed_cc' : wt[d] === 'cho' ? 'wed_cho' : 'wed_normal';
+    if (dow === 4) return 'thu_open';
+    return 'weekday';
+  }
+
+  function getReq(period, d) {
+    const dt = getShiftDayType(d);
+    return shiftGridRequirements[period]?.[dt] ?? null;
+  }
+
+  // ヘッダー行
+  let html = '<thead><tr><th class="staff-col" style="min-width:80px">スタッフ</th>';
   for (let d = 1; d <= daysInMonth; d++) {
     const dow = new Date(year, month-1, d).getDay();
-    const cls = dow===0?'day-sun':dow===6?'day-sat':'';
-    html += `<th><div class="day-header"><div class="day-num ${cls}">${d}</div><div class="day-dow ${cls}">${DOW[dow]}</div></div></th>`;
+    const isHoliday = holidays.has(d);
+    const dayType = getShiftDayType(d);
+    const cls = (dow===0||isHoliday)?'day-sun':dow===6?'day-sat':'';
+    const wedLabel = dow===3 ? (wt[d]==='cc'?'<div style="font-size:8px;color:#92400e">CC</div>':wt[d]==='cho'?'<div style="font-size:8px;color:#5b21b6">CHO</div>':'') : '';
+    html += `<th style="min-width:32px"><div class="day-header"><div class="day-num ${cls}">${d}</div><div class="day-dow ${cls}">${DOW[dow]}</div>${wedLabel}</div></th>`;
   }
+  if (editable) html += '<th style="min-width:120px;text-align:center">実働/所定</th>';
   html += '</tr></thead><tbody>';
 
+  // スタッフ行 + 労働時間計算
+  const staffTotalHours = {};
   deptStaff.forEach(staff => {
+    let totalH = 0;
     html += `<tr><td class="staff-name">${staff.name}</td>`;
     for (let d = 1; d <= daysInMonth; d++) {
       const key = `${staff.id}-${d}`;
-      const shift = shifts[key] || reqMap[key] || '';
+      const shift = shifts[key] || (reqMap[key] && !editable ? reqMap[key] : '') || '';
+      const dispShift = shifts[key] || reqMap[key] || '';
       const isLocked = locked[key];
-      const colorClass = SHIFT_COLORS[shift] || '';
-      const lockIcon = isLocked ? '🔒' : '';
+      const colorClass = SHIFT_COLORS[dispShift] || '';
+      totalH += SHIFT_HOURS[shift] || 0;
+      if (shift === '有休') totalH += 8.5;
+      if (shift === '半有休') totalH += 5;
+
       if (editable) {
-        html += `<td><div class="shift-cell ${colorClass||'empty'}${isLocked?' locked':''}" 
+        const lockStyle = isLocked ? 'box-shadow:inset 0 0 0 2px #f59e0b;' : '';
+        html += `<td><div class="shift-cell ${colorClass||'empty'}" 
           data-staff="${staff.id}" data-day="${d}" data-grid="${gridId}"
           onclick="openShiftEditModal('${staff.id}','${staff.name}',${d},'${gridId}')"
-          style="position:relative"
-        >${shift||'+'}<span style="position:absolute;top:-1px;right:-1px;font-size:7px">${lockIcon}</span></div></td>`;
+          style="position:relative;${lockStyle}"
+        >${dispShift||'+'}<span style="position:absolute;top:-2px;right:-2px;font-size:8px">${isLocked?'🔒':''}</span></div></td>`;
       } else {
-        html += `<td><div class="shift-cell ${colorClass||'empty'}">${shift||''}</div></td>`;
+        html += `<td><div class="shift-cell ${colorClass||'empty'}" style="font-size:9px">${dispShift||''}</div></td>`;
       }
+    }
+    staffTotalHours[staff.id] = totalH;
+
+    // 右端：労働時間列
+    if (editable) {
+      const setting = shiftGridStaffSettings[staff.id];
+      let planH = setting?.planned_hours ?? (
+        staff.emp_type === 'full' ? shiftGridPlanHours :
+        staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * 0.75 * 10)/10 : 0
+      );
+      const actual = Math.round(totalH * 10) / 10;
+      const diff = Math.round((actual - planH) * 10) / 10;
+      const diffStr = diff >= 0 ? `+${diff}H` : `${diff}H`;
+      const color = planH <= 0 ? '#6b7280' : diff > 10 ? '#f97316' : diff < -10 ? '#ef4444' : '#10b981';
+      const estDays = Math.round(actual / 8.5);
+      html += `<td style="white-space:nowrap;padding:4px 8px;font-size:11px;font-weight:600;color:${color}">
+        ${actual}H / ${planH}H<br>
+        <span style="font-size:10px;opacity:0.8">${diffStr}　約${estDays}日</span>
+      </td>`;
     }
     html += '</tr>';
   });
+
+  // 充足状況行
+  if (editable) {
+    ['morning','afternoon','evening'].forEach((period, pi) => {
+      const labels = ['午前帯','午後帯','夜間帯'];
+      html += `<tr style="background:#f8fafc"><td class="staff-name" style="font-size:11px;color:var(--text-muted);font-weight:600">${labels[pi]}</td>`;
+      for (let d = 1; d <= daysInMonth; d++) {
+        const req = getReq(period, d);
+        if (req === null) {
+          html += `<td style="text-align:center;font-size:10px;color:#d1d5db">—</td>`;
+          continue;
+        }
+        const covered = deptStaff.filter(s => {
+          const shift = shifts[`${s.id}-${d}`];
+          return shift && SHIFT_COVERS[shift]?.includes(period);
+        }).length;
+        const ok = covered >= req;
+        const bg = req === 0 ? '#f3f4f6' : ok ? '#d1fae5' : '#fee2e2';
+        const color = req === 0 ? '#9ca3af' : ok ? '#065f46' : '#be123c';
+        html += `<td style="text-align:center;padding:2px 1px">
+          <div style="background:${bg};color:${color};font-size:10px;font-weight:700;border-radius:4px;padding:2px 0">
+            ${req===0?'0':`${covered}/${req}`}
+          </div>
+        </td>`;
+      }
+      html += '<td></td></tr>';
+    });
+  }
+
   html += '</tbody>';
   grid.innerHTML = html;
 }
