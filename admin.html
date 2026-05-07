@@ -482,7 +482,6 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -1643,13 +1642,21 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     const daysInMonth = new Date(genYear, genMonth, 0).getDate();
 
     // データ取得
-    const [requests, existingShifts, requirements, monthlyHoursData, staffSettingsData] = await Promise.all([
+    const [requests, existingShifts, requirements, monthlyHoursData, staffSettingsData, specialDaysData, thursdayData2] = await Promise.all([
       sb(`shift_requests?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&select=staff_id,day,request_type`),
       sb(`shifts?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&select=staff_id,day,shift_type_id,is_locked`),
       sb(`staffing_requirements?dept_id=eq.${currentDept}&select=period_id,day_type,min_count`),
       sb(`monthly_hours?month=eq.${genMonth}&year=eq.${genYear}&dept_id=is.null&select=hours`),
-      sb(`staff_settings?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&select=staff_id,planned_hours,max_night_per_month,no_night_auto`)
+      sb(`staff_settings?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&select=*`),
+      sb(`special_days?year=eq.${genYear}&month=eq.${genMonth}&select=day,day_type,is_closed`),
+      sb(`thursday_types?year=eq.${genYear}&month=eq.${genMonth}&select=day,is_open`)
     ]);
+
+    // 祝日・木曜の設定マップ
+    const closedHolidays = new Set(); // 休診祝日
+    specialDaysData.forEach(s => { if (s.is_closed) closedHolidays.add(s.day); });
+    const openThursdays = new Set(); // 診療木曜
+    thursdayData2.forEach(t => { if (t.is_open) openThursdays.add(t.day); });
 
     const basePlanHours = monthlyHoursData.length > 0 ? monthlyHoursData[0].hours : 171.4;
 
@@ -1668,12 +1675,32 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     function getStaffMaxNight(staff) {
       const custom = staffSettingsMap[staff.id];
       if (custom?.max_night_per_month != null) return custom.max_night_per_month;
-      return 8; // デフォルト月8回まで
+      return 8;
+    }
+
+    function getStaffMaxLate(staff) {
+      const custom = staffSettingsMap[staff.id];
+      return custom?.max_late_per_month ?? 99;
+    }
+
+    function getStaffMaxLong(staff) {
+      const custom = staffSettingsMap[staff.id];
+      return custom?.max_long_per_month ?? 99;
+    }
+
+    function getStaffMaxMid(staff) {
+      const custom = staffSettingsMap[staff.id];
+      return custom?.max_mid_per_month ?? 99;
     }
 
     function isNoNightAuto(staff) {
       const custom = staffSettingsMap[staff.id];
       return custom?.no_night_auto === true || staff.no_night === true;
+    }
+
+    // 🌸スタッフは必要人数カウントに含めない
+    function isNoCount(staff) {
+      return staff.skill_level === 'no_count' || staff.no_count === true;
     }
 
     const optRespectRequest = document.getElementById('optRespectRequest').checked;
@@ -1703,16 +1730,26 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
 
     function getDayType(d) {
       const dow = new Date(genYear, genMonth-1, d).getDay();
-      if (holidays.has(d)) return 'holiday_jp';
+      // 休診祝日は weekend扱いしない → 必要人数0として処理
+      if (holidays.has(d) && closedHolidays.has(d)) return 'holiday_closed';
+      if (holidays.has(d)) return 'holiday_jp'; // 診療祝日
       if (dow === 0 || dow === 6) return 'weekend';
       if (dow === 3) return wedTypes[d] === 'cc' ? 'wed_cc' : wedTypes[d] === 'cho' ? 'wed_cho' : 'wed_normal';
-      if (dow === 4) return 'thu_open';
+      if (dow === 4) return openThursdays.has(d) ? 'thu_open' : 'thu_closed';
       return 'weekday';
     }
 
     function getRequired(period, day) {
       const dayType = getDayType(day);
+      // 休診日（休診祝日・休診木曜）は必要人数0
+      if (dayType === 'holiday_closed' || dayType === 'thu_closed') return 0;
       return reqCountMap[period]?.[dayType] ?? null;
+    }
+
+    // 休診日かどうか
+    function isClosedDay(d) {
+      const dayType = getDayType(d);
+      return dayType === 'holiday_closed' || dayType === 'thu_closed';
     }
 
     // ===== 生成ロジック =====
