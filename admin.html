@@ -459,7 +459,6 @@
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
 
-
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -859,14 +858,14 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
 
       if (editable) {
         const lockBorder = isLocked ? 'box-shadow:inset 0 0 0 2px #f59e0b;' : '';
-        const starMark = hasRequest ? '<span style="position:absolute;bottom:0;right:1px;font-size:8px;line-height:1;pointer-events:none" title="希望: '+requestedShift+'">⭐</span>' : '';
-        const lockMark = isLocked ? '<span style="position:absolute;top:-2px;right:-2px;font-size:10px;pointer-events:none">🔒</span>' : '';
+        const reqLabel = hasRequest ? `<div style="font-size:8px;color:#f59e0b;line-height:1;margin-top:1px;pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">⭐${requestedShift}</div>` : '';
+        const lockIcon = isLocked ? `<span style="position:absolute;top:-3px;right:-3px;font-size:11px;line-height:1;z-index:2;pointer-events:none">🔒</span>` : '';
         html += `<td style="padding:2px;position:relative">
           <div class="shift-cell ${colorClass||'empty'}"
             data-staff="${staff.id}" data-day="${d}" data-grid="${gridId}"
             onclick="handleCellClick(event,'${staff.id}','${escapeJs(staff.name)}',${d},'${gridId}')"
-            style="position:relative;cursor:pointer;${lockBorder}"
-          >${dispShift||'+'}${lockMark}${starMark}</div>
+            style="position:relative;cursor:pointer;${lockBorder};flex-direction:column;min-height:34px;"
+          ><span>${dispShift||'+'}</span>${reqLabel}${lockIcon}</div>
         </td>`;
       } else {
         html += `<td><div class="shift-cell ${colorClass||'empty'}" style="font-size:9px">${dispShift||''}</div></td>`;
@@ -1020,6 +1019,21 @@ function toggleLock(key) {
       el.appendChild(lockSpan);
     }
   }
+}
+
+
+function showRequestTooltip(el, requestedShift) {
+  // 既存のツールチップを削除
+  document.querySelectorAll('.req-tooltip').forEach(t => t.remove());
+  const tip = document.createElement('div');
+  tip.className = 'req-tooltip';
+  tip.style.cssText = 'position:fixed;background:#1a2332;color:white;padding:6px 10px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;pointer-events:none;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.3)';
+  tip.textContent = `希望: ${requestedShift}`;
+  document.body.appendChild(tip);
+  const rect = el.getBoundingClientRect();
+  tip.style.left = `${rect.left - tip.offsetWidth/2}px`;
+  tip.style.top = `${rect.top - tip.offsetHeight - 6}px`;
+  setTimeout(() => tip.remove(), 2000);
 }
 
 function escapeJs(str) { return str.replace(/'/g, "\'"); }
