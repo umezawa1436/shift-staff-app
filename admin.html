@@ -459,6 +459,7 @@
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
 
+
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -991,10 +992,34 @@ function applyShiftEdit(shiftId) {
 }
 
 function toggleLock(key) {
-  if (lockedCells[key]) { delete lockedCells[key]; showToast('ロックを解除しました'); }
-  else { lockedCells[key] = true; showToast('ロックしました 🔒'); }
+  if (lockedCells[key]) {
+    delete lockedCells[key];
+    showToast('ロックを解除しました');
+  } else {
+    lockedCells[key] = true;
+    showToast('ロックしました 🔒');
+  }
   closeModal('shiftEditModal');
-  loadShiftGrid();
+  // loadShiftGridは呼ばず、セルの見た目だけ更新
+  const [staffId, day] = key.split('-');
+  const el = getCellEl(staffId, day);
+  if (el) {
+    const shift = shiftData[key] || '';
+    el.className = `shift-cell ${SHIFT_COLORS[shift]||'empty'}`;
+    el.style.boxShadow = lockedCells[key] ? 'inset 0 0 0 2px #f59e0b' : '';
+    // テキストノードを更新
+    const textNode = el.childNodes[0];
+    if (textNode && textNode.nodeType === 3) textNode.textContent = shift || '+';
+    // ロックアイコン更新
+    const existingLock = el.querySelector('span');
+    if (existingLock) existingLock.remove();
+    if (lockedCells[key]) {
+      const lockSpan = document.createElement('span');
+      lockSpan.style.cssText = 'position:absolute;top:-2px;right:-2px;font-size:10px;pointer-events:none';
+      lockSpan.textContent = '🔒';
+      el.appendChild(lockSpan);
+    }
+  }
 }
 
 function escapeJs(str) { return str.replace(/'/g, "\'"); }
