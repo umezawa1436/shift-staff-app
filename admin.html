@@ -633,7 +633,8 @@ async function initApp() {
 async function loadStaff() {
   const deptFilter = adminUser.role === 'leader'
     ? `&dept_id=eq.${adminUser.deptId}` : '';
-  allStaff = await sb(`staff?order=dept_id,staff_code${deptFilter}&select=*`);
+  allStaff = await sb(`staff?order=dept_id,staff_code${deptFilter}&select=id,staff_code,name,dept_id,emp_type,no_night,no_count`);
+  console.log('スタッフ取得:', allStaff);
 }
 
 function updateMonthDisplay() {
@@ -1020,8 +1021,10 @@ document.getElementById('saveNewStaffBtn').addEventListener('click', async () =>
 
   showLoading();
   try {
-    const maxCode = allStaff.filter(s => s.dept_id === deptId)
-      .reduce((max, s) => Math.max(max, s.staff_code), 0);
+   const deptStaffList = allStaff.filter(s => s.dept_id === deptId);
+    const maxCode = deptStaffList.length > 0
+      ? deptStaffList.reduce((max, s) => Math.max(max, s.staff_code), 0)
+      : 0;
     await sb('staff', {
       method: 'POST',
       body: JSON.stringify([{ staff_code: maxCode + 1, name, dept_id: deptId, emp_type: empType, no_night: noNight, no_count: false }]),
