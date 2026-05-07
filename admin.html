@@ -934,21 +934,34 @@ function handleCellClick(e, staffId, staffName, day, gridId) {
   const isMac = navigator.platform.toUpperCase().includes('MAC');
   const ctrl = isMac ? e.metaKey : e.ctrlKey;
   const shift = e.shiftKey;
+  const key = `${staffId}-${day}`;
+
   if (ctrl) {
+    // ⌘クリック：複数選択
     e.stopPropagation();
+    e.preventDefault();
     selectCell(staffId, day, 'toggle');
-  } else if (shift) {
+    return;
+  }
+
+  if (shift) {
+    // Shiftクリック：範囲選択
     e.stopPropagation();
+    e.preventDefault();
     selectCell(staffId, day, 'range');
-  } else if (selectedCells.size > 1) {
-    // 複数選択中は選択を解除してシフト編集
-    selectedCells.clear();
-    highlightSelected();
-    selectCell(staffId, day, 'single');
+    return;
+  }
+
+  // 通常クリック
+  const alreadySelected = selectedCells.size === 1 && selectedCells.has(key);
+
+  if (alreadySelected) {
+    // 同じセルを2回クリック → モーダルを開く
     openShiftEditModal(staffId, staffName, day, gridId);
   } else {
+    // 別のセルをクリック → ハイライトのみ
+    selectedCells.clear();
     selectCell(staffId, day, 'single');
-    openShiftEditModal(staffId, staffName, day, gridId);
   }
 }
 
@@ -1356,12 +1369,20 @@ document.addEventListener('keydown', (e) => {
     const daysInMonth = new Date(shiftYear, shiftMonth, 0).getDate();
     if (srcKeys.length === 1) {
       const shiftId = Object.values(clipboard.data)[0];
-      selectedCells.forEach(key => {
+      const targets = selectedCells.size > 0 ? selectedCells : new Set(srcKeys);
+      targets.forEach(key => {
         if (lockedCells[key]) return;
         if (shiftId) shiftData[key] = shiftId; else delete shiftData[key];
         const [sid,d] = key.split('-');
         const el = getCellEl(sid,d);
-        if (el) { el.className=`shift-cell ${SHIFT_COLORS[shiftId]||'empty'}`; const sp=el.querySelector('span:first-child'); if(sp&&sp.tagName==='SPAN')sp.textContent=shiftId||'+'; else if(el.childNodes[0]&&el.childNodes[0].nodeType===3)el.childNodes[0].textContent=shiftId||'+'; }
+        if (el) {
+          el.className=`shift-cell ${SHIFT_COLORS[shiftId]||'empty'}`;
+          el.style.flexDirection='column';
+          el.style.minHeight='34px';
+          const sp=el.querySelector('span:first-child');
+          if(sp&&sp.tagName==='SPAN')sp.textContent=shiftId||'+';
+          else if(el.childNodes[0]&&el.childNodes[0].nodeType===3)el.childNodes[0].textContent=shiftId||'+';
+        }
       });
     } else {
       const srcArr = srcKeys.map(k => { const [sid,d]=k.split('-'); return {si:staffIds.indexOf(sid),d:parseInt(d)}; });
