@@ -460,7 +460,6 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -2302,8 +2301,10 @@ async function updateStaffField(staffId, field, value) {
       headers: { 'Prefer': 'return=representation' },
       body: JSON.stringify({ [field]: value })
     });
-    await loadStaff();
-    loadStaffTable();
+    // ローカルのallStaffも即時更新
+    const idx = allStaff.findIndex(s => s.id === staffId);
+    if (idx !== -1) allStaff[idx][field] = value;
+    await loadStaffTable();
     showToast('更新しました ✓', 'success');
   } catch(e) { console.error(e); showToast('更新エラー','error'); }
   hideLoading();
@@ -2348,9 +2349,110 @@ async function saveAllFixedShifts(staffId) {
       headers: { 'Prefer': 'return=representation' },
       body: JSON.stringify({ fixed_shifts: fixedShifts })
     });
-    await loadStaff();
+    const idx = allStaff.findIndex(s => s.id === staffId);
+    if (idx !== -1) allStaff[idx].fixed_shifts = fixedShifts;
     showToast('曜日固定シフトを保存しました ✓', 'success');
+
+    // シフト表への反映確認
+    const staffName = allStaff.find(s => s.id === staffId)?.name || '';
+    if (Object.keys(fixedShifts).length > 0) {
+      showFixedShiftApplyModal(staffId, staffName, fixedShifts);
+    }
   } catch(e) { console.error(e); showToast('保存エラー','error'); }
+  hideLoading();
+}
+
+function showFixedShiftApplyModal(staffId, staffName, fixedShifts) {
+  // 既存モーダルを削除
+  document.getElementById('fixedShiftApplyModal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'fixedShiftApplyModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px)';
+  
+  const months = [];
+  for (let m = 1; m <= 12; m++) months.push(m);
+  
+  modal.innerHTML = `
+    <div style="background:white;border-radius:20px;padding:28px;width:100%;max-width:440px;box-shadow:0 20px 60px rgba(0,0,0,0.2)">
+      <div style="font-size:18px;font-weight:700;margin-bottom:6px">${staffName}の曜日固定を反映</div>
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:20px">シフト表に反映する月を選択してください</div>
+      <div style="display:flex;gap:12px;margin-bottom:16px">
+        <div style="flex:1">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">対象年月</div>
+          <select id="fixedApplyYear" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
+            <option value="${currentYear}">${currentYear}年</option>
+            <option value="${currentYear+1}">${currentYear+1}年</option>
+          </select>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">月</div>
+          <select id="fixedApplyMonth" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
+            ${months.map(m => `<option value="${m}" ${m===currentMonth?'selected':''}>${m}月</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;padding:12px;background:#fef3c7;border-radius:10px">
+        <input type="checkbox" id="fixedApplyLock" checked style="width:16px;height:16px;cursor:pointer">
+        <label for="fixedApplyLock" style="font-size:13px;cursor:pointer">反映後にロック（手動変更可）</label>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button onclick="document.getElementById('fixedShiftApplyModal').remove()"
+          style="padding:10px 18px;border:1.5px solid var(--border);border-radius:10px;background:white;cursor:pointer;font-family:inherit">キャンセル</button>
+        <button onclick="applyFixedShiftsToGrid('${staffId}',${JSON.stringify(fixedShifts).replace(/"/g,"'")})"
+          style="padding:10px 18px;background:var(--primary);color:white;border:none;border-radius:10px;font-weight:600;cursor:pointer;font-family:inherit">反映する</button>
+      </div>
+    </div>
+  `;
+  modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
+async function applyFixedShiftsToGrid(staffId, fixedShifts) {
+  const year = parseInt(document.getElementById('fixedApplyYear').value);
+  const month = parseInt(document.getElementById('fixedApplyMonth').value);
+  const withLock = document.getElementById('fixedApplyLock').checked;
+  document.getElementById('fixedShiftApplyModal')?.remove();
+
+  showLoading();
+  try {
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const inserts = [];
+
+    // 既存シフトを取得
+    const existing = await sb(`shifts?staff_id=eq.${staffId}&year=eq.${year}&month=eq.${month}&select=day,shift_type_id,is_locked`);
+    const existingMap = {};
+    existing.forEach(s => { existingMap[s.day] = s; });
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dow = new Date(year, month-1, d).getDay();
+      const fixedShift = fixedShifts[dow];
+      if (!fixedShift) continue;
+      // ロック済みはスキップ
+      if (existingMap[d]?.is_locked) continue;
+      inserts.push({ staff_id:staffId, year, month, day:d, shift_type_id:fixedShift, is_locked:withLock });
+    }
+
+    if (inserts.length > 0) {
+      // 対象日を削除してから挿入
+      const days = inserts.map(i => i.day);
+      for (const ins of inserts) {
+        await sb(`shifts?staff_id=eq.${staffId}&year=eq.${year}&month=eq.${month}&day=eq.${ins.day}&is_locked=eq.false`, {method:'DELETE'});
+      }
+      await sb('shifts', {method:'POST', body:JSON.stringify(inserts)});
+    }
+
+    // シフトデータをローカルに反映
+    if (year === shiftYear && month === shiftMonth) {
+      inserts.forEach(ins => {
+        const key = `${staffId}|${ins.day}`;
+        shiftData[key] = ins.shift_type_id;
+        if (withLock) lockedCells[key] = true;
+      });
+      loadShiftGrid();
+    }
+
+    showToast(`${month}月に${inserts.length}日分の固定シフトを反映しました ✓`, 'success');
+  } catch(e) { console.error(e); showToast('反映エラー','error'); }
   hideLoading();
 }
 
