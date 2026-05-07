@@ -96,6 +96,7 @@
     .shift-grid td { padding:2px;border:1px solid var(--border);text-align:center;vertical-align:middle; }
     .shift-grid td.staff-name { padding:6px 10px;text-align:left;font-weight:500;white-space:nowrap;background:white;font-size:12px; }
     .shift-cell { min-height:28px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:pointer;transition:all 0.15s;padding:1px; }
+    #shiftEditOptions .shift-cell { display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center; }
     .shift-cell.has-req { flex-direction:column;justify-content:center;align-items:center;min-height:36px; }
     .shift-cell .shift-text { font-size:10px;font-weight:600;line-height:1.2; }
     .shift-cell .req-text { font-size:8px;color:#f59e0b;line-height:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;text-align:center; }
@@ -471,7 +472,7 @@
 <div class="modal-overlay" id="shiftEditModal">
   <div class="modal">
     <div class="modal-title" id="shiftEditTitle"></div>
-    <div id="shiftEditOptions" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px"></div>
+    <div id="shiftEditOptions" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;align-items:stretch"></div>
     <div class="modal-footer">
       <button class="btn btn-outline btn-danger" id="clearShiftBtn">クリア</button>
       <button class="btn btn-outline" onclick="closeModal('shiftEditModal')">閉じる</button>
@@ -1010,9 +1011,38 @@ function openShiftEditModal(staffId, staffName, day, gridId) {
   document.getElementById('shiftEditTitle').textContent = `${staffName} - ${shiftMonth}月${day}日（${DOW[date.getDay()]}）${multiLabel}`;
   editingCell = { staffId, day, gridId, key };
   const opts = document.getElementById('shiftEditOptions');
+  const SHIFT_INFO = {
+    '日勤':   {time:'08:30-18:00', hours:'8.5H'},
+    '日勤+':  {time:'08:30-18:30', hours:'9H'},
+    '午前':   {time:'08:30-13:30', hours:'5H'},
+    '午後':   {time:'13:00-18:30', hours:'5H'},
+    '遅番':   {time:'13:00-21:30', hours:'7.5H'},
+    '遅L':    {time:'12:00-21:30', hours:'8.5H'},
+    'リハ遅': {time:'12:00-21:00', hours:'8H'},
+    '夜勤':   {time:'17:30-21:30', hours:'4H'},
+    '長日':   {time:'08:30-21:30', hours:'11H'},
+    '中抜け': {time:'08:30-21:30', hours:'8H'},
+    '時短':   {time:'08:30-14:30', hours:'6H'},
+    'CC':     {time:'08:30-17:00', hours:'8H'},
+    'CHO':    {time:'08:30-16:30', hours:'7H'},
+    'CCのみ': {time:'14:00-17:00', hours:'3H'},
+    '休み':   {time:'', hours:''},
+    '有休':   {time:'所定+8.5H', hours:''},
+    '半有休': {time:'所定+5H', hours:''},
+    '希望休': {time:'', hours:''},
+  };
   opts.innerHTML = SHIFT_OPTIONS.map(s => {
     const cur = shiftData[key];
-    return `<div class="shift-cell ${SHIFT_COLORS[s]||''}" style="cursor:pointer;padding:8px;border-radius:8px;font-size:12px;font-weight:600;${cur===s?'outline:2px solid var(--primary);':''}" onclick="applyShiftEdit('${s}')">${s}</div>`;
+    const info = SHIFT_INFO[s] || {};
+    const isSelected = cur === s;
+    return `<div class="shift-cell ${SHIFT_COLORS[s]||''}" 
+      style="cursor:pointer;padding:10px 8px;border-radius:10px;flex-direction:column;min-height:56px;
+      ${isSelected?'outline:2.5px solid var(--primary);box-shadow:0 0 0 3px rgba(15,76,129,0.1);':''}" 
+      onclick="applyShiftEdit('${s}')">
+      <span style="font-size:13px;font-weight:700;line-height:1.2">${s}</span>
+      ${info.time ? `<span style="font-size:9px;opacity:0.7;margin-top:2px;line-height:1">${info.time}</span>` : ''}
+      ${info.hours ? `<span style="font-size:10px;font-weight:600;opacity:0.85;margin-top:1px">${info.hours}</span>` : ''}
+    </div>`;
   }).join('');
   document.getElementById('clearShiftBtn').textContent = isLocked ? '🔓 ロック解除' : '🔒 ロックする';
   document.getElementById('clearShiftBtn').onclick = () => toggleLock(key);
