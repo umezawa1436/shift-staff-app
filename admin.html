@@ -983,8 +983,15 @@ function applyShiftEdit(shiftId) {
   const cell = document.querySelector(`[data-staff="${staffId}"][data-day="${day}"][data-grid="${gridId}"]`);
   if (cell) {
     cell.className = `shift-cell ${SHIFT_COLORS[shiftId]||'empty'}`;
-    const textNode = cell.childNodes[0];
-    if (textNode && textNode.nodeType === 3) textNode.textContent = shiftId;
+    cell.style.flexDirection = 'column';
+    cell.style.minHeight = '34px';
+    // spanタグのテキストを更新
+    const shiftSpan = cell.querySelector('span:first-child') || cell.childNodes[0];
+    if (shiftSpan && shiftSpan.tagName === 'SPAN') {
+      shiftSpan.textContent = shiftId || '+';
+    } else if (shiftSpan && shiftSpan.nodeType === 3) {
+      shiftSpan.textContent = shiftId || '+';
+    }
   }
   refreshSummaryRows();
   closeModal('shiftEditModal');
@@ -1265,8 +1272,11 @@ function applyShiftToSelected(shiftId) {
     const el = getCellEl(sid, d);
     if (el) {
       el.className = `shift-cell ${SHIFT_COLORS[shiftId]||'empty'}`;
-      const textNode = el.childNodes[0];
-      if (textNode && textNode.nodeType === 3) textNode.textContent = shiftId || '+';
+      el.style.flexDirection = 'column';
+      el.style.minHeight = '34px';
+      const shiftSpan = el.querySelector('span:first-child') || el.childNodes[0];
+      if (shiftSpan && shiftSpan.tagName === 'SPAN') shiftSpan.textContent = shiftId || '+';
+      else if (shiftSpan && shiftSpan.nodeType === 3) shiftSpan.textContent = shiftId || '+';
     }
   });
   refreshSummaryRows();
@@ -1328,7 +1338,7 @@ document.addEventListener('keydown', (e) => {
         delete shiftData[key];
         const [sid,d] = key.split('-');
         const el = getCellEl(sid,d);
-        if (el) { el.className='shift-cell empty'; const t=el.childNodes[0]; if(t&&t.nodeType===3)t.textContent='+'; }
+        if (el) { el.className='shift-cell empty'; const sp=el.querySelector('span:first-child'); if(sp&&sp.tagName==='SPAN')sp.textContent='+'; else if(el.childNodes[0]&&el.childNodes[0].nodeType===3)el.childNodes[0].textContent='+'; }
       }
     });
     refreshSummaryRows();
@@ -1351,7 +1361,7 @@ document.addEventListener('keydown', (e) => {
         if (shiftId) shiftData[key] = shiftId; else delete shiftData[key];
         const [sid,d] = key.split('-');
         const el = getCellEl(sid,d);
-        if (el) { el.className=`shift-cell ${SHIFT_COLORS[shiftId]||'empty'}`; const t=el.childNodes[0]; if(t&&t.nodeType===3)t.textContent=shiftId||'+'; }
+        if (el) { el.className=`shift-cell ${SHIFT_COLORS[shiftId]||'empty'}`; const sp=el.querySelector('span:first-child'); if(sp&&sp.tagName==='SPAN')sp.textContent=shiftId||'+'; else if(el.childNodes[0]&&el.childNodes[0].nodeType===3)el.childNodes[0].textContent=shiftId||'+'; }
       });
     } else {
       const srcArr = srcKeys.map(k => { const [sid,d]=k.split('-'); return {si:staffIds.indexOf(sid),d:parseInt(d)}; });
