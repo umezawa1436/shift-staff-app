@@ -832,8 +832,8 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     // パスワード確認（簡易：名前の頭文字+1234）
     const staffName = STAFF_DATA[parseInt(deptId)].find(s => s.code == staffCode)?.name;
     // 本番では適切な認証に変更する
-    const expectedPw = staffName?.charAt(0) + '1234';
-    if (password !== expectedPw && password !== 'admin1234') {
+    const expectedPw = 'shift1234';
+    if (password !== expectedPw) {
       document.getElementById('errorMsg').style.display = 'block';
       document.getElementById('errorMsg').textContent = 'パスワードが正しくありません';
       hideLoading();
