@@ -463,7 +463,6 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -1317,11 +1316,19 @@ function selectCell(staffId, day, mode) {
     const si2 = staffIds.indexOf(staffId);
     const d1 = parseInt(lastSelectedCell.day);
     const d2 = parseInt(day);
-    const minSi = Math.min(si1,si2), maxSi = Math.max(si1,si2);
-    const minD = Math.min(d1,d2), maxD = Math.max(d1,d2);
-    for (let si = minSi; si <= maxSi; si++) {
-      for (let d = minD; d <= maxD; d++) {
-        selectedCells.add(`${staffIds[si]}-${d}`);
+    console.log('range: si1=',si1,'si2=',si2,'d1=',d1,'d2=',d2);
+    if (si1 === -1 || si2 === -1) {
+      // staffIdが見つからない場合は単独選択
+      selectedCells.clear();
+      selectedCells.add(`${staffId}|${day}`);
+      lastSelectedCell = {staffId, day: parseInt(day)};
+    } else {
+      const minSi = Math.min(si1,si2), maxSi = Math.max(si1,si2);
+      const minD = Math.min(d1,d2), maxD = Math.max(d1,d2);
+      for (let si = minSi; si <= maxSi; si++) {
+        for (let d = minD; d <= maxD; d++) {
+          selectedCells.add(`${staffIds[si]}|${d}`);
+        }
       }
     }
   } else {
