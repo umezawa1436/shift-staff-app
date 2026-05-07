@@ -410,11 +410,8 @@
             <div class="dept-tabs" id="staffDeptTabs"></div>
             <button class="btn btn-primary" id="addStaffBtn">＋ スタッフ追加</button>
           </div>
-          <div class="card">
-            <table class="data-table" id="staffTable">
-              <thead><tr><th>名前</th><th>部門</th><th>雇用形態</th><th>夜勤</th><th>操作</th></tr></thead>
-              <tbody id="staffBody"></tbody>
-            </table>
+          <div class="card" style="padding:0;overflow:hidden">
+            <div id="staffListWrap"></div>
           </div>
         </div>
 
@@ -463,6 +460,7 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -2118,16 +2116,236 @@ document.getElementById('saveRequirementsBtn').addEventListener('click', async (
 
 // ===== STAFF =====
 async function loadStaffTable() {
-  const deptStaff = allStaff.filter(s => s.dept_id === currentDept);
-  document.getElementById('staffBody').innerHTML = deptStaff.map(s => `
-    <tr>
-      <td>${s.name}</td>
-      <td>${DEPT_NAMES[s.dept_id]}</td>
-      <td><span class="badge ${s.emp_type==='full'?'badge-full':'badge-part'}">${s.emp_type==='full'?'常勤':'パート'}</span></td>
-      <td>${s.no_night?'なし':'あり'}</td>
-      <td><button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="deleteStaff('${s.id}','${s.name}')">削除</button></td>
-    </tr>
-  `).join('');
+  showLoading();
+  try {
+    const deptStaff = allStaff.filter(s => s.dept_id === currentDept);
+    const ids = deptStaff.map(s => `"${s.id}"`).join(',');
+    
+    // スタッフ設定を取得（今月分）
+    let settingsMap = {};
+    if (ids) {
+      const settings = await sb(`staff_settings?staff_id=in.(${ids})&year=eq.${currentYear}&month=eq.${currentMonth}&select=*`);
+      settings.forEach(s => { settingsMap[s.staff_id] = s; });
+    }
+
+    const wrap = document.getElementById('staffListWrap');
+    if (!wrap) { hideLoading(); return; }
+
+    const SKILL_LABELS = { normal:'無印', beginner:'🔰', no_count:'🌸' };
+    const EMP_LABELS = { full:'常勤', short:'時短', part:'パート' };
+    const DOW_LABELS = ['日','月','火','水','木','金','土'];
+
+    wrap.innerHTML = deptStaff.map(staff => {
+      const setting = settingsMap[staff.id] || {};
+      const planH = setting.planned_hours ?? (
+        staff.emp_type === 'full' ? '―（一括）' :
+        staff.emp_type === 'short' ? '―（3/4）' : '未設定'
+      );
+      const fixedShifts = staff.fixed_shifts || {};
+      const fixedStr = Object.entries(fixedShifts).map(([dow, shift]) => `${DOW_LABELS[dow]}:${shift}`).join(' ') || '―';
+
+      return `
+      <div class="staff-row" id="staff-row-${staff.id}" style="border-bottom:1px solid var(--border);padding:16px 20px">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <!-- 名前・部門 -->
+          <div style="min-width:80px">
+            <div style="font-size:15px;font-weight:700">${staff.name}</div>
+            <div style="font-size:11px;color:var(--text-muted)">${DEPT_NAMES[staff.dept_id]}</div>
+          </div>
+
+          <!-- 能力フラグ -->
+          <div style="display:flex;gap:4px">
+            ${['normal','beginner','no_count'].map(sk => `
+              <button onclick="updateStaffField('${staff.id}','skill_level','${sk}')"
+                style="padding:4px 10px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;
+                border:1.5px solid ${staff.skill_level===sk?'var(--primary)':'var(--border)'};
+                background:${staff.skill_level===sk?'var(--primary)':'white'};
+                color:${staff.skill_level===sk?'white':'var(--text-muted)'}">
+                ${SKILL_LABELS[sk]}
+              </button>
+            `).join('')}
+          </div>
+
+          <!-- 雇用形態 -->
+          <div style="display:flex;gap:4px">
+            ${['full','short','part'].map(et => `
+              <button onclick="updateStaffField('${staff.id}','emp_type','${et}')"
+                style="padding:4px 10px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;
+                border:1.5px solid ${staff.emp_type===et?'var(--primary)':'var(--border)'};
+                background:${staff.emp_type===et?'var(--primary)':'white'};
+                color:${staff.emp_type===et?'white':'var(--text-muted)'}">
+                ${EMP_LABELS[et]}
+              </button>
+            `).join('')}
+          </div>
+
+          <!-- 夜勤フラグ -->
+          <button onclick="toggleStaffNoNight('${staff.id}',${staff.no_night})"
+            style="padding:4px 12px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;
+            border:1.5px solid ${staff.no_night?'var(--danger)':'var(--border)'};
+            background:${staff.no_night?'#fef2f2':'white'};
+            color:${staff.no_night?'var(--danger)':'var(--text-muted)'}">
+            ${staff.no_night?'夜勤不可':'夜勤可'}
+          </button>
+
+          <!-- 削除 -->
+          <button onclick="deleteStaff('${staff.id}','${staff.name}')"
+            style="padding:4px 10px;border-radius:100px;font-size:12px;cursor:pointer;border:1.5px solid var(--border);background:white;color:var(--danger);margin-left:auto">
+            削除
+          </button>
+        </div>
+
+        <!-- 詳細設定（展開） -->
+        <div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
+          
+          <!-- 所定労働時間 -->
+          <div style="background:var(--bg);border-radius:10px;padding:12px">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:600">所定労働時間（${currentMonth}月）</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="number" id="planH-${staff.id}" value="${setting.planned_hours??''}" placeholder="デフォルト" 
+                style="width:80px;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"
+                step="0.1" min="0" max="300">
+              <span style="font-size:12px;color:var(--text-muted)">H</span>
+              <button onclick="saveStaffSetting('${staff.id}','planned_hours',document.getElementById('planH-${staff.id}').value)"
+                style="padding:4px 10px;background:var(--primary);color:white;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit">保存</button>
+            </div>
+          </div>
+
+          <!-- 夜勤上限 -->
+          <div style="background:var(--bg);border-radius:10px;padding:12px">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:600">夜勤上限（月）</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="number" id="maxNight-${staff.id}" value="${setting.max_night_per_month??''}" placeholder="制限なし"
+                style="width:70px;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"
+                min="0" max="31">
+              <span style="font-size:12px;color:var(--text-muted)">回</span>
+              <button onclick="saveStaffSetting('${staff.id}','max_night_per_month',document.getElementById('maxNight-${staff.id}').value)"
+                style="padding:4px 10px;background:var(--primary);color:white;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit">保存</button>
+            </div>
+          </div>
+
+          <!-- 遅番上限 -->
+          <div style="background:var(--bg);border-radius:10px;padding:12px">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:600">遅番上限（月）</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="number" id="maxLate-${staff.id}" value="${setting.max_late_per_month??''}" placeholder="制限なし"
+                style="width:70px;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"
+                min="0" max="31">
+              <span style="font-size:12px;color:var(--text-muted)">回</span>
+              <button onclick="saveStaffSetting('${staff.id}','max_late_per_month',document.getElementById('maxLate-${staff.id}').value)"
+                style="padding:4px 10px;background:var(--primary);color:white;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit">保存</button>
+            </div>
+          </div>
+
+          <!-- 長日上限 -->
+          <div style="background:var(--bg);border-radius:10px;padding:12px">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:600">長日上限（月）</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="number" id="maxLong-${staff.id}" value="${setting.max_long_per_month??''}" placeholder="制限なし"
+                style="width:70px;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"
+                min="0" max="31">
+              <span style="font-size:12px;color:var(--text-muted)">回</span>
+              <button onclick="saveStaffSetting('${staff.id}','max_long_per_month',document.getElementById('maxLong-${staff.id}').value)"
+                style="padding:4px 10px;background:var(--primary);color:white;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit">保存</button>
+            </div>
+          </div>
+
+          <!-- 中抜け上限 -->
+          <div style="background:var(--bg);border-radius:10px;padding:12px">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:600">中抜け上限（月）</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="number" id="maxMid-${staff.id}" value="${setting.max_mid_per_month??''}" placeholder="制限なし"
+                style="width:70px;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"
+                min="0" max="31">
+              <span style="font-size:12px;color:var(--text-muted)">回</span>
+              <button onclick="saveStaffSetting('${staff.id}','max_mid_per_month',document.getElementById('maxMid-${staff.id}').value)"
+                style="padding:4px 10px;background:var(--primary);color:white;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit">保存</button>
+            </div>
+          </div>
+
+          <!-- 曜日固定シフト -->
+          <div style="background:var(--bg);border-radius:10px;padding:12px;grid-column:span 2">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;font-weight:600">曜日固定シフト</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              ${[0,1,2,3,4,5,6].map(dow => `
+                <div style="text-align:center">
+                  <div style="font-size:10px;color:${dow===0||dow===6?'#ef4444':'var(--text-muted)'};margin-bottom:3px">${DOW_LABELS[dow]}</div>
+                  <select onchange="saveFixedShift('${staff.id}',${dow},this.value)"
+                    style="width:52px;padding:4px 2px;border:1.5px solid var(--border);border-radius:6px;font-size:10px;font-family:inherit;text-align:center">
+                    <option value="">―</option>
+                    ${SHIFT_OPTIONS.map(s => `<option value="${s}" ${fixedShifts[dow]===s?'selected':''}>${s}</option>`).join('')}
+                  </select>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+
+        </div>
+      </div>`;
+    }).join('');
+
+  } catch(e) { console.error(e); showToast('読み込みエラー','error'); }
+  hideLoading();
+}
+
+async function updateStaffField(staffId, field, value) {
+  showLoading();
+  try {
+    await sb(`staff?id=eq.${staffId}`, {
+      method: 'PATCH',
+      headers: { 'Prefer': 'return=representation' },
+      body: JSON.stringify({ [field]: value })
+    });
+    await loadStaff();
+    loadStaffTable();
+    showToast('更新しました ✓', 'success');
+  } catch(e) { console.error(e); showToast('更新エラー','error'); }
+  hideLoading();
+}
+
+async function toggleStaffNoNight(staffId, current) {
+  await updateStaffField(staffId, 'no_night', !current);
+}
+
+async function saveStaffSetting(staffId, field, value) {
+  showLoading();
+  try {
+    const existing = await sb(`staff_settings?staff_id=eq.${staffId}&year=eq.${currentYear}&month=eq.${currentMonth}&select=id`);
+    const parsedVal = value === '' ? null : (field === 'planned_hours' ? parseFloat(value) : parseInt(value));
+    if (existing.length > 0) {
+      await sb(`staff_settings?staff_id=eq.${staffId}&year=eq.${currentYear}&month=eq.${currentMonth}`, {
+        method: 'PATCH',
+        headers: { 'Prefer': 'return=representation' },
+        body: JSON.stringify({ [field]: parsedVal })
+      });
+    } else {
+      await sb('staff_settings', {
+        method: 'POST',
+        body: JSON.stringify([{ staff_id: staffId, year: currentYear, month: currentMonth, [field]: parsedVal }])
+      });
+    }
+    showToast('保存しました ✓', 'success');
+  } catch(e) { console.error(e); showToast('保存エラー','error'); }
+  hideLoading();
+}
+
+async function saveFixedShift(staffId, dow, shiftId) {
+  showLoading();
+  try {
+    const staffItem = allStaff.find(s => s.id === staffId);
+    if (!staffItem) return;
+    const fixedShifts = { ...(staffItem.fixed_shifts || {}) };
+    if (shiftId === '') delete fixedShifts[dow];
+    else fixedShifts[dow] = shiftId;
+    await sb(`staff?id=eq.${staffId}`, {
+      method: 'PATCH',
+      headers: { 'Prefer': 'return=representation' },
+      body: JSON.stringify({ fixed_shifts: fixedShifts })
+    });
+    await loadStaff();
+    showToast(`${['日','月','火','水','木','金','土'][dow]}曜日を${shiftId||'解除'}しました ✓`, 'success');
+  } catch(e) { console.error(e); showToast('保存エラー','error'); }
+  hideLoading();
 }
 
 document.getElementById('addStaffBtn').addEventListener('click', () => {
