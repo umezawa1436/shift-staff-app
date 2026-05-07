@@ -458,6 +458,7 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -949,6 +950,51 @@ function handleCellClick(e, staffId, staffName, day, gridId) {
     selectCell(staffId, day, 'single');
     openShiftEditModal(staffId, staffName, day, gridId);
   }
+}
+
+function openShiftEditModal(staffId, staffName, day, gridId) {
+  const key = `${staffId}-${day}`;
+  const date = new Date(shiftYear, shiftMonth-1, day);
+  const isLocked = lockedCells[key];
+  const multiLabel = selectedCells.size > 1 ? ` 他${selectedCells.size-1}セル` : '';
+  document.getElementById('shiftEditTitle').textContent = `${staffName} - ${shiftMonth}月${day}日（${DOW[date.getDay()]}）${multiLabel}`;
+  editingCell = { staffId, day, gridId, key };
+  const opts = document.getElementById('shiftEditOptions');
+  opts.innerHTML = SHIFT_OPTIONS.map(s => {
+    const cur = shiftData[key];
+    return `<div class="shift-cell ${SHIFT_COLORS[s]||''}" style="cursor:pointer;padding:8px;border-radius:8px;font-size:12px;font-weight:600;${cur===s?'outline:2px solid var(--primary);':''}" onclick="applyShiftEdit('${s}')">${s}</div>`;
+  }).join('');
+  document.getElementById('clearShiftBtn').textContent = isLocked ? '🔓 ロック解除' : '🔒 ロックする';
+  document.getElementById('clearShiftBtn').onclick = () => toggleLock(key);
+  document.getElementById('shiftEditModal').classList.add('show');
+}
+
+function applyShiftEdit(shiftId) {
+  if (!editingCell) return;
+  if (selectedCells.size > 1) {
+    applyShiftToSelected(shiftId);
+    closeModal('shiftEditModal');
+    showToast(`${selectedCells.size}セルに「${shiftId}」を適用しました ✓`, 'success');
+    return;
+  }
+  const { staffId, day, gridId, key } = editingCell;
+  saveUndoState();
+  shiftData[key] = shiftId;
+  const cell = document.querySelector(`[data-staff="${staffId}"][data-day="${day}"][data-grid="${gridId}"]`);
+  if (cell) {
+    cell.className = `shift-cell ${SHIFT_COLORS[shiftId]||'empty'}`;
+    const textNode = cell.childNodes[0];
+    if (textNode && textNode.nodeType === 3) textNode.textContent = shiftId;
+  }
+  refreshSummaryRows();
+  closeModal('shiftEditModal');
+}
+
+function toggleLock(key) {
+  if (lockedCells[key]) { delete lockedCells[key]; showToast('ロックを解除しました'); }
+  else { lockedCells[key] = true; showToast('ロックしました 🔒'); }
+  closeModal('shiftEditModal');
+  loadShiftGrid();
 }
 
 function escapeJs(str) { return str.replace(/'/g, "\'"); }
