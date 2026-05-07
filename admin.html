@@ -864,6 +864,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
         html += `<td style="padding:2px;position:relative">
           <div class="shift-cell ${colorClass||'empty'}"
             data-staff="${staff.id}" data-day="${d}" data-grid="${gridId}"
+            data-request="${requestedShift}"
             onclick="handleCellClick(event,'${staff.id}','${escapeJs(staff.name)}',${d},'${gridId}')"
             style="position:relative;cursor:pointer;${lockBorder};flex-direction:column;min-height:34px;"
           ><span>${dispShift||'+'}</span>${reqLabel}${lockIcon}</div>
@@ -1002,19 +1003,8 @@ function applyShiftEdit(shiftId) {
   const { staffId, day, gridId, key } = editingCell;
   saveUndoState();
   shiftData[key] = shiftId;
-  const cell = document.querySelector(`[data-staff="${staffId}"][data-day="${day}"][data-grid="${gridId}"]`);
-  if (cell) {
-    cell.className = `shift-cell ${SHIFT_COLORS[shiftId]||'empty'}`;
-    cell.style.flexDirection = 'column';
-    cell.style.minHeight = '34px';
-    // spanタグのテキストを更新
-    const shiftSpan = cell.querySelector('span:first-child') || cell.childNodes[0];
-    if (shiftSpan && shiftSpan.tagName === 'SPAN') {
-      shiftSpan.textContent = shiftId || '+';
-    } else if (shiftSpan && shiftSpan.nodeType === 3) {
-      shiftSpan.textContent = shiftId || '+';
-    }
-  }
+  const key2 = `${staffId}|${day}`;
+  updateCellDisplay(key2);
   refreshSummaryRows();
   closeModal('shiftEditModal');
 }
@@ -1073,26 +1063,7 @@ function rebuildShiftCells() {
   deptStaff.forEach(staff => {
     for (let d = 1; d <= daysInMonth; d++) {
       const key = `${staff.id}|${d}`;
-      const shift = shiftData[key] || '';
-      const el = getCellEl(staff.id, d);
-      if (!el) continue;
-      el.className = `shift-cell ${SHIFT_COLORS[shift]||'empty'}`;
-      el.style.flexDirection = 'column';
-      el.style.minHeight = '34px';
-      el.style.boxShadow = lockedCells[key] ? 'inset 0 0 0 2px #f59e0b' : '';
-      // spanテキスト更新
-      const sp = el.querySelector('span:first-child');
-      if (sp && sp.tagName === 'SPAN') sp.textContent = shift || '+';
-      // ロックアイコン
-      const lockEl = el.querySelector('.lock-icon');
-      if (lockEl) lockEl.remove();
-      if (lockedCells[key]) {
-        const lk = document.createElement('span');
-        lk.className = 'lock-icon';
-        lk.style.cssText = 'position:absolute;top:-3px;right:-3px;font-size:11px;line-height:1;z-index:2;pointer-events:none';
-        lk.textContent = '🔒';
-        el.appendChild(lk);
-      }
+      updateCellDisplay(key);
     }
   });
   refreshSummaryRows();
@@ -1351,15 +1322,7 @@ function applyShiftToSelected(shiftId) {
     if (shiftId === null) delete shiftData[key];
     else shiftData[key] = shiftId;
     const [sid, d] = parseKey(key);
-    const el = getCellEl(sid, d);
-    if (el) {
-      el.className = `shift-cell ${SHIFT_COLORS[shiftId]||'empty'}`;
-      el.style.flexDirection = 'column';
-      el.style.minHeight = '34px';
-      const shiftSpan = el.querySelector('span:first-child') || el.childNodes[0];
-      if (shiftSpan && shiftSpan.tagName === 'SPAN') shiftSpan.textContent = shiftId || '+';
-      else if (shiftSpan && shiftSpan.nodeType === 3) shiftSpan.textContent = shiftId || '+';
-    }
+    updateCellDisplay(key);
   });
   refreshSummaryRows();
 }
