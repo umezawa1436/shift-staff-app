@@ -176,6 +176,11 @@
     .wed-cell.cho { background:#f3e8ff;border-color:#c4b5fd;color:#5b21b6; }
     .wed-cell:hover { opacity:0.8; }
 
+    .shift-cell.cell-selected {
+      outline: 3px solid #0f4c81 !important;
+      outline-offset: -1px !important;
+      z-index: 10 !important;
+    }
     .page { display:none; }
     .page.active { display:block; }
 
@@ -1232,11 +1237,23 @@ function getCellEl(staffId, day) {
 }
 
 function highlightSelected() {
-  document.querySelectorAll('[data-grid="shiftGrid"]').forEach(el => { el.style.outline = ''; });
+  // 全セルのハイライトをリセット
+  document.querySelectorAll('[data-grid="shiftGrid"]').forEach(el => {
+    el.style.outline = '';
+    el.style.outlineOffset = '';
+    el.style.zIndex = '';
+    el.classList.remove('cell-selected');
+  });
+  // 選択セルをハイライト
   selectedCells.forEach(key => {
     const [sid, d] = key.split('-');
     const el = getCellEl(sid, d);
-    if (el) el.style.outline = '2px solid #0f4c81';
+    if (el) {
+      el.style.outline = '3px solid #0f4c81';
+      el.style.outlineOffset = '-1px';
+      el.style.zIndex = '10';
+      el.classList.add('cell-selected');
+    }
   });
 }
 
@@ -1245,7 +1262,7 @@ function selectCell(staffId, day, mode) {
   if (mode === 'toggle') {
     if (selectedCells.has(key)) selectedCells.delete(key);
     else selectedCells.add(key);
-    lastSelectedCell = {staffId, day};
+    lastSelectedCell = {staffId, day: parseInt(day)};
   } else if (mode === 'range' && lastSelectedCell) {
     const deptStaff = allStaff.filter(s => s.dept_id === currentDept);
     const staffIds = deptStaff.map(s => s.id);
@@ -1263,9 +1280,10 @@ function selectCell(staffId, day, mode) {
   } else {
     selectedCells.clear();
     selectedCells.add(key);
-    lastSelectedCell = {staffId, day};
+    lastSelectedCell = {staffId, day: parseInt(day)};
   }
-  highlightSelected();
+  // 少し遅延してハイライト（DOM更新後に実行）
+  requestAnimationFrame(() => highlightSelected());
 }
 
 function saveUndoState() {
