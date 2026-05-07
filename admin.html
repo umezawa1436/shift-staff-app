@@ -456,7 +456,7 @@
 </div>
 
 <script>
-const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
+const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co ';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
 
 // STATE
@@ -787,6 +787,11 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
   }
 
   function getReq(period, d) {
+    // 日付個別設定を優先
+    const dayKey = `day_${year}_${month}_${d}`;
+    if (shiftGridRequirements[period]?.[dayKey] !== undefined) {
+      return shiftGridRequirements[period][dayKey];
+    }
     const dt = getShiftDayType(d);
     return shiftGridRequirements[period]?.[dt] ?? null;
   }
@@ -853,13 +858,14 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
 
       if (editable) {
         const lockBorder = isLocked ? 'box-shadow:inset 0 0 0 2px #f59e0b;' : '';
-        html += `<td style="position:relative">
+        const starMark = hasRequest ? '<span style="position:absolute;bottom:0;right:1px;font-size:8px;line-height:1;pointer-events:none" title="希望: '+requestedShift+'">⭐</span>' : '';
+        const lockMark = isLocked ? '<span style="position:absolute;top:-2px;right:-2px;font-size:10px;pointer-events:none">🔒</span>' : '';
+        html += `<td style="padding:2px;position:relative">
           <div class="shift-cell ${colorClass||'empty'}"
             data-staff="${staff.id}" data-day="${d}" data-grid="${gridId}"
             onclick="handleCellClick(event,'${staff.id}','${escapeJs(staff.name)}',${d},'${gridId}')"
-            style="${lockBorder}"
-          >${dispShift||'+'}${isLocked?'<span style="position:absolute;top:-2px;right:-2px;font-size:10px">🔒</span>':''}</div>
-          ${hasRequest ? `<div style="position:absolute;bottom:0;left:0;right:0;text-align:center;font-size:8px;color:#f59e0b;line-height:1;pointer-events:none" title="希望: ${requestedShift}">⭐</div>` : ''}
+            style="position:relative;cursor:pointer;${lockBorder}"
+          >${dispShift||'+'}${lockMark}${starMark}</div>
         </td>`;
       } else {
         html += `<td><div class="shift-cell ${colorClass||'empty'}" style="font-size:9px">${dispShift||''}</div></td>`;
@@ -877,29 +883,29 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
       const actual = Math.round(totalH * 10) / 10;
       const diff = Math.round((actual - planH) * 10) / 10;
       const diffStr = diff >= 0 ? `+${diff}H` : `${diff}H`;
-      const workDays = Math.round(actual / 8.5 * 10) / 10;
-      const planDays = Math.round(planH / 8.5 * 10) / 10;
+      const workDays = Math.floor(actual / 8.5);
+      const planDays = Math.floor(planH / 8.5);
       const color = planH <= 0 ? '#6b7280' : Math.abs(diff) <= 10 ? '#10b981' : diff > 10 ? '#f97316' : '#ef4444';
       const overBase = setting?.planned_hours && setting.planned_hours > shiftGridPlanHours ? 
-        `<div style="font-size:9px;color:#3b82f6">+${Math.round((setting.planned_hours-shiftGridPlanHours)*10)/10}H（個別）</div>` : '';
+        `<span style="font-size:9px;color:#3b82f6"> (+${Math.round((setting.planned_hours-shiftGridPlanHours)*10)/10}H個別)</span>` : '';
       html += `<td style="white-space:nowrap;padding:4px 8px;font-size:11px;font-weight:600;color:${color};cursor:pointer" onclick="showStaffHoursEditor('${staff.id}','${escapeJs(staff.name)}',${planH})">
-        ${actual}H / ${planH}H（${diffStr}）<br>
+        ${actual}H / ${planH}H（${diffStr}）${overBase}<br>
         <span style="font-size:10px;color:var(--text-muted)">${workDays}日 / ${planDays}日</span>
-        ${overBase}
       </td>`;
     }
     html += '</tr>';
   });
 
-  // 充足状況行
+  // 充足状況行（セルクリックで日ごと個別編集）
   if (editable) {
     ['morning','afternoon','evening'].forEach((period, pi) => {
       const labels = ['午前帯','午後帯','夜間帯'];
-      html += `<tr style="background:#f0f4f8"><td class="staff-name" style="font-size:11px;color:var(--text-muted);font-weight:700;cursor:pointer" onclick="showRequirementsEditor('${period}')">${labels[pi]} ✏️</td>`;
+      html += `<tr style="background:#f0f4f8"><td class="staff-name" style="font-size:11px;color:var(--text-muted);font-weight:700;cursor:pointer;user-select:none" onclick="showRequirementsEditor('${period}')" title="一括編集">${labels[pi]} ✏️</td>`;
       for (let d = 1; d <= daysInMonth; d++) {
         const req = getReq(period, d);
+        const dt = getShiftDayType(d);
         if (req === null) {
-          html += `<td style="text-align:center;font-size:10px;color:#d1d5db">—</td>`;
+          html += `<td style="text-align:center;font-size:10px;color:#d1d5db;cursor:pointer" onclick="editSingleRequirement('${period}',${d},'${dt}',null)" title="${d}日 ${labels[pi]}を設定">—</td>`;
           continue;
         }
         const covered = deptStaff.filter(s => {
@@ -909,7 +915,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
         const ok = covered >= req;
         const bg = req === 0 ? '#f3f4f6' : ok ? '#d1fae5' : '#fee2e2';
         const color = req === 0 ? '#9ca3af' : ok ? '#065f46' : '#be123c';
-        html += `<td style="padding:2px 1px">
+        html += `<td style="padding:2px 1px;cursor:pointer" onclick="editSingleRequirement('${period}',${d},'${dt}',${req})" title="${d}日 ${labels[pi]}: ${req}人">
           <div style="background:${bg};color:${color};font-size:10px;font-weight:700;border-radius:4px;padding:2px 0;text-align:center">
             ${req===0?'0':`${covered}/${req}`}
           </div>
@@ -992,6 +998,39 @@ async function saveMonthlyHours(hours) {
     showToast(`所定労働時間を${hours}Hに更新しました ✓`, 'success');
     loadShiftGrid();
   } catch(e) { showToast('保存エラー','error'); }
+  hideLoading();
+}
+
+
+// 日ごと個別必要人数編集
+async function editSingleRequirement(period, day, dayType, currentReq) {
+  const labels = {morning:'午前帯',afternoon:'午後帯',evening:'夜間帯'};
+  const dow = new Date(shiftYear, shiftMonth-1, day).getDay();
+  const DOW_JP = ['日','月','火','水','木','金','土'];
+  const val = prompt(`${shiftMonth}月${day}日（${DOW_JP[dow]}）${labels[period]}の必要人数\n現在: ${currentReq !== null ? currentReq+'人' : '未設定'}\n（空欄=曜日別設定に従う）`, currentReq !== null ? currentReq : '');
+  if (val === null) return;
+  
+  showLoading();
+  try {
+    if (val.trim() === '') {
+      // 日付個別設定を削除（曜日別に戻す）
+      await sb(`staffing_requirements?dept_id=eq.${currentDept}&period_id=eq.${period}&day_type=eq.day_${shiftYear}_${shiftMonth}_${day}`, {method:'DELETE'});
+      // ローカルのshiftGridRequirementsは曜日別のまま
+      showToast(`${day}日の個別設定を削除しました`);
+    } else {
+      const newReq = parseInt(val);
+      if (isNaN(newReq) || newReq < 0) { showToast('正しい人数を入力してください','error'); hideLoading(); return; }
+      // 日付個別キーで保存
+      const dayKey = `day_${shiftYear}_${shiftMonth}_${day}`;
+      await sb(`staffing_requirements?dept_id=eq.${currentDept}&period_id=eq.${period}&day_type=eq.${dayKey}`, {method:'DELETE'});
+      await sb('staffing_requirements', {method:'POST', body:JSON.stringify([{dept_id:currentDept, period_id:period, day_type:dayKey, min_count:newReq}])});
+      // ローカルに反映
+      if (!shiftGridRequirements[period]) shiftGridRequirements[period] = {};
+      shiftGridRequirements[period][dayKey] = newReq;
+      showToast(`${day}日 ${labels[period]}を${newReq}人に設定しました ✓`, 'success');
+    }
+    loadShiftGrid();
+  } catch(e) { console.error(e); showToast('保存エラー','error'); }
   hideLoading();
 }
 
