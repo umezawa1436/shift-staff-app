@@ -537,7 +537,6 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -2285,7 +2284,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       }
     });
 
-    // 時短スタッフの強制修正（いかなる場合も時短以外を入れない）
+    // 時短スタッフの強制修正
     deptStaff.forEach(staff => {
       if (staff.emp_type !== 'short') return;
       for (let d = 1; d <= daysInMonth; d++) {
@@ -2293,36 +2292,62 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
         const shift = result[key];
         if (!shift) continue;
         if (['時短','CC','CCのみ','CHO','休み','有休','半有休','希望休'].includes(shift)) continue;
-        // 時短以外が割り当てられていたら強制変換
         const dt = getDayType(d);
         result[key] = dt === 'wed_cc' ? 'CC' : dt === 'wed_cho' ? 'CHO' : '時短';
       }
     });
 
-    // 生成結果をシフト表に即時反映
+    // 生成結果を保存
     generatedShifts = result;
 
-    // shiftDataを完全リセットしてから反映（前回データを引き継がない）
+    // shiftDataを完全リセット（DBからの再読み込みはしない）
     shiftYear = genYear;
     shiftMonth = genMonth;
-    shiftData = {}; // 完全リセット
-    lockedCells = {}; // ロックもリセット
-    Object.entries(result).forEach(([key, shift]) => { shiftData[key] = shift; });
-    // ロック済みセルを反映
-    Object.keys(lockMap).forEach(key => { lockedCells[key] = true; });
+    shiftData = {};
+    lockedCells = {};
 
-    // シフト表タブに切り替えて表示
+    // 生成結果をshiftDataに設定
+    Object.entries(result).forEach(([key, shift]) => {
+      shiftData[key] = shift;
+    });
+    // ロック済みセルを設定
+    Object.entries(lockMap).forEach(([key]) => {
+      lockedCells[key] = true;
+    });
+
+    // シフト表タブに切り替え
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.querySelector('.nav-item[data-page="shift"]')?.classList.add('active');
     document.getElementById('page-shift')?.classList.add('active');
-    // ページタイトル更新（topbarに表示）
-    const pageTitleEl = document.querySelector('.topbar-title, #pageTitle, .page-title');
-    if (pageTitleEl) pageTitleEl.textContent = 'シフト表';
 
-    // シフト表を再描画
-    await loadShiftGrid();
+    // DB再読み込みせずグリッドのみ再描画
+    const reqMapForRender = {};
+    requests.forEach(r => { reqMapForRender[`${r.staff_id}|${r.day}`] = r.request_type; });
 
+    // シフトグリッドの変数を設定
+    shiftGridRequirements = {};
+    requirements.forEach(r => {
+      if (!shiftGridRequirements[r.period_id]) shiftGridRequirements[r.period_id] = {};
+      shiftGridRequirements[r.period_id][r.day_type] = r.min_count;
+    });
+    shiftGridPlanHours = monthlyHoursData.length > 0 ? monthlyHoursData[0].hours : 160;
+    shiftGridStaffSettings = {};
+    staffSettingsData.forEach(s => { shiftGridStaffSettings[s.staff_id] = s; });
+
+    // window変数を設定（getShiftDayType用）
+    window._shiftClosedHolidays = closedHolidays;
+    window._shiftOpenThursdays = openThursdays;
+
+    // 水曜タイプを設定
+    shiftWedTypes = {};
+    wedData.forEach(w => { shiftWedTypes[w.day] = w.wed_type; });
+
+    // グリッドを描画
+    renderShiftGrid('shiftGrid', deptStaff, daysInMonth, genYear, genMonth, shiftData, reqMapForRender, lockedCells, true, shiftWedTypes);
+    refreshSummaryRows();
+
+    document.getElementById('page-shift')?.scrollIntoView({ behavior:'smooth' });
     showToast('自動生成完了 ✓ シフト表で編集できます', 'success');
 
   } catch(e) { console.error(e); showToast('生成エラー: ' + e.message,'error'); }
