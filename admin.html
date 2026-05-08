@@ -537,7 +537,6 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -2058,6 +2057,18 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       if (MID_BREAK_SHIFTS.includes(shift)) staffMidCount[sid] = (staffMidCount[sid]||0) + 1;
     });
 
+    // 時短スタッフに割り当て可能なシフト
+    const SHORT_ALLOWED = new Set(['時短','CC','CCのみ','CHO','休み','有休','半有休','希望休']);
+
+    // 時短スタッフ用のシフト変換関数
+    function toShortShift(shift, dt) {
+      if (!shift) return shift;
+      if (['休み','有休','半有休','希望休'].includes(shift)) return shift;
+      if (dt === 'wed_cc') return ['CC','CCのみ'].includes(shift) ? shift : 'CC';
+      if (dt === 'wed_cho') return 'CHO';
+      return '時短'; // 通常日は時短に変換
+    }
+
     // ===== STEP1: 休診日は全員「休み」=====
     for (let d = 1; d <= daysInMonth; d++) {
       const dow = new Date(genYear, genMonth-1, d).getDay();
@@ -2103,9 +2114,11 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
         if (dt === 'wed_cho' && !['CHO','休み','有休','半有休','希望休'].includes(fixedShift)) continue;
         const planH = getStaffPlanHours(staff);
         if (optRespectHours && planH > 0 && (staffHours[staff.id]||0) + (SHIFT_HOURS[fixedShift]||0) > planH + 5) continue;
-        result[key] = fixedShift;
-        staffHours[staff.id] = (staffHours[staff.id]||0) + (SHIFT_HOURS[fixedShift]||0);
-        if (NIGHT_SHIFTS.includes(fixedShift)) staffNightCount[staff.id] = (staffNightCount[staff.id]||0) + 1;
+        // 時短スタッフはシフトを変換
+        const finalFixedShift = staff.emp_type === 'short' ? toShortShift(fixedShift, dt) : fixedShift;
+        result[key] = finalFixedShift;
+        staffHours[staff.id] = (staffHours[staff.id]||0) + (SHIFT_HOURS[finalFixedShift]||0);
+        if (NIGHT_SHIFTS.includes(finalFixedShift)) staffNightCount[staff.id] = (staffNightCount[staff.id]||0) + 1;
       }
     });
 
@@ -2198,10 +2211,10 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
             if (s.skill_level === 'beginner' && beginnerLimit !== null && begAdded >= beginnerLimit) continue;
 
             const key = `${s.id}|${d}`;
-            // 時短スタッフは時短シフト（CC/CHO日はそのまま）
+            // 時短スタッフはシフトを変換
             let assignShift = shift;
-            if (s.emp_type === 'short' && period === 'morning' && dt !== 'wed_cc' && dt !== 'wed_cho') {
-              assignShift = '時短';
+            if (s.emp_type === 'short') {
+              assignShift = toShortShift(shift, dt);
             }
             result[key] = assignShift;
             staffHours[s.id] = (staffHours[s.id]||0) + (SHIFT_HOURS[assignShift]||0);
