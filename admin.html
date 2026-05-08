@@ -537,6 +537,7 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -845,14 +846,22 @@ async function loadShiftGrid() {
     const ids = deptStaff.map(s => `"${s.id}"`).join(',');
     const daysInMonth = new Date(shiftYear, shiftMonth, 0).getDate();
 
-    const [existingShifts, requestData, requirements, monthlyHoursData, staffSettingsData, wedData] = await Promise.all([
+    const [existingShifts, requestData, requirements, monthlyHoursData, staffSettingsData, wedData, shiftSpecialDays, shiftThursdayData] = await Promise.all([
       sb(`shifts?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,day,shift_type_id,is_locked,is_confirmed`),
       sb(`shift_requests?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,day,request_type`),
       sb(`staffing_requirements?dept_id=eq.${currentDept}&select=period_id,day_type,min_count`),
       sb(`monthly_hours?month=eq.${shiftMonth}&year=eq.${shiftYear}&dept_id=is.null&select=hours`),
       sb(`staff_settings?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,planned_hours`),
-      sb(`wednesday_types?year=eq.${shiftYear}&month=eq.${shiftMonth}&select=day,wed_type`)
+      sb(`wednesday_types?year=eq.${shiftYear}&month=eq.${shiftMonth}&select=day,wed_type`),
+      sb(`special_days?year=eq.${shiftYear}&month=eq.${shiftMonth}&select=day,is_closed`),
+      sb(`thursday_types?year=eq.${shiftYear}&month=eq.${shiftMonth}&select=day,is_open`)
     ]);
+
+    // 木曜・祝日設定マップ
+    const shiftClosedHolidays = new Set();
+    shiftSpecialDays.forEach(s => { if(s.is_closed) shiftClosedHolidays.add(s.day); });
+    const shiftOpenThursdays = new Set();
+    shiftThursdayData.forEach(t => { if(t.is_open) shiftOpenThursdays.add(t.day); });
 
     // shiftDataは全リセット、lockedCellsはDBのロック状態を保持（ローカルのロックも維持）
     const prevLockedCells = {...lockedCells};
@@ -887,6 +896,9 @@ async function loadShiftGrid() {
     const shiftWedTypes = {};
     wedData.forEach(w => { shiftWedTypes[w.day] = w.wed_type; });
 
+    // shiftClosedHolidaysとshiftOpenThursdaysをグローバルに設定
+    window._shiftClosedHolidays = shiftClosedHolidays;
+    window._shiftOpenThursdays = shiftOpenThursdays;
     renderShiftGrid('shiftGrid', deptStaff, daysInMonth, shiftYear, shiftMonth, shiftData, reqMap, lockedCells, true, shiftWedTypes);
   } catch(e) { console.error(e); showToast('シフト表読み込みエラー','error'); }
   hideLoading();
@@ -899,20 +911,27 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
 
   function getShiftDayType(d) {
     const dow = new Date(year, month-1, d).getDay();
+    // 休診祝日
+    const _closedH = shiftClosedHolidays || window._shiftClosedHolidays || new Set();
+    const _openThu = shiftOpenThursdays || window._shiftOpenThursdays || new Set();
+    if (holidays.has(d) && _closedH.has(d)) return 'holiday_closed';
     if (holidays.has(d)) return 'holiday_jp';
     if (dow === 0 || dow === 6) return 'weekend';
     if (dow === 3) return wt[d] === 'cc' ? 'wed_cc' : wt[d] === 'cho' ? 'wed_cho' : 'wed_normal';
-    if (dow === 4) return 'thu_open';
+    // 木曜：デフォルト休診、診療日設定がある場合のみthu_open
+    if (dow === 4) return _openThu.has(d) ? 'thu_open' : 'thu_closed';
     return 'weekday';
   }
 
   function getReq(period, d) {
+    const dt = getShiftDayType(d);
+    // 休診日は必要人数0
+    if (dt === 'holiday_closed' || dt === 'thu_closed') return 0;
     // 日付個別設定を優先
     const dayKey = `day_${year}_${month}_${d}`;
     if (shiftGridRequirements[period]?.[dayKey] !== undefined) {
       return shiftGridRequirements[period][dayKey];
     }
-    const dt = getShiftDayType(d);
     return shiftGridRequirements[period]?.[dt] ?? null;
   }
 
@@ -928,12 +947,15 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
     // 列ロック状態チェック
     const colLocked = editable && deptStaff.every(s => lockedCells[`${s.id}|${d}`]);
     const colStyle = colLocked ? 'background:#fef3c7;' : '';
+    const dayType4header = getShiftDayType(d);
+    const thuLabel = dow===4 ? (dayType4header==='thu_open'?'<div style="font-size:8px;color:#1d4ed8">診療</div>':'<div style="font-size:8px;color:#ef4444">休診</div>') : '';
+    const holidayLabel = (holidays.has(d) && dayType4header==='holiday_closed') ? '<div style="font-size:8px;color:#6b7280">休診</div>' : '';
     if (editable) {
       html += `<th style="min-width:32px;cursor:pointer;${colStyle}" onclick="toggleColumnLock(${d})" title="${colLocked?'列ロック解除':'列ロック'}">
         <div class="day-header">
           <div class="day-num ${cls}">${d}</div>
           <div class="day-dow ${cls}">${DOW[dow]}</div>
-          ${wedLabel}
+          ${wedLabel}${thuLabel}${holidayLabel}
           <div style="font-size:9px;margin-top:1px">${colLocked?'🔒':'<span style=\"color:#d1d5db\">🔓</span>'}</div>
         </div>
       </th>`;
