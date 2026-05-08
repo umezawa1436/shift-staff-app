@@ -2274,7 +2274,9 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.querySelector('.nav-item[data-page="shift"]')?.classList.add('active');
     document.getElementById('page-shift')?.classList.add('active');
-    document.getElementById('pageTitle').textContent = 'シフト表';
+    // ページタイトル更新（topbarに表示）
+    const pageTitleEl = document.querySelector('.topbar-title, #pageTitle, .page-title');
+    if (pageTitleEl) pageTitleEl.textContent = 'シフト表';
 
     // シフト表を再描画
     await loadShiftGrid();
