@@ -537,6 +537,7 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -2284,14 +2285,30 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       }
     });
 
+    // 時短スタッフの強制修正（いかなる場合も時短以外を入れない）
+    deptStaff.forEach(staff => {
+      if (staff.emp_type !== 'short') return;
+      for (let d = 1; d <= daysInMonth; d++) {
+        const key = `${staff.id}|${d}`;
+        const shift = result[key];
+        if (!shift) continue;
+        if (['時短','CC','CCのみ','CHO','休み','有休','半有休','希望休'].includes(shift)) continue;
+        // 時短以外が割り当てられていたら強制変換
+        const dt = getDayType(d);
+        result[key] = dt === 'wed_cc' ? 'CC' : dt === 'wed_cho' ? 'CHO' : '時短';
+      }
+    });
+
     // 生成結果をシフト表に即時反映
     generatedShifts = result;
 
-    // shiftDataに反映
+    // shiftDataを完全リセットしてから反映（前回データを引き継がない）
     shiftYear = genYear;
     shiftMonth = genMonth;
-    Object.keys(result).forEach(key => { shiftData[key] = result[key]; });
-    // ロックも反映
+    shiftData = {}; // 完全リセット
+    lockedCells = {}; // ロックもリセット
+    Object.entries(result).forEach(([key, shift]) => { shiftData[key] = shift; });
+    // ロック済みセルを反映
     Object.keys(lockMap).forEach(key => { lockedCells[key] = true; });
 
     // シフト表タブに切り替えて表示
