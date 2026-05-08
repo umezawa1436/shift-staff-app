@@ -374,24 +374,15 @@
             <div class="generate-sub">希望データをもとに、制約条件を満たすシフトを自動で生成します</div>
             <div class="generate-options">
               <div class="gen-option">
-                <label><input type="checkbox" id="optRespectRequest" checked> 希望を優先する</label>
-              </div>
-              <div class="gen-option">
-                <label><input type="checkbox" id="optRespectHours" checked> 所定労働時間を守る</label>
-              </div>
-              <div class="gen-option">
-                <label><input type="checkbox" id="optRespectNight" checked> 夜勤上限を守る</label>
-              </div>
-              <div class="gen-option">
                 <label><input type="checkbox" id="optNoConsecWeekend" checked> 土日連勤なし</label>
               </div>
-              <div class="gen-option">
-                <label><input type="checkbox" id="optKeepLocked" checked> ロックを維持する</label>
-              </div>
-              <div class="gen-option">
-                <label><input type="checkbox" id="optFillRequired" checked> 必要人数を充足する</label>
-              </div>
             </div>
+            <!-- 以下は常時ON固定（UI非表示） -->
+            <input type="hidden" id="optRespectRequest" value="on" data-checked="true">
+            <input type="hidden" id="optRespectHours" value="on" data-checked="true">
+            <input type="hidden" id="optRespectNight" value="on" data-checked="true">
+            <input type="hidden" id="optKeepLocked" value="on" data-checked="true">
+            <input type="hidden" id="optFillRequired" value="on" data-checked="true">
 
             <!-- シフトパターン選択 -->
             <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
@@ -2064,12 +2055,14 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       return staff.skill_level === 'no_count' || staff.no_count === true;
     }
 
-    const optRespectRequest = document.getElementById('optRespectRequest').checked;
-    const optRespectHours = document.getElementById('optRespectHours').checked;
-    const optRespectNight = document.getElementById('optRespectNight').checked;
-    const optNoConsecWeekend = document.getElementById('optNoConsecWeekend').checked;
-    const optKeepLocked = document.getElementById('optKeepLocked').checked;
-    const optFillRequired = document.getElementById('optFillRequired').checked;
+    // オプション5つは常時ON固定（UI非表示）
+    const optRespectRequest = true;
+    const optRespectHours = true;
+    const optRespectNight = true;
+    const optKeepLocked = true;
+    const optFillRequired = true;
+    // 土日連勤なしのみUIから取得
+    const optNoConsecWeekend = document.getElementById('optNoConsecWeekend')?.checked ?? true;
 
     // 希望マップ
     const reqMap = {};
