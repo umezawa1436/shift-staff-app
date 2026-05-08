@@ -483,6 +483,7 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -1063,6 +1064,7 @@ function applyShiftEdit(shiftId) {
   const key2 = `${staffId}|${day}`;
   updateCellDisplay(key2);
   refreshSummaryRows();
+  refreshHoursCell(staffId);
   closeModal('shiftEditModal');
 }
 
@@ -1108,6 +1110,53 @@ function rebuildShiftCells() {
   highlightSelected();
 }
 
+
+
+// 右端の労働時間列をリアルタイム更新
+function refreshHoursCell(staffId) {
+  const daysInMonth = new Date(shiftYear, shiftMonth, 0).getDate();
+  const staff = allStaff.find(s => s.id === staffId);
+  if (!staff) return;
+
+  // 累計時間を再計算
+  let totalH = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const shift = shiftData[`${staffId}|${d}`] || '';
+    totalH += SHIFT_HOURS[shift] || 0;
+    if (shift === '有休') totalH += 8.5;
+    if (shift === '半有休') totalH += 5;
+  }
+
+  // 所定時間を取得
+  const setting = shiftGridStaffSettings[staffId];
+  let planH = setting?.planned_hours ?? (
+    staff.emp_type === 'full' ? shiftGridPlanHours :
+    staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * 0.75 * 10)/10 : 0
+  );
+
+  const actual = Math.round(totalH * 10) / 10;
+  const diff = Math.round((actual - planH) * 10) / 10;
+  const diffStr = diff >= 0 ? `+${diff}H` : `${diff}H`;
+  const workDays = Math.floor(actual / 8.5);
+  const planDays = Math.floor(planH / 8.5);
+  const color = planH <= 0 ? '#6b7280' : Math.abs(diff) <= 10 ? '#10b981' : diff > 10 ? '#f97316' : '#ef4444';
+  const overBase = setting?.planned_hours && setting.planned_hours > shiftGridPlanHours ?
+    `<span style="font-size:9px;color:#3b82f6"> (+${Math.round((setting.planned_hours-shiftGridPlanHours)*10)/10}H個別)</span>` : '';
+
+  // 該当行の最後のtdを更新
+  const rows = document.querySelectorAll('#shiftGrid tbody tr');
+  const deptStaff = allStaff.filter(s => s.dept_id === currentDept);
+  const rowIdx = deptStaff.findIndex(s => s.id === staffId);
+  if (rowIdx === -1) return;
+  const row = rows[rowIdx];
+  if (!row) return;
+  const lastTd = row.querySelector('td:last-child');
+  if (!lastTd) return;
+
+  lastTd.style.color = color;
+  lastTd.innerHTML = `${actual}H / ${planH}H（${diffStr}）${overBase}<br>
+    <span style="font-size:10px;color:var(--text-muted)">${workDays}日 / ${planDays}日</span>`;
+}
 
 function updateCellDisplay(key) {
   const [staffId, day] = parseKey(key);
