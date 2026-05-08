@@ -1991,9 +1991,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     const reqMap = {};
     requests.forEach(r => { reqMap[`${r.staff_id}|${r.day}`] = r.request_type; });
 
-    // ロックマップ
-    const lockMap = {};
-    existingShifts.forEach(s => { if (s.is_locked) lockMap[`${s.staff_id}|${s.day}`] = s.shift_type_id; });
+    // lockMapはSTEP0で定義
 
     // 必要人数マップ
     const reqCountMap = {};
