@@ -548,7 +548,6 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -1980,44 +1979,6 @@ document.getElementById('saveWedBtn').addEventListener('click', async () => {
 
 // ===== SHIFT AUTO GENERATE =====
 
-// カバレッジカウント（🌸除外）
-function countCoverage(staff, result, d, period) {
-  return staff.filter(s => {
-    if (s.skill_level === 'no_count' || s.no_count) return false;
-    const sh = result[`${s.id}|${d}`];
-    return sh && SHIFT_COVERS[sh]?.includes(period);
-  }).length;
-}
-
-// 割り当て候補を取得（段階的に条件を緩和）
-function getAssignCandidates(staff, d, dt, period, shift, enabledPatterns, pass = 0) {
-  return staff.filter(s => {
-    const key = `${s.id}|${d}`;
-    if (result[key]) return false; // 既に割り当て済み
-    if (pass < 2 && (s.skill_level === 'no_count' || s.no_count)) return false;
-    const planH = getStaffPlanHours ? getStaffPlanHours(s) : 0;
-    if (planH <= 0) return false;
-    // 時短スタッフ
-    if (s.emp_type === 'short') {
-      if (period === 'evening') return false;
-      if (period === 'afternoon' && dt !== 'wed_cc' && dt !== 'wed_cho') return false;
-    }
-    // 夜勤不可
-    if (period === 'evening' && (s.no_night || staffSettingsMap?.[s.id]?.no_night_auto)) return false;
-    // 所定時間チェック（pass0のみ厳格）
-    if (pass === 0 && optRespectHours) {
-      if ((staffHours[s.id]||0) + (SHIFT_HOURS[shift]||0) > planH + 3) return false;
-    }
-    return true;
-  }).sort((a, b) => {
-    // 🔰は後回し
-    if (a.skill_level === 'beginner' && b.skill_level !== 'beginner') return 1;
-    if (a.skill_level !== 'beginner' && b.skill_level === 'beginner') return -1;
-    if (period === 'evening') return (staffNightCount[a.id]||0) - (staffNightCount[b.id]||0);
-    return (staffHours[a.id]||0) - (staffHours[b.id]||0);
-  });
-}
-
 document.getElementById('generateBtn').addEventListener('click', async () => {
   showLoading();
   try {
@@ -2250,6 +2211,36 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     });
 
     // ===== STEP4: 日ごとに必要人数を充足 =====
+    // ヘルパー関数（ローカルスコープで定義）
+    const countCoverage = (staff, d, period) => staff.filter(s => {
+      if (isNoCount(s)) return false;
+      const sh = result[`${s.id}|${d}`];
+      return sh && SHIFT_COVERS[sh]?.includes(period);
+    }).length;
+
+    const getAssignCandidates = (staff, d, dt, period, shift, pass = 0) => staff.filter(s => {
+      const key = `${s.id}|${d}`;
+      if (result[key]) return false;
+      if (pass < 2 && isNoCount(s)) return false;
+      const planH = getStaffPlanHours(s);
+      if (planH <= 0) return false;
+      if (s.emp_type === 'short') {
+        if (period === 'evening') return false;
+        if (period === 'afternoon' && dt !== 'wed_cc' && dt !== 'wed_cho') return false;
+      }
+      if (period === 'evening' && isNoNightAuto(s)) return false;
+      if (pass === 0 && optRespectHours) {
+        if ((staffHours[s.id]||0) + (SHIFT_HOURS[shift]||0) > planH + 3) return false;
+      }
+      return true;
+    }).sort((a, b) => {
+      if (a.skill_level === 'beginner' && b.skill_level !== 'beginner') return 1;
+      if (a.skill_level !== 'beginner' && b.skill_level === 'beginner') return -1;
+      if (period === 'evening') return (staffNightCount[a.id]||0) - (staffNightCount[b.id]||0);
+      return (staffHours[a.id]||0) - (staffHours[b.id]||0);
+    });
+
+
     // 優先順：遅番/遅L → 日勤/日勤+ → 長日 → 午前/午後
     if (optFillRequired) {
       for (let d = 1; d <= daysInMonth; d++) {
@@ -2293,8 +2284,8 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
         for (const sh of eveningShifts) {
           if (!enabledPatterns.includes(sh)) continue;
           for (let pass = 0; pass < 3; pass++) {
-            const aCov = countCoverage(deptStaff, result, d, 'afternoon');
-            const eCov = countCoverage(deptStaff, result, d, 'evening');
+            const aCov = countCoverage(deptStaff, d, 'afternoon');
+            const eCov = countCoverage(deptStaff, d, 'evening');
             const aNeed = Math.max(0, aReq - aCov);
             const eNeed = Math.max(0, eReq - eCov);
             const need = Math.max(aNeed, eNeed);
@@ -2316,7 +2307,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
         const morningShifts = ['日勤','日勤+'].filter(s => enabledPatterns.includes(s));
         for (const sh of morningShifts) {
           for (let pass = 0; pass < 3; pass++) {
-            const mCov = countCoverage(deptStaff, result, d, 'morning');
+            const mCov = countCoverage(deptStaff, d, 'morning');
             if (mCov >= mReq) break;
             const need = mReq - mCov;
             const cands = getAssignCandidates(deptStaff, d, dt, 'morning', sh, enabledPatterns, pass);
@@ -2335,14 +2326,14 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
         // PASS3: 長日で不足を補完
         if (enabledPatterns.includes('長日')) {
           for (let pass = 0; pass < 3; pass++) {
-            const mCov = countCoverage(deptStaff, result, d, 'morning');
-            const aCov = countCoverage(deptStaff, result, d, 'afternoon');
-            const eCov = countCoverage(deptStaff, result, d, 'evening');
+            const mCov = countCoverage(deptStaff, d, 'morning');
+            const aCov = countCoverage(deptStaff, d, 'afternoon');
+            const eCov = countCoverage(deptStaff, d, 'evening');
             const stillShort = (mCov < mReq) || (aCov < aReq) || (eCov < eReq);
             if (!stillShort) break;
             const need = Math.max(mReq - mCov, aReq - aCov, eReq - eCov);
             if (need <= 0) break;
-            const cands = getAssignCandidates(deptStaff, d, dt, 'morning', '長日', enabledPatterns, pass);
+            const cands = getAssignCandidates(deptStaff, d, dt, 'morning', '長日', pass);
             let added = 0;
             for (const s of cands) {
               if (added >= need) break;
@@ -2359,11 +2350,11 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
         for (const [sh, period] of [['午前','morning'],['午後','afternoon']]) {
           if (!enabledPatterns.includes(sh)) continue;
           for (let pass = 0; pass < 3; pass++) {
-            const cov = countCoverage(deptStaff, result, d, period);
+            const cov = countCoverage(deptStaff, d, period);
             const req = period === 'morning' ? mReq : aReq;
             if (cov >= req) break;
             const need = req - cov;
-            const cands = getAssignCandidates(deptStaff, d, dt, period, sh, enabledPatterns, pass);
+            const cands = getAssignCandidates(deptStaff, d, dt, period, sh, pass);
             let added = 0;
             for (const s of cands) {
               if (added >= need) break;
