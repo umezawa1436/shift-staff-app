@@ -332,8 +332,10 @@
             <div class="month-nav-title" id="shiftMonthTitle"></div>
             <button class="btn-nav" id="shiftNextMonth">▶</button>
             <button class="btn btn-success" id="saveShiftBtn">💾 保存</button>
+            <button class="btn btn-primary" id="confirmShiftBtn">✅ 確定する</button>
             <button class="btn btn-outline" id="exportCsvBtn">📊 CSV出力</button>
             <button class="btn btn-outline" id="printShiftBtn">🖨️ 印刷</button>
+            <div id="confirmStatusBadge" style="display:none;padding:6px 12px;border-radius:100px;font-size:12px;font-weight:600"></div>
           </div>
           <div id="print-header" style="display:none;margin-bottom:12px">
             <div style="font-size:16px;font-weight:700">やちよ総合診療クリニック シフト表</div>
@@ -837,7 +839,7 @@ async function loadShiftGrid() {
     const daysInMonth = new Date(shiftYear, shiftMonth, 0).getDate();
 
     const [existingShifts, requestData, requirements, monthlyHoursData, staffSettingsData, wedData] = await Promise.all([
-      sb(`shifts?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,day,shift_type_id,is_locked`),
+      sb(`shifts?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,day,shift_type_id,is_locked,is_confirmed`),
       sb(`shift_requests?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,day,request_type`),
       sb(`staffing_requirements?dept_id=eq.${currentDept}&select=period_id,day_type,min_count`),
       sb(`monthly_hours?month=eq.${shiftMonth}&year=eq.${shiftYear}&dept_id=is.null&select=hours`),
@@ -1707,6 +1709,68 @@ document.addEventListener('keydown', (e) => {
     highlightSelected();
     return;
   }
+});
+
+
+// ===== シフト確定 =====
+document.getElementById('confirmShiftBtn')?.addEventListener('click', async () => {
+  const deptStaff = allStaff.filter(s => s.dept_id === currentDept);
+  const count = Object.keys(shiftData).length;
+
+  if (count === 0) {
+    showToast('確定するシフトがありません', 'error');
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `${DEPT_NAMES[currentDept]} ${shiftYear}年${shiftMonth}月のシフトを確定しますか？\n\n確定するとスタッフのアプリに表示されます。\n確定後も変更・再確定が可能です。`
+  );
+  if (!confirmed) return;
+
+  showLoading();
+  try {
+    // まず保存
+    const deptStaff2 = allStaff.filter(s => s.dept_id === currentDept);
+    const ids = deptStaff2.map(s => `"${s.id}"`).join(',');
+
+    if (ids) {
+      await sb(`shifts?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}`, { method:'DELETE' });
+    }
+
+    const inserts = Object.entries(shiftData).map(([key, shiftId]) => {
+      const [staffId, day] = parseKey(key);
+      return {
+        staff_id: staffId,
+        year: shiftYear,
+        month: shiftMonth,
+        day: parseInt(day),
+        shift_type_id: shiftId,
+        is_locked: !!lockedCells[key],
+        is_confirmed: true  // 確定フラグを立てる
+      };
+    });
+
+    if (inserts.length > 0) {
+      await sb('shifts', { method:'POST', body:JSON.stringify(inserts) });
+    }
+
+    // バッジを更新
+    const badge = document.getElementById('confirmStatusBadge');
+    const confirmBtn = document.getElementById('confirmShiftBtn');
+    if (badge) {
+      badge.style.display = 'block';
+      badge.style.background = '#d1fae5';
+      badge.style.color = '#065f46';
+      badge.textContent = '✅ 確定済み';
+    }
+    if (confirmBtn) confirmBtn.textContent = '🔄 再確定する';
+
+    showToast(`${shiftMonth}月のシフトを確定しました ✓ スタッフに公開されました`, 'success');
+  } catch(e) {
+    console.error(e);
+    showToast('確定エラー', 'error');
+  }
+  hideLoading();
 });
 
 // シフト保存
