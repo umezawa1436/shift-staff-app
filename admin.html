@@ -2114,6 +2114,9 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     // ===== 生成ロジック =====
     const result = {};
 
+    // 使用シフトパターンを取得
+    const enabledPatterns = getEnabledShiftPatterns();
+
     // スタッフごとのトラッキング変数
     const staffHours = {}, staffNightCount = {}, staffLongCount = {}, staffMidCount = {};
     deptStaff.forEach(s => {
