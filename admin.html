@@ -2126,13 +2126,34 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       staffMidCount[s.id] = 0;
     });
 
+    // ===== デバッグログ初期化 =====
+    const _genLog = [];
+    const _logStep = (label) => {
+      const stats = {
+        埋まったセル数: Object.keys(result).length,
+        スタッフ別時間: {}
+      };
+      deptStaff.forEach(s => {
+        stats.スタッフ別時間[s.name] = (staffHours[s.id]||0).toFixed(1) + 'h / ' + getStaffPlanHours(s) + 'h';
+      });
+      _genLog.push({step: label, ...stats});
+    };
+    console.log('[自動生成] 開始', {
+      部門: currentDept, 年月: `${genYear}/${genMonth}`,
+      スタッフ数: deptStaff.length, 所定時間: basePlanHours,
+      オプション: { optRespectRequest, optRespectHours, optRespectNight, optKeepLocked, optFillRequired }
+    });
+
     // ===== STEP0: ロック済みシフトを反映 =====
+    // lockedCellsをリセット（前回の値が残っているとSTEP7/8で誤動作）
+    lockedCells = {};
     const lockMap = {};
     if (optKeepLocked) {
       existingShifts.forEach(s => {
         if (s.is_locked) {
           const key = `${s.staff_id}|${s.day}`;
           lockMap[key] = s.shift_type_id;
+          lockedCells[key] = true; // STEP7/STEP8/STEP9で参照
         }
       });
     }
@@ -2157,6 +2178,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       return '時短'; // 通常日は時短に変換
     }
 
+_logStep('STEP0完了'); 
     // ===== STEP1: 休診日は全員「休み」=====
     for (let d = 1; d <= daysInMonth; d++) {
       const dow = new Date(genYear, genMonth-1, d).getDay();
@@ -2169,6 +2191,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       }
     }
 
+_logStep('STEP1完了'); 
     // ===== STEP2: 希望休・有休を反映 =====
     if (optRespectRequest) {
       deptStaff.forEach(staff => {
@@ -2185,6 +2208,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       });
     }
 
+_logStep('STEP2完了'); 
     // ===== STEP3: 曜日固定シフトを反映 =====
     deptStaff.forEach(staff => {
       const fixedShifts = staff.fixed_shifts || {};
@@ -2210,6 +2234,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       }
     });
 
+_logStep('STEP3完了'); 
     // ===== STEP4: 日ごとに必要人数を充足 =====
     // ヘルパー関数（ローカルスコープで定義）
     const countCoverage = (staff, d, period) => staff.filter(s => {
@@ -2262,7 +2287,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
             }).length;
             if (covered >= req) continue;
             const need = req - covered;
-            const cands = getAssignCandidates(deptStaff, d, dt, period, shift, enabledPatterns);
+            const cands = getAssignCandidates(deptStaff, d, dt, period, shift);
             let added = 0;
             for (const s of cands) {
               if (added >= need) break;
@@ -2279,27 +2304,29 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
         const aReq = getRequired('afternoon', d) || 0;
         const eReq = getRequired('evening', d) || 0;
 
-        // PASS1: 遅番/遅Lで午後+夜間を充足
+        // PASS1: 遅番/遅Lで午後+夜間を充足（1人ごとに再評価）
         const eveningShifts = currentDept === 2 ? ['リハ遅'] : ['遅番','遅L'].filter(s => enabledPatterns.includes(s));
         for (const sh of eveningShifts) {
           if (!enabledPatterns.includes(sh)) continue;
           for (let pass = 0; pass < 3; pass++) {
-            const aCov = countCoverage(deptStaff, d, 'afternoon');
-            const eCov = countCoverage(deptStaff, d, 'evening');
-            const aNeed = Math.max(0, aReq - aCov);
-            const eNeed = Math.max(0, eReq - eCov);
-            const need = Math.max(aNeed, eNeed);
-            if (need <= 0) break;
-            const cands = getAssignCandidates(deptStaff, d, dt, 'afternoon', sh, enabledPatterns, pass);
-            let added = 0;
-            for (const s of cands) {
-              if (added >= need) break;
+            let placedInThisPass = 0;
+            while (true) {
+              const aCov = countCoverage(deptStaff, d, 'afternoon');
+              const eCov = countCoverage(deptStaff, d, 'evening');
+              const eveningNeeded = (eReq > 0 && eCov < eReq);
+              const afternoonNeeded = (aReq > 0 && aCov < aReq);
+              // 夜間が満たされていれば、午後だけのために遅番は配置しない（過剰配置防止）
+              if (!eveningNeeded) break;
+              const cands = getAssignCandidates(deptStaff, d, dt, 'evening', sh, pass);
+              if (cands.length === 0) break;
+              const s = cands[0];
               result[`${s.id}|${d}`] = sh;
               staffHours[s.id] = (staffHours[s.id]||0) + (SHIFT_HOURS[sh]||0);
               staffNightCount[s.id] = (staffNightCount[s.id]||0) + 1;
-              added++;
+              placedInThisPass++;
+              if (placedInThisPass >= 5) break; // 暴走防止
             }
-            if (added > 0) break;
+            if (placedInThisPass > 0) break;
           }
         }
 
@@ -2310,7 +2337,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
             const mCov = countCoverage(deptStaff, d, 'morning');
             if (mCov >= mReq) break;
             const need = mReq - mCov;
-            const cands = getAssignCandidates(deptStaff, d, dt, 'morning', sh, enabledPatterns, pass);
+            const cands = getAssignCandidates(deptStaff, d, dt, 'morning', sh, pass);
             let added = 0;
             for (const s of cands) {
               if (added >= need) break;
@@ -2323,26 +2350,27 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
           }
         }
 
-        // PASS3: 長日で不足を補完
+        // PASS3: 長日で不足を補完（長日は3時間帯すべてカバー）
         if (enabledPatterns.includes('長日')) {
           for (let pass = 0; pass < 3; pass++) {
-            const mCov = countCoverage(deptStaff, d, 'morning');
-            const aCov = countCoverage(deptStaff, d, 'afternoon');
-            const eCov = countCoverage(deptStaff, d, 'evening');
-            const stillShort = (mCov < mReq) || (aCov < aReq) || (eCov < eReq);
-            if (!stillShort) break;
-            const need = Math.max(mReq - mCov, aReq - aCov, eReq - eCov);
-            if (need <= 0) break;
-            const cands = getAssignCandidates(deptStaff, d, dt, 'morning', '長日', pass);
-            let added = 0;
-            for (const s of cands) {
-              if (added >= need) break;
+            // ループ内で都度確認し、1人配置ごとに再評価
+            let placedInThisPass = 0;
+            while (true) {
+              const mCov = countCoverage(deptStaff, d, 'morning');
+              const aCov = countCoverage(deptStaff, d, 'afternoon');
+              const eCov = countCoverage(deptStaff, d, 'evening');
+              if (mCov >= mReq && aCov >= aReq && eCov >= eReq) break;
+              const cands = getAssignCandidates(deptStaff, d, dt, 'morning', '長日', pass);
+              if (cands.length === 0) break;
+              const s = cands[0];
               result[`${s.id}|${d}`] = '長日';
               staffHours[s.id] = (staffHours[s.id]||0) + (SHIFT_HOURS['長日']||0);
-              staffNightCount[s.id] = (staffNightCount[s.id]||0) + 1;
-              added++;
+              if (NIGHT_SHIFTS.includes('長日')) staffNightCount[s.id] = (staffNightCount[s.id]||0) + 1;
+              staffLongCount[s.id] = (staffLongCount[s.id]||0) + 1;
+              placedInThisPass++;
+              if (placedInThisPass >= 5) break; // 暴走防止
             }
-            if (added > 0) break;
+            if (placedInThisPass > 0) break;
           }
         }
 
@@ -2369,6 +2397,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       }
     }
 
+_logStep('STEP4完了'); 
     // ===== STEP5: 希望勤務シフトを反映 =====
     if (optRespectRequest) {
       deptStaff.forEach(staff => {
@@ -2392,6 +2421,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       });
     }
 
+_logStep('STEP5完了'); 
     // ===== STEP6: 所定時間に達していないスタッフに日勤を追加 =====
     deptStaff.forEach(staff => {
       const planH = getStaffPlanHours(staff);
@@ -2431,6 +2461,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       }
     });
 
+_logStep('STEP6完了'); 
     // ===== STEP7: 超過削減（必要人数を超えたスタッフを休みに変換）=====
     // GASロジックと同様：優先度の低いシフトから削除
     const removeRank = (shift) => {
@@ -2445,7 +2476,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       return 50;
     };
     let changed7 = true, guard7 = 0;
-    while (changed7 && guard7++ < 200) {
+    while (changed7 && guard7++ < 1000) {
       changed7 = false;
       for (let d = 1; d <= daysInMonth; d++) {
         const dt7 = getDayType(d);
@@ -2492,6 +2523,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       }
     }
 
+_logStep('STEP7完了'); 
     // ===== STEP8: 所定時間補完（不足スタッフに追加勤務）=====
     for (let pass8 = 0; pass8 < 3; pass8++) {
       const needWork = deptStaff
@@ -2554,6 +2586,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       if (!changed8) break;
     }
 
+_logStep('STEP8完了'); 
     // ===== STEP9: 🌸スタッフの所定時間補完 =====
     deptStaff.filter(s => isNoCount(s)).forEach(s => {
       const planH = getStaffPlanHours(s);
@@ -2594,6 +2627,44 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
         result[key] = dt === 'wed_cc' ? 'CC' : dt === 'wed_cho' ? 'CHO' : '時短';
       }
     });
+
+    _logStep('STEP9完了');
+    
+    // 充足状況サマリーを生成
+    const _coverageSummary = [];
+    let _shortageDays = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dt_chk = getDayType(d);
+      if (dt_chk === 'thu_closed' || dt_chk === 'holiday_closed') continue;
+      for (const period of ['morning','afternoon','evening']) {
+        const req = getRequired(period, d);
+        if (!req || req <= 0) continue;
+        const cov = deptStaff.filter(s => {
+          if (isNoCount(s)) return false;
+          const sh = result[`${s.id}|${d}`];
+          return sh && SHIFT_COVERS[sh]?.includes(period);
+        }).length;
+        if (cov < req) {
+          _shortageDays++;
+          _coverageSummary.push(`${d}日 ${period}: ${cov}/${req} 不足`);
+        } else if (cov > req) {
+          _coverageSummary.push(`${d}日 ${period}: ${cov}/${req} 超過`);
+        }
+      }
+    }
+    console.log('[自動生成] STEP別ログ', _genLog);
+    console.log('[自動生成] 充足課題', _coverageSummary.length === 0 ? '完全充足' : _coverageSummary);
+    console.log('[自動生成] スタッフ別最終時間',
+      deptStaff.map(s => ({
+        名前: s.name,
+        実績: (staffHours[s.id]||0).toFixed(1) + 'h',
+        所定: getStaffPlanHours(s) + 'h',
+        差分: ((staffHours[s.id]||0) - getStaffPlanHours(s)).toFixed(1) + 'h',
+        夜勤: staffNightCount[s.id] || 0,
+        雇用形態: s.emp_type || 'full',
+        能力: s.skill_level || 'normal'
+      }))
+    );
 
     // 生成結果を保存
     generatedShifts = result;
