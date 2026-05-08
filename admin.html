@@ -539,6 +539,7 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -2238,7 +2239,7 @@ _logStep('STEP2完了');
         if (dt === 'wed_cc' && !['CC','CCのみ','休み','有休','半有休','希望休'].includes(fixedShift)) continue;
         if (dt === 'wed_cho' && !['CHO','休み','有休','半有休','希望休'].includes(fixedShift)) continue;
         const planH = getStaffPlanHours(staff);
-        if (optRespectHours && planH > 0 && (staffHours[staff.id]||0) + (SHIFT_HOURS[fixedShift]||0) > planH + 3) continue;
+        if (optRespectHours && planH > 0 && (staffHours[staff.id]||0) + (SHIFT_HOURS[fixedShift]||0) > planH + 2) continue;
         // 時短スタッフはシフトを変換
         const finalFixedShift = staff.emp_type === 'short' ? toShortShift(fixedShift, dt) : fixedShift;
         result[key] = finalFixedShift;
@@ -2288,12 +2289,10 @@ _logStep('STEP3完了');
         if (period === 'afternoon' && dt !== 'wed_cc' && dt !== 'wed_cho') return false;
       }
       if (period === 'evening' && isNoNightAuto(s)) return false;
-      // 所定時間チェック（全passで実施、許容値はpassで段階的に緩和）
-      // pass 0: +1H許容（厳格）, pass 1: +3H許容（中）, pass 2: +6H許容（緩）
+      // 所定時間チェック（全passで ±2H 厳守）
       if (optRespectHours && planH > 0) {
         const projectedH = (staffHours[s.id]||0) + (SHIFT_HOURS[shift]||0);
-        const allowance = pass === 0 ? 1 : pass === 1 ? 3 : 6;
-        if (projectedH > planH + allowance) return false;
+        if (projectedH > planH + 2) return false;
       }
       // 土日連勤チェック
       if (wouldCauseWeekendConsec(s.id, d)) return false;
@@ -2469,7 +2468,7 @@ _logStep('STEP4完了');
           // CHO日はCHO以外の勤務不可
           if (dt === 'wed_cho' && !['CHO','休み','有休','半有休','希望休'].includes(req)) continue;
           const planH = getStaffPlanHours(staff);
-          if (optRespectHours && planH > 0 && (staffHours[staff.id]||0) + (SHIFT_HOURS[req]||0) > planH + 3) continue;
+          if (optRespectHours && planH > 0 && (staffHours[staff.id]||0) + (SHIFT_HOURS[req]||0) > planH + 2) continue;
           // 土日連勤チェック
           if (wouldCauseWeekendConsec(staff.id, d)) continue;
           result[key] = req;
@@ -2499,21 +2498,84 @@ _logStep('STEP5完了');
         if (result[key]) continue;
         const dow = new Date(genYear, genMonth-1, d).getDay();
         const dt2 = getDayType(d);
-        // 土日・休診日・CC日・CHO日・水曜通常は休み
-        if (dow === 0 || dow === 6 || dt2 === 'thu_closed' || dt2 === 'holiday_closed' ||
-            dt2 === 'wed_normal' || dt2 === 'wed_cc' || dt2 === 'wed_cho') {
+        // 日曜・休診日は休み（時短スタッフでも）
+        if (dow === 0 || dt2 === 'thu_closed' || dt2 === 'holiday_closed') {
           result[key] = '休み';
           continue;
         }
-        // 所定時間に達したら休み
-        if ((staffHours[staff.id]||0) >= planH) {
+        // 土曜：常勤・パートは休み、時短は必要人数を超えない範囲で勤務可
+        if (dow === 6) {
+          if (staff.emp_type === 'short' && (staffHours[staff.id]||0) + SHIFT_HOURS['時短'] <= planH + 2) {
+            // 土曜の午前必要人数を確認（超過しないように）
+            const satMReq = getRequired('morning', d) || 0;
+            const satMCov = countCoverage(deptStaff, d, 'morning');
+            if (satMCov < satMReq + 1) {
+              result[key] = '時短';
+              staffHours[staff.id] = (staffHours[staff.id]||0) + (SHIFT_HOURS['時短']||0);
+              continue;
+            }
+          }
           result[key] = '休み';
           continue;
         }
-        // 時短スタッフは時短シフト
-        const assignedShift = staff.emp_type === 'short' ? '時短' : '日勤';
-        result[key] = assignedShift;
-        staffHours[staff.id] = (staffHours[staff.id]||0) + (SHIFT_HOURS[assignedShift]||0);
+        // 所定時間に達したら休み（±2H許容）
+        if ((staffHours[staff.id]||0) >= planH - 0.5) {
+          result[key] = '休み';
+          continue;
+        }
+        // 時短スタッフはCC/CHO日も活用
+        if (staff.emp_type === 'short') {
+          if (dt2 === 'wed_cc') {
+            const ccShift = 'CC';
+            // 必要人数を超過させないよう確認
+            const ccReq = getRequired('morning', d) || 0;
+            const ccCov = countCoverage(deptStaff, d, 'morning');
+            if (ccCov < ccReq + 1 && (staffHours[staff.id]||0) + SHIFT_HOURS[ccShift] <= planH + 2) {
+              result[key] = ccShift;
+              staffHours[staff.id] = (staffHours[staff.id]||0) + (SHIFT_HOURS[ccShift]||0);
+              continue;
+            }
+            result[key] = '休み';
+            continue;
+          }
+          if (dt2 === 'wed_cho') {
+            const choShift = 'CHO';
+            const choReq = getRequired('morning', d) || 0;
+            const choCov = countCoverage(deptStaff, d, 'morning');
+            if (choCov < choReq + 1 && (staffHours[staff.id]||0) + SHIFT_HOURS[choShift] <= planH + 2) {
+              result[key] = choShift;
+              staffHours[staff.id] = (staffHours[staff.id]||0) + (SHIFT_HOURS[choShift]||0);
+              continue;
+            }
+            result[key] = '休み';
+            continue;
+          }
+          if (dt2 === 'wed_normal') {
+            // 水曜通常は時短スタッフも休み
+            result[key] = '休み';
+            continue;
+          }
+          // 平日・木曜診療日: 時短シフトを追加（許容値+2H）
+          if ((staffHours[staff.id]||0) + SHIFT_HOURS['時短'] <= planH + 2) {
+            result[key] = '時短';
+            staffHours[staff.id] = (staffHours[staff.id]||0) + (SHIFT_HOURS['時短']||0);
+            continue;
+          }
+          result[key] = '休み';
+          continue;
+        }
+        // 常勤・パート: CC/CHO日・水曜通常は休み
+        if (dt2 === 'wed_normal' || dt2 === 'wed_cc' || dt2 === 'wed_cho') {
+          result[key] = '休み';
+          continue;
+        }
+        // 日勤を追加（許容値+2H）
+        if ((staffHours[staff.id]||0) + SHIFT_HOURS['日勤'] <= planH + 2) {
+          result[key] = '日勤';
+          staffHours[staff.id] = (staffHours[staff.id]||0) + (SHIFT_HOURS['日勤']||0);
+        } else {
+          result[key] = '休み';
+        }
       }
       // 残りは全て休み
       for (let d = 1; d <= daysInMonth; d++) {
@@ -2604,7 +2666,9 @@ _logStep('STEP7完了');
           const dt8 = getDayType(d);
           if (dt8 === 'thu_closed' || dt8 === 'holiday_closed') continue;
           const dow8 = new Date(genYear, genMonth-1, d).getDay();
-          if (dow8 === 0 || dow8 === 6) continue;
+          // 日曜は休み、土曜は時短スタッフのみ対象
+          if (dow8 === 0) continue;
+          if (dow8 === 6 && s.emp_type !== 'short') continue;
           if (dt8 === 'wed_normal') continue;
 
           // スコアリングで最適シフトを選択
@@ -2623,6 +2687,11 @@ _logStep('STEP7完了');
               if (LATE_SHIFTS.includes(sh) && (staffLateCount[s.id]||0) >= getStaffMaxLate(s)) return false;
               if (LONG_SHIFTS.includes(sh) && (staffLongCount[s.id]||0) >= getStaffMaxLong(s)) return false;
               if (MID_BREAK_SHIFTS.includes(sh) && (staffMidCount[s.id]||0) >= getStaffMaxMid(s)) return false;
+              // 所定時間±2H厳守
+              const projectedH8 = (staffHours[s.id]||0) + (SHIFT_HOURS[sh]||0);
+              if (projectedH8 > getStaffPlanHours(s) + 2) return false;
+              // 土日連勤チェック
+              if (wouldCauseWeekendConsec(s.id, d)) return false;
               return true;
             })
             .map(sh => {
