@@ -440,6 +440,13 @@
             </div>
             <div id="thursdayGrid"></div>
           </div>
+          <div class="card">
+            <div class="card-title">🔰 初心者上限設定</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">1日の時間帯ごとに🔰スタッフが入れる最大人数を設定します。空欄＝制限なし</div>
+            <div class="dept-tabs" id="beginnerDeptTabs"></div>
+            <div id="beginnerLimitsGrid"></div>
+            <button class="btn btn-primary" style="margin-top:16px" id="saveBeginnerLimitsBtn">保存</button>
+          </div>
         </div>
 
         <!-- ACCOUNT -->
@@ -1876,15 +1883,29 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     const daysInMonth = new Date(genYear, genMonth, 0).getDate();
 
     // データ取得
-    const [requests, existingShifts, requirements, monthlyHoursData, staffSettingsData, specialDaysData, thursdayData2] = await Promise.all([
+    const [requests, existingShifts, requirements, monthlyHoursData, staffSettingsData, specialDaysData, thursdayData2, beginnerLimitsRaw] = await Promise.all([
       sb(`shift_requests?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&select=staff_id,day,request_type`),
       sb(`shifts?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&select=staff_id,day,shift_type_id,is_locked`),
       sb(`staffing_requirements?dept_id=eq.${currentDept}&select=period_id,day_type,min_count`),
       sb(`monthly_hours?month=eq.${genMonth}&year=eq.${genYear}&dept_id=is.null&select=hours`),
       sb(`staff_settings?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&select=*`),
       sb(`special_days?year=eq.${genYear}&month=eq.${genMonth}&select=day,day_type,is_closed`),
-      sb(`thursday_types?year=eq.${genYear}&month=eq.${genMonth}&select=day,is_open`)
+      sb(`thursday_types?year=eq.${genYear}&month=eq.${genMonth}&select=day,is_open`),
+      sb(`beginner_limits?dept_id=eq.${currentDept}&select=period_id,day_type,max_beginners`)
     ]);
+
+    // 初心者上限マップ
+    const beginnerLimitMap = {};
+    beginnerLimitsRaw.forEach(b => {
+      const key = `${b.period_id}-${b.day_type}`;
+      beginnerLimitMap[key] = b.max_beginners;
+    });
+
+    function getBeginnerLimit(period, d) {
+      const dt = getDayType(d);
+      const key = `${period}-${dt}`;
+      return beginnerLimitMap[key] ?? null; // nullは制限なし
+    }
 
     // 祝日・木曜の設定マップ
     const closedHolidays = new Set(); // 休診祝日
@@ -2696,12 +2717,117 @@ document.getElementById('specialNextMonth')?.addEventListener('click', async () 
   await renderSpecialDaysGrid();
 });
 
+
+// ===== 初心者上限設定 =====
+let beginnerLimitsDept = 0;
+let beginnerLimitsData = {};
+
+async function loadBeginnerLimits() {
+  // 部門タブを構築
+  const depts = adminUser.role === 'master' ? DEPT_IDS : [adminUser.deptId];
+  const tabEl = document.getElementById('beginnerDeptTabs');
+  if (tabEl) {
+    tabEl.innerHTML = '';
+    depts.forEach(dId => {
+      const btn = document.createElement('button');
+      btn.className = `dept-tab${dId === beginnerLimitsDept ? ' active' : ''}`;
+      btn.textContent = DEPT_NAMES[dId];
+      btn.addEventListener('click', () => {
+        beginnerLimitsDept = dId;
+        tabEl.querySelectorAll('.dept-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderBeginnerLimitsGrid();
+      });
+      tabEl.appendChild(btn);
+    });
+  }
+
+  // データ取得
+  try {
+    const data = await sb(`beginner_limits?dept_id=eq.${beginnerLimitsDept}&select=period_id,day_type,max_beginners`);
+    beginnerLimitsData = {};
+    data.forEach(d => {
+      const key = `${d.period_id}-${d.day_type}`;
+      beginnerLimitsData[key] = d.max_beginners;
+    });
+  } catch(e) { console.error(e); }
+
+  renderBeginnerLimitsGrid();
+}
+
+function renderBeginnerLimitsGrid() {
+  const el = document.getElementById('beginnerLimitsGrid');
+  if (!el) return;
+
+  const periods = [{id:'morning',label:'午前帯'},{id:'afternoon',label:'午後帯'},{id:'evening',label:'夜間帯'}];
+  const dayTypes = [
+    {id:'weekday',label:'月火金'},
+    {id:'wed_normal',label:'水(通常)'},
+    {id:'wed_cc',label:'水(CC)'},
+    {id:'wed_cho',label:'水(CHO)'},
+    {id:'weekend',label:'土日'},
+    {id:'thu_open',label:'木(診療)'},
+    {id:'holiday_jp',label:'祝日'},
+  ];
+
+  let html = `<table class="req-table"><thead><tr>
+    <th>時間帯</th>
+    ${dayTypes.map(d => `<th>${d.label}</th>`).join('')}
+  </tr></thead><tbody>`;
+
+  periods.forEach(p => {
+    html += `<tr><td style="font-weight:600;text-align:left;padding-left:10px">${p.label}</td>`;
+    dayTypes.forEach(d => {
+      const key = `${p.id}-${d.id}`;
+      const val = beginnerLimitsData[key];
+      html += `<td><input type="number" class="req-input" 
+        id="beg-${p.id}-${d.id}" 
+        value="${val !== undefined ? val : ''}" 
+        placeholder="∞" min="0" max="20"></td>`;
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+document.getElementById('saveBeginnerLimitsBtn')?.addEventListener('click', async () => {
+  showLoading();
+  try {
+    await sb(`beginner_limits?dept_id=eq.${beginnerLimitsDept}`, {method:'DELETE'});
+    const periods = ['morning','afternoon','evening'];
+    const dayTypes = ['weekday','wed_normal','wed_cc','wed_cho','weekend','thu_open','holiday_jp'];
+    const inserts = [];
+    periods.forEach(p => {
+      dayTypes.forEach(d => {
+        const el = document.getElementById(`beg-${p}-${d}`);
+        if (el && el.value !== '') {
+          inserts.push({dept_id:beginnerLimitsDept, period_id:p, day_type:d, max_beginners:parseInt(el.value)});
+        }
+      });
+    });
+    if (inserts.length > 0) {
+      await sb('beginner_limits', {method:'POST', body:JSON.stringify(inserts)});
+    }
+    showToast('初心者上限を保存しました ✓','success');
+    // ローカルデータも更新
+    beginnerLimitsData = {};
+    inserts.forEach(i => { beginnerLimitsData[`${i.period_id}-${i.day_type}`] = i.max_beginners; });
+  } catch(e) { console.error(e); showToast('保存エラー','error'); }
+  hideLoading();
+});
+
 async function loadSettings() {
   showLoading();
   try {
     // 祝日・木曜管理の初期化
     document.getElementById('specialMonthTitle').textContent = `${specialYear}年${specialMonth}月`;
     await renderSpecialDaysGrid();
+
+    // 初心者上限設定の初期化
+    beginnerLimitsDept = currentDept;
+    await loadBeginnerLimits();
 
     const hours = await sb(`monthly_hours?year=eq.${currentYear}&dept_id=is.null&order=month&select=month,hours`);
     const hoursMap = {};
