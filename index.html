@@ -1247,7 +1247,7 @@ async function loadConfirmedShifts() {
 
   try {
     const shifts = await supabaseRequest(
-      `shifts?staff_id=eq.${currentUser.id}&year=eq.${confYear}&month=eq.${confMonth}&select=day,shift_type_id&order=day`
+      `shifts?staff_id=eq.${currentUser.id}&year=eq.${confYear}&month=eq.${confMonth}&is_confirmed=eq.true&select=day,shift_type_id&order=day`
     );
 
     const daysInMonth = new Date(confYear, confMonth, 0).getDate();
