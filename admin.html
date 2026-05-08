@@ -2259,20 +2259,27 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       }
     });
 
-    // 生成結果を保存
+    // 生成結果をシフト表に即時反映
     generatedShifts = result;
 
-    // 充足状況サマリーを計算して表示
-    showGenerateSummary(deptStaff, result, staffHours, staffNightCount, daysInMonth, getStaffPlanHours, getRequired);
+    // shiftDataに反映
+    shiftYear = genYear;
+    shiftMonth = genMonth;
+    Object.keys(result).forEach(key => { shiftData[key] = result[key]; });
+    // ロックも反映
+    Object.keys(lockMap).forEach(key => { lockedCells[key] = true; });
 
-    // プレビュー表示
-    const reqMapForPreview = {};
-    requests.forEach(r => { reqMapForPreview[`${r.staff_id}|${r.day}`] = r.request_type; });
-    renderShiftGrid('previewGrid', deptStaff, daysInMonth, genYear, genMonth, result, reqMapForPreview, lockMap, false);
+    // シフト表タブに切り替えて表示
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelector('.nav-item[data-page="shift"]')?.classList.add('active');
+    document.getElementById('page-shift')?.classList.add('active');
+    document.getElementById('pageTitle').textContent = 'シフト表';
 
-    document.getElementById('previewCard').style.display = 'block';
-    document.getElementById('previewCard').scrollIntoView({ behavior:'smooth' });
-    showToast('自動生成が完了しました ✓','success');
+    // シフト表を再描画
+    await loadShiftGrid();
+
+    showToast('自動生成完了 ✓ シフト表で編集できます', 'success');
 
   } catch(e) { console.error(e); showToast('生成エラー: ' + e.message,'error'); }
   hideLoading();
