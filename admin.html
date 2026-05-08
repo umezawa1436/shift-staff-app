@@ -539,6 +539,7 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -2203,6 +2204,20 @@ _logStep('STEP1完了');
 
 _logStep('STEP2完了'); 
     // ===== STEP3: 曜日固定シフトを反映 =====
+    // 土日連勤チェック関数（STEP3用に前方宣言）
+    const wouldCauseWeekendConsecPre = (staffId, d) => {
+      if (!optNoConsecWeekend) return false;
+      const dow = new Date(genYear, genMonth-1, d).getDay();
+      if (dow === 6 && d + 1 <= daysInMonth) {
+        const sundayShift = result[`${staffId}|${d+1}`];
+        if (sundayShift && !OFF_SHIFTS.includes(sundayShift)) return true;
+      }
+      if (dow === 0 && d - 1 >= 1) {
+        const saturdayShift = result[`${staffId}|${d-1}`];
+        if (saturdayShift && !OFF_SHIFTS.includes(saturdayShift)) return true;
+      }
+      return false;
+    };
     deptStaff.forEach(staff => {
       const fixedShifts = staff.fixed_shifts || {};
       if (!Object.keys(fixedShifts).length) return;
@@ -2214,6 +2229,8 @@ _logStep('STEP2完了');
         const dow = new Date(genYear, genMonth-1, d).getDay();
         const fixedShift = fixedShifts[dow] || fixedShifts[String(dow)];
         if (!fixedShift) continue;
+        // 土日連勤チェック（休み系は除外）
+        if (!OFF_SHIFTS.includes(fixedShift) && wouldCauseWeekendConsecPre(staff.id, d)) continue;
         // CC/CHO日は専用シフトのみ
         if (dt === 'wed_cc' && !['CC','CCのみ','休み','有休','半有休','希望休'].includes(fixedShift)) continue;
         if (dt === 'wed_cho' && !['CHO','休み','有休','半有休','希望休'].includes(fixedShift)) continue;
@@ -2236,6 +2253,24 @@ _logStep('STEP3完了');
       return sh && SHIFT_COVERS[sh]?.includes(period);
     }).length;
 
+    // 土日連勤チェック: staffId が day に勤務すると土日連続出勤になるか判定
+    // 戻り値 true = 配置すべきでない（連勤になる）
+    const wouldCauseWeekendConsec = (staffId, d) => {
+      if (!optNoConsecWeekend) return false;
+      const dow = new Date(genYear, genMonth-1, d).getDay();
+      // 土曜の場合、翌日(日曜)を確認
+      if (dow === 6 && d + 1 <= daysInMonth) {
+        const sundayShift = result[`${staffId}|${d+1}`];
+        if (sundayShift && !OFF_SHIFTS.includes(sundayShift)) return true;
+      }
+      // 日曜の場合、前日(土曜)を確認
+      if (dow === 0 && d - 1 >= 1) {
+        const saturdayShift = result[`${staffId}|${d-1}`];
+        if (saturdayShift && !OFF_SHIFTS.includes(saturdayShift)) return true;
+      }
+      return false;
+    };
+
     const getAssignCandidates = (staff, d, dt, period, shift, pass = 0) => staff.filter(s => {
       const key = `${s.id}|${d}`;
       if (result[key]) return false;
@@ -2250,6 +2285,8 @@ _logStep('STEP3完了');
       if (pass === 0 && optRespectHours) {
         if ((staffHours[s.id]||0) + (SHIFT_HOURS[shift]||0) > planH + 3) return false;
       }
+      // 土日連勤チェック
+      if (wouldCauseWeekendConsec(s.id, d)) return false;
       return true;
     }).sort((a, b) => {
       if (a.skill_level === 'beginner' && b.skill_level !== 'beginner') return 1;
@@ -2399,6 +2436,8 @@ _logStep('STEP4完了');
           if (result[key]) continue;
           const req = reqMap[key];
           if (!req) continue;
+          // 希望が「休み系」ならSTEP2で処理済みなのでここはスキップ
+          if (OFF_SHIFTS.includes(req)) continue;
           const dt = getDayType(d);
           if (dt === 'thu_closed' || dt === 'holiday_closed') continue;
           // CC日はCC・CCのみ以外の勤務不可
@@ -2407,6 +2446,8 @@ _logStep('STEP4完了');
           if (dt === 'wed_cho' && !['CHO','休み','有休','半有休','希望休'].includes(req)) continue;
           const planH = getStaffPlanHours(staff);
           if (optRespectHours && planH > 0 && (staffHours[staff.id]||0) + (SHIFT_HOURS[req]||0) > planH + 5) continue;
+          // 土日連勤チェック
+          if (wouldCauseWeekendConsec(staff.id, d)) continue;
           result[key] = req;
           staffHours[staff.id] = (staffHours[staff.id]||0) + (SHIFT_HOURS[req]||0);
           if (NIGHT_SHIFTS.includes(req)) staffNightCount[staff.id] = (staffNightCount[staff.id]||0) + 1;
@@ -2645,8 +2686,23 @@ _logStep('STEP8完了');
         }
       }
     }
+    // 土日連勤の発生件数チェック
+    const _weekendConsecList = [];
+    for (let d = 1; d < daysInMonth; d++) {
+      const dow = new Date(genYear, genMonth-1, d).getDay();
+      if (dow !== 6) continue;
+      // d=土曜、d+1=日曜
+      deptStaff.forEach(s => {
+        const sat = result[`${s.id}|${d}`];
+        const sun = result[`${s.id}|${d+1}`];
+        if (sat && !OFF_SHIFTS.includes(sat) && sun && !OFF_SHIFTS.includes(sun)) {
+          _weekendConsecList.push(`${s.name}: ${d}(土)${sat} → ${d+1}(日)${sun}`);
+        }
+      });
+    }
     console.log('[自動生成] STEP別ログ', _genLog);
     console.log('[自動生成] 充足課題', _coverageSummary.length === 0 ? '完全充足' : _coverageSummary);
+    console.log('[自動生成] 土日連勤', _weekendConsecList.length === 0 ? 'なし' : _weekendConsecList);
     console.log('[自動生成] スタッフ別最終時間',
       deptStaff.map(s => ({
         名前: s.name,
