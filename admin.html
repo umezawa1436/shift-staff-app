@@ -604,7 +604,7 @@ async function initApp() {
 
 async function loadStaff() {
   const f = adminUser.role === 'leader' ? `&dept_id=eq.${adminUser.deptId}` : '';
-  allStaff = await sb(`staff?order=dept_id,staff_code${f}&select=id,staff_code,name,dept_id,emp_type,no_night,no_count`);
+  allStaff = await sb(`staff?order=dept_id,staff_code${f}&select=id,staff_code,name,dept_id,emp_type,no_night,no_count,skill_level,fixed_shifts`);
 }
 
 function updateMonthDisplays() {
