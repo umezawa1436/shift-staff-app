@@ -165,8 +165,8 @@
     .generate-panel { background:linear-gradient(135deg,#0f4c81,#1a6bb5);border-radius:16px;padding:24px;color:white;margin-bottom:20px; }
     .generate-title { font-size:18px;font-weight:700;margin-bottom:8px; }
     .generate-sub { font-size:13px;opacity:0.8;margin-bottom:20px; }
-    .generate-options { display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px; }
-    .gen-option { background:rgba(255,255,255,0.1);border-radius:12px;padding:16px;border:1.5px solid rgba(255,255,255,0.2); }
+    .generate-options { display:flex;flex-wrap:wrap;gap:12px;margin-bottom:20px; }
+    .gen-option { background:rgba(255,255,255,0.1);border-radius:12px;padding:12px 20px;border:1.5px solid rgba(255,255,255,0.2);width:fit-content; }
     .gen-option label { display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px; }
     .gen-option input[type=checkbox] { width:16px;height:16px;cursor:pointer; }
     .btn-generate { padding:14px 32px;background:white;color:var(--primary);border:none;border-radius:12px;font-size:16px;font-weight:700;font-family:inherit;cursor:pointer;transition:all 0.2s; }
@@ -391,10 +391,10 @@
                 <button onclick="saveShiftPatternSettings()" style="padding:4px 12px;background:var(--primary);color:white;border:none;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit">この設定を保存</button>
               </div>
               <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">チェックしたシフトのみ自動生成に使用します（部門ごとに保存されます）</div>
-              <div id="shiftPatternOptions" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px"></div>
+              <div id="shiftPatternOptions" style="display:flex;flex-wrap:wrap;gap:8px"></div>
             </div>
 
-            <button class="btn-generate" id="generateBtn">🚀 シフトを自動生成する</button>
+            <button class="btn-generate" id="generateBtn" style="margin-top:24px">🚀 シフトを自動生成する</button>
           </div>
 
           <!-- 生成結果プレビュー -->
@@ -1877,10 +1877,10 @@ function renderShiftPatternOptions() {
   const enabled = shiftPatternSettings[currentDept] || DEFAULT_SHIFT_PATTERNS[currentDept] || SHIFT_PATTERN_OPTIONS.map(s => s.id);
   el.innerHTML = SHIFT_PATTERN_OPTIONS.map(s => {
     const isChecked = enabled.includes(s.id);
-    return `<label style="display:flex;align-items:center;gap:8px;padding:8px 12px;
+    return `<label style="display:inline-flex;align-items:center;gap:8px;padding:8px 12px;
       background:${isChecked?'#eff6ff':'white'};
       border:1.5px solid ${isChecked?'var(--primary)':'var(--border)'};
-      border-radius:10px;cursor:pointer;transition:all 0.15s">
+      border-radius:10px;cursor:pointer;transition:all 0.15s;width:fit-content;flex:0 0 auto">
       <input type="checkbox" id="sp-${s.id}" ${isChecked?'checked':''}
         onchange="this.closest('label').style.background=this.checked?'#eff6ff':'white';this.closest('label').style.borderColor=this.checked?'var(--primary)':'var(--border)'"
         style="width:15px;height:15px;accent-color:var(--primary);cursor:pointer">
