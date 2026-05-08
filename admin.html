@@ -539,7 +539,6 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -2112,13 +2111,16 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     const enabledPatterns = getEnabledShiftPatterns();
 
     // スタッフごとのトラッキング変数
-    const staffHours = {}, staffNightCount = {}, staffLongCount = {}, staffMidCount = {};
+    const staffHours = {}, staffNightCount = {}, staffLongCount = {}, staffMidCount = {}, staffLateCount = {};
     deptStaff.forEach(s => {
       staffHours[s.id] = 0;
       staffNightCount[s.id] = 0;
       staffLongCount[s.id] = 0;
       staffMidCount[s.id] = 0;
+      staffLateCount[s.id] = 0;
     });
+    // 遅番系シフト（NIGHT_SHIFTSのうち夜勤を除いたもの）
+    const LATE_SHIFTS = ['遅番','遅L','リハ遅'];
 
     // ===== デバッグログ初期化 =====
     const _genLog = [];
@@ -2158,6 +2160,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       if (NIGHT_SHIFTS.includes(shift)) staffNightCount[sid] = (staffNightCount[sid]||0) + 1;
       if (LONG_SHIFTS.includes(shift)) staffLongCount[sid] = (staffLongCount[sid]||0) + 1;
       if (MID_BREAK_SHIFTS.includes(shift)) staffMidCount[sid] = (staffMidCount[sid]||0) + 1;
+      if (LATE_SHIFTS.includes(shift)) staffLateCount[sid] = (staffLateCount[sid]||0) + 1;
     });
 
     // 時短スタッフに割り当て可能なシフト
@@ -2241,6 +2244,9 @@ _logStep('STEP2完了');
         result[key] = finalFixedShift;
         staffHours[staff.id] = (staffHours[staff.id]||0) + (SHIFT_HOURS[finalFixedShift]||0);
         if (NIGHT_SHIFTS.includes(finalFixedShift)) staffNightCount[staff.id] = (staffNightCount[staff.id]||0) + 1;
+        if (LATE_SHIFTS.includes(finalFixedShift)) staffLateCount[staff.id] = (staffLateCount[staff.id]||0) + 1;
+        if (LONG_SHIFTS.includes(finalFixedShift)) staffLongCount[staff.id] = (staffLongCount[staff.id]||0) + 1;
+        if (MID_BREAK_SHIFTS.includes(finalFixedShift)) staffMidCount[staff.id] = (staffMidCount[staff.id]||0) + 1;
       }
     });
 
@@ -2287,6 +2293,19 @@ _logStep('STEP3完了');
       }
       // 土日連勤チェック
       if (wouldCauseWeekendConsec(s.id, d)) return false;
+      // 月間上限チェック（夜勤・遅番・長日・中抜け）
+      if (NIGHT_SHIFTS.includes(shift)) {
+        if ((staffNightCount[s.id]||0) >= getStaffMaxNight(s)) return false;
+      }
+      if (LATE_SHIFTS.includes(shift)) {
+        if ((staffLateCount[s.id]||0) >= getStaffMaxLate(s)) return false;
+      }
+      if (LONG_SHIFTS.includes(shift)) {
+        if ((staffLongCount[s.id]||0) >= getStaffMaxLong(s)) return false;
+      }
+      if (MID_BREAK_SHIFTS.includes(shift)) {
+        if ((staffMidCount[s.id]||0) >= getStaffMaxMid(s)) return false;
+      }
       return true;
     }).sort((a, b) => {
       if (a.skill_level === 'beginner' && b.skill_level !== 'beginner') return 1;
@@ -2353,6 +2372,7 @@ _logStep('STEP3完了');
               result[`${s.id}|${d}`] = sh;
               staffHours[s.id] = (staffHours[s.id]||0) + (SHIFT_HOURS[sh]||0);
               staffNightCount[s.id] = (staffNightCount[s.id]||0) + 1;
+              if (LATE_SHIFTS.includes(sh)) staffLateCount[s.id] = (staffLateCount[s.id]||0) + 1;
               placedInThisPass++;
               if (placedInThisPass >= 5) break; // 暴走防止
             }
@@ -2451,6 +2471,9 @@ _logStep('STEP4完了');
           result[key] = req;
           staffHours[staff.id] = (staffHours[staff.id]||0) + (SHIFT_HOURS[req]||0);
           if (NIGHT_SHIFTS.includes(req)) staffNightCount[staff.id] = (staffNightCount[staff.id]||0) + 1;
+          if (LATE_SHIFTS.includes(req)) staffLateCount[staff.id] = (staffLateCount[staff.id]||0) + 1;
+          if (LONG_SHIFTS.includes(req)) staffLongCount[staff.id] = (staffLongCount[staff.id]||0) + 1;
+          if (MID_BREAK_SHIFTS.includes(req)) staffMidCount[staff.id] = (staffMidCount[staff.id]||0) + 1;
         }
       });
     }
@@ -2591,6 +2614,11 @@ _logStep('STEP7完了');
               if (s.emp_type !== 'short' && sh === '時短') return false;
               // 夜勤不可
               if (isNoNightAuto(s) && NIGHT_SHIFTS.includes(sh)) return false;
+              // 月間上限チェック
+              if (NIGHT_SHIFTS.includes(sh) && (staffNightCount[s.id]||0) >= getStaffMaxNight(s)) return false;
+              if (LATE_SHIFTS.includes(sh) && (staffLateCount[s.id]||0) >= getStaffMaxLate(s)) return false;
+              if (LONG_SHIFTS.includes(sh) && (staffLongCount[s.id]||0) >= getStaffMaxLong(s)) return false;
+              if (MID_BREAK_SHIFTS.includes(sh) && (staffMidCount[s.id]||0) >= getStaffMaxMid(s)) return false;
               return true;
             })
             .map(sh => {
@@ -2613,6 +2641,10 @@ _logStep('STEP7完了');
             const bestShift = candidates8[0].sh;
             result[key] = bestShift;
             staffHours[s.id] = (staffHours[s.id]||0) + (SHIFT_HOURS[bestShift]||0);
+            if (NIGHT_SHIFTS.includes(bestShift)) staffNightCount[s.id] = (staffNightCount[s.id]||0) + 1;
+            if (LATE_SHIFTS.includes(bestShift)) staffLateCount[s.id] = (staffLateCount[s.id]||0) + 1;
+            if (LONG_SHIFTS.includes(bestShift)) staffLongCount[s.id] = (staffLongCount[s.id]||0) + 1;
+            if (MID_BREAK_SHIFTS.includes(bestShift)) staffMidCount[s.id] = (staffMidCount[s.id]||0) + 1;
             changed8 = true;
           }
         }
@@ -2709,7 +2741,10 @@ _logStep('STEP8完了');
         実績: (staffHours[s.id]||0).toFixed(1) + 'h',
         所定: getStaffPlanHours(s) + 'h',
         差分: ((staffHours[s.id]||0) - getStaffPlanHours(s)).toFixed(1) + 'h',
-        夜勤: staffNightCount[s.id] || 0,
+        夜勤: `${staffNightCount[s.id]||0}/${getStaffMaxNight(s)}`,
+        遅番: `${staffLateCount[s.id]||0}/${getStaffMaxLate(s)}`,
+        長日: `${staffLongCount[s.id]||0}/${getStaffMaxLong(s)}`,
+        中抜け: `${staffMidCount[s.id]||0}/${getStaffMaxMid(s)}`,
         雇用形態: s.emp_type || 'full',
         能力: s.skill_level || 'normal'
       }))
