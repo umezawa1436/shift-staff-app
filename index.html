@@ -723,7 +723,6 @@
 // ここにSupabaseの情報を入れる
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 // SHA-256ハッシュ関数
 async function sha256(message) {
   const msgBuffer = new TextEncoder().encode(message);
@@ -867,42 +866,39 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
   const deptId = document.getElementById('deptSelect').value;
   const staffCode = document.getElementById('staffSelect').value;
   const password = document.getElementById('passwordInput').value;
+  const errEl = document.getElementById('errorMsg');
 
   if (!deptId || !staffCode || !password) {
-    document.getElementById('errorMsg').style.display = 'block';
-    document.getElementById('errorMsg').textContent = 'すべて入力してください';
+    errEl.style.display = 'block';
+    errEl.textContent = 'すべて入力してください';
     return;
   }
 
   showLoading();
   try {
-    // パスワード確認（簡易：名前の頭文字+1234）
-    const staffName = STAFF_DATA[parseInt(deptId)].find(s => s.code == staffCode)?.name;
-    // 本番では適切な認証に変更する
-    const expectedPw = staffName?.charAt(0) + '1234';
-    if (password !== expectedPw && password !== 'admin1234') {
-      document.getElementById('errorMsg').style.display = 'block';
-      document.getElementById('errorMsg').textContent = 'パスワードが正しくありません';
+    const hash = await sha256(password);
+    const result = await supabaseRequest(
+      `accounts?staff_code=eq.${staffCode}&dept_id=eq.${deptId}&password_hash=eq.${hash}&role=eq.staff&select=id,name,dept_id,staff_id,staff_code`
+    );
+
+    if (result.length === 0) {
+      errEl.style.display = 'block';
+      errEl.textContent = 'パスワードが正しくありません';
       hideLoading();
       return;
     }
 
+    const account = result[0];
     currentUser = {
-      staffCode: parseInt(staffCode),
-      name: staffName,
-      deptId: parseInt(deptId),
-      deptName: DEPT_NAMES[parseInt(deptId)],
+      id: account.staff_id,
+      accountId: account.id,
+      staffCode: account.staff_code,
+      name: account.name,
+      deptId: account.dept_id,
+      deptName: DEPT_NAMES[account.dept_id] || '不明',
     };
 
-    // staffテーブルからIDを取得
-    const staffData = await supabaseRequest(
-      `staff?staff_code=eq.${staffCode}&dept_id=eq.${deptId}&select=id,name`
-    );
-    if (staffData.length > 0) {
-      currentUser.id = staffData[0].id;
-    }
-
-    document.getElementById('errorMsg').style.display = 'none';
+    errEl.style.display = 'none';
     localStorage.setItem('shift_user', JSON.stringify(currentUser));
     showApp();
   } catch(e) {
