@@ -538,6 +538,7 @@
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
 
+
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -2171,6 +2172,9 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
           if (result[key]) continue;
           const req = reqMap[key];
           if (!req) continue;
+          // 休診日は希望があっても勤務シフトを入れない
+          const dt = getDayType(d);
+          if ((dt === 'thu_closed' || dt === 'holiday_closed') && !OFF_SHIFTS.includes(req)) continue;
           const planH = getStaffPlanHours(staff);
           if (optRespectHours && planH > 0 && (staffHours[staff.id]||0) + (SHIFT_HOURS[req]||0) > planH + 5) continue;
           result[key] = req;
