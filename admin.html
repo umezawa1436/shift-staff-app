@@ -537,6 +537,7 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -2339,9 +2340,8 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     window._shiftClosedHolidays = closedHolidays;
     window._shiftOpenThursdays = openThursdays;
 
-    // 水曜タイプを設定
-    shiftWedTypes = {};
-    wedData.forEach(w => { shiftWedTypes[w.day] = w.wed_type; });
+    // 水曜タイプを設定（wedTypesは自動生成ページで既に読み込み済み）
+    shiftWedTypes = { ...wedTypes };
 
     // グリッドを描画
     renderShiftGrid('shiftGrid', deptStaff, daysInMonth, genYear, genMonth, shiftData, reqMapForRender, lockedCells, true, shiftWedTypes);
