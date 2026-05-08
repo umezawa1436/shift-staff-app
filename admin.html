@@ -2053,6 +2053,25 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       });
     }
 
+    // STEP1.5: 休診日（木曜休診・休診祝日）を全員「休み」に設定
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dow = new Date(genYear, genMonth-1, d).getDay();
+      // 木曜（デフォルト休診）
+      if (dow === 4 && !openThursdays.has(d)) {
+        deptStaff.forEach(staff => {
+          const key = `${staff.id}|${d}`;
+          if (!lockedCells[key]) result[key] = '休み';
+        });
+      }
+      // 休診祝日
+      if (holidays.has(d) && closedHolidays.has(d)) {
+        deptStaff.forEach(staff => {
+          const key = `${staff.id}|${d}`;
+          if (!lockedCells[key]) result[key] = '休み';
+        });
+      }
+    }
+
     // STEP2: 希望（休み系）を反映
     if (optRespectRequest) {
       deptStaff.forEach(staff => {
@@ -2190,15 +2209,22 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       for (let d = 1; d <= daysInMonth; d++) {
         const key = `${staff.id}|${d}`;
         if (result[key]) continue;
-        if ((staffHours[staff.id]||0) >= planH) break;
         const dow = new Date(genYear, genMonth-1, d).getDay();
-        // 土日は休みにする（所定時間未満でも）
-        if (dow === 0 || dow === 6) {
+        const dayType2 = getDayType(d);
+        // 土日・休診日は所定時間に関係なく休み
+        if (dow === 0 || dow === 6 || dayType2 === 'thu_closed' || dayType2 === 'holiday_closed' || dayType2 === 'wed_normal') {
           result[key] = '休み';
           continue;
         }
-        const dayType = getDayType(d);
-        if (dayType === 'wed_normal') { result[key] = '休み'; continue; }
+        if ((staffHours[staff.id]||0) >= planH) {
+          result[key] = '休み';
+          continue;
+        }
+        // 休診日・水曜通常は休み（dayType2は上で計算済み）
+        if (dayType2 === 'wed_normal' || dayType2 === 'thu_closed' || dayType2 === 'holiday_closed') {
+          result[key] = '休み';
+          continue;
+        }
         result[key] = '日勤';
         staffHours[staff.id] = (staffHours[staff.id]||0) + 8.5;
       }
