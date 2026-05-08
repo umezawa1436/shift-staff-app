@@ -2238,7 +2238,7 @@ _logStep('STEP2完了');
         if (dt === 'wed_cc' && !['CC','CCのみ','休み','有休','半有休','希望休'].includes(fixedShift)) continue;
         if (dt === 'wed_cho' && !['CHO','休み','有休','半有休','希望休'].includes(fixedShift)) continue;
         const planH = getStaffPlanHours(staff);
-        if (optRespectHours && planH > 0 && (staffHours[staff.id]||0) + (SHIFT_HOURS[fixedShift]||0) > planH + 5) continue;
+        if (optRespectHours && planH > 0 && (staffHours[staff.id]||0) + (SHIFT_HOURS[fixedShift]||0) > planH + 3) continue;
         // 時短スタッフはシフトを変換
         const finalFixedShift = staff.emp_type === 'short' ? toShortShift(fixedShift, dt) : fixedShift;
         result[key] = finalFixedShift;
@@ -2288,8 +2288,12 @@ _logStep('STEP3完了');
         if (period === 'afternoon' && dt !== 'wed_cc' && dt !== 'wed_cho') return false;
       }
       if (period === 'evening' && isNoNightAuto(s)) return false;
-      if (pass === 0 && optRespectHours) {
-        if ((staffHours[s.id]||0) + (SHIFT_HOURS[shift]||0) > planH + 3) return false;
+      // 所定時間チェック（全passで実施、許容値はpassで段階的に緩和）
+      // pass 0: +1H許容（厳格）, pass 1: +3H許容（中）, pass 2: +6H許容（緩）
+      if (optRespectHours && planH > 0) {
+        const projectedH = (staffHours[s.id]||0) + (SHIFT_HOURS[shift]||0);
+        const allowance = pass === 0 ? 1 : pass === 1 ? 3 : 6;
+        if (projectedH > planH + allowance) return false;
       }
       // 土日連勤チェック
       if (wouldCauseWeekendConsec(s.id, d)) return false;
@@ -2465,7 +2469,7 @@ _logStep('STEP4完了');
           // CHO日はCHO以外の勤務不可
           if (dt === 'wed_cho' && !['CHO','休み','有休','半有休','希望休'].includes(req)) continue;
           const planH = getStaffPlanHours(staff);
-          if (optRespectHours && planH > 0 && (staffHours[staff.id]||0) + (SHIFT_HOURS[req]||0) > planH + 5) continue;
+          if (optRespectHours && planH > 0 && (staffHours[staff.id]||0) + (SHIFT_HOURS[req]||0) > planH + 3) continue;
           // 土日連勤チェック
           if (wouldCauseWeekendConsec(staff.id, d)) continue;
           result[key] = req;
