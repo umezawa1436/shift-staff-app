@@ -723,6 +723,7 @@
 // ここにSupabaseの情報を入れる
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+
 // SHA-256ハッシュ関数
 async function sha256(message) {
   const msgBuffer = new TextEncoder().encode(message);
@@ -1173,8 +1174,14 @@ window.addEventListener('load', () => {
   const saved = localStorage.getItem('shift_user');
   if (saved) {
     try {
-      currentUser = JSON.parse(saved);
-      showApp();
+      const user = JSON.parse(saved);
+      // accountIdがある場合のみ自動ログイン（新認証方式のみ）
+      if (user && user.accountId && user.id) {
+        currentUser = user;
+        showApp();
+      } else {
+        localStorage.removeItem('shift_user');
+      }
     } catch(e) {
       localStorage.removeItem('shift_user');
     }
