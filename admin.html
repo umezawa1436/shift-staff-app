@@ -2032,48 +2032,38 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     // ===== 生成ロジック =====
     const result = {};
 
-    // スタッフごとのトラッキング
-    const staffHours = {}, staffNightCount = {}, staffLongCount = {}, staffMidCount = {};
-    deptStaff.forEach(s => {
-      staffHours[s.id] = 0;
-      staffNightCount[s.id] = 0;
-      staffLongCount[s.id] = 0;
-      staffMidCount[s.id] = 0;
-    });
-
-    // STEP1: ロックセルを確定
-    if (optKeepLocked) {
-      Object.entries(lockMap).forEach(([key, shift]) => {
-        result[key] = shift;
-        const [sid] = parseKey(key);
-        staffHours[sid] = (staffHours[sid]||0) + (SHIFT_HOURS[shift]||0);
-        if (NIGHT_SHIFTS.includes(shift)) staffNightCount[sid] = (staffNightCount[sid]||0) + 1;
-        if (LONG_SHIFTS.includes(shift)) staffLongCount[sid] = (staffLongCount[sid]||0) + 1;
-        if (MID_BREAK_SHIFTS.includes(shift)) staffMidCount[sid] = (staffMidCount[sid]||0) + 1;
+    // ===== STEP0: ロック済みシフトを反映 =====
+    const lockMap = {};
+    if (optRespectLock) {
+      existingShifts.forEach(s => {
+        if (s.is_locked) {
+          const key = `${s.staff_id}|${s.day}`;
+          lockMap[key] = s.shift_type_id;
+        }
       });
     }
+    Object.entries(lockMap).forEach(([key, shift]) => {
+      result[key] = shift;
+      const [sid] = parseKey(key);
+      staffHours[sid] = (staffHours[sid]||0) + (SHIFT_HOURS[shift]||0);
+      if (NIGHT_SHIFTS.includes(shift)) staffNightCount[sid] = (staffNightCount[sid]||0) + 1;
+      if (LONG_SHIFTS.includes(shift)) staffLongCount[sid] = (staffLongCount[sid]||0) + 1;
+      if (MID_BREAK_SHIFTS.includes(shift)) staffMidCount[sid] = (staffMidCount[sid]||0) + 1;
+    });
 
-    // STEP1.5: 休診日（木曜休診・休診祝日）を全員「休み」に設定
+    // ===== STEP1: 休診日は全員「休み」=====
     for (let d = 1; d <= daysInMonth; d++) {
       const dow = new Date(genYear, genMonth-1, d).getDay();
       const dt = getDayType(d);
-      // 木曜（デフォルト休診）
-      if (dow === 4 && !openThursdays.has(d)) {
+      if (dow === 4 && !openThursdays.has(d) || (holidays.has(d) && closedHolidays.has(d))) {
         deptStaff.forEach(staff => {
           const key = `${staff.id}|${d}`;
-          if (!lockedCells[key]) result[key] = '休み';
-        });
-      }
-      // 休診祝日
-      if (holidays.has(d) && closedHolidays.has(d)) {
-        deptStaff.forEach(staff => {
-          const key = `${staff.id}|${d}`;
-          if (!lockedCells[key]) result[key] = '休み';
+          if (!lockMap[key]) result[key] = '休み';
         });
       }
     }
 
-    // STEP2: 希望（休み系）を反映
+    // ===== STEP2: 希望休・有休を反映 =====
     if (optRespectRequest) {
       deptStaff.forEach(staff => {
         for (let d = 1; d <= daysInMonth; d++) {
@@ -2082,7 +2072,6 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
           const req = reqMap[key];
           if (req && OFF_SHIFTS.includes(req)) {
             result[key] = req;
-            // 有休・半有休は所定時間加算
             if (req === '有休') staffHours[staff.id] = (staffHours[staff.id]||0) + 8.5;
             if (req === '半有休') staffHours[staff.id] = (staffHours[staff.id]||0) + 5;
           }
@@ -2090,100 +2079,124 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       });
     }
 
-    // STEP3: 夜勤系を先に分散割り当て（夜勤担当スタッフに均等配分）
-    if (optFillRequired) {
+    // ===== STEP3: 曜日固定シフトを反映 =====
+    deptStaff.forEach(staff => {
+      const fixedShifts = staff.fixed_shifts || {};
+      if (!Object.keys(fixedShifts).length) return;
       for (let d = 1; d <= daysInMonth; d++) {
-        const required = getRequired('evening', d);
-        if (!required || required === 0) continue;
-
-        const covered = deptStaff.filter(s => {
-          const shift = result[`${s.id}|${d}`];
-          return shift && SHIFT_COVERS[shift]?.includes('evening');
-        }).length;
-        if (covered >= required) return;
-
+        const key = `${staff.id}|${d}`;
+        if (result[key]) continue;
+        const dt = getDayType(d);
+        if (dt === 'thu_closed' || dt === 'holiday_closed') continue;
         const dow = new Date(genYear, genMonth-1, d).getDay();
-        const dayType = getDayType(d);
-
-        // 夜勤候補：夜勤NGでない・時間に余裕・上限未満
-        const candidates = deptStaff
-          .filter(s => {
-            const key = `${s.id}|${d}`;
-            if (result[key]) return false;
-            if (isNoNightAuto(s)) return false;
-            const planH = getStaffPlanHours(s);
-            const nightShift = selectEveningShift(currentDept, dayType);
-            if (optRespectHours && planH > 0 && (staffHours[s.id]||0) + (SHIFT_HOURS[nightShift]||0) > planH + 5) return false;
-            if (optRespectNight && (staffNightCount[s.id]||0) >= getStaffMaxNight(s)) return false;
-            // 土日連勤チェック
-            if (optNoConsecWeekend && (dow === 0 || dow === 6) && d > 1) {
-              const prevDow = new Date(genYear, genMonth-1, d-1).getDay();
-              if (prevDow === 0 || prevDow === 6) {
-                const prevKey = `${s.id}-${d-1}`;
-                if (result[prevKey] && !OFF_SHIFTS.includes(result[prevKey])) return false;
-              }
-            }
-            return true;
-          })
-          .sort((a, b) => (staffNightCount[a.id]||0) - (staffNightCount[b.id]||0)); // 夜勤少ない順
-
-        const need = required - covered;
-        candidates.slice(0, need).forEach(s => {
-          const key = `${s.id}|${d}`;
-          const shift = selectEveningShift(currentDept, dayType);
-          result[key] = shift;
-          staffHours[s.id] = (staffHours[s.id]||0) + (SHIFT_HOURS[shift]||0);
-          staffNightCount[s.id] = (staffNightCount[s.id]||0) + 1;
-        });
+        const fixedShift = fixedShifts[dow] || fixedShifts[String(dow)];
+        if (!fixedShift) continue;
+        // CC/CHO日は専用シフトのみ
+        if (dt === 'wed_cc' && !['CC','CCのみ','休み','有休','半有休','希望休'].includes(fixedShift)) continue;
+        if (dt === 'wed_cho' && !['CHO','休み','有休','半有休','希望休'].includes(fixedShift)) continue;
+        const planH = getStaffPlanHours(staff);
+        if (optRespectHours && planH > 0 && (staffHours[staff.id]||0) + (SHIFT_HOURS[fixedShift]||0) > planH + 5) continue;
+        result[key] = fixedShift;
+        staffHours[staff.id] = (staffHours[staff.id]||0) + (SHIFT_HOURS[fixedShift]||0);
+        if (NIGHT_SHIFTS.includes(fixedShift)) staffNightCount[staff.id] = (staffNightCount[staff.id]||0) + 1;
       }
-    }
+    });
 
-    // STEP4: 午前・午後の必要人数を充足
+    // ===== STEP4: 日ごとに必要人数を充足 =====
+    // 各日を順番に処理し、過不足なく割り当て
     if (optFillRequired) {
       for (let d = 1; d <= daysInMonth; d++) {
-        const dow = new Date(genYear, genMonth-1, d).getDay();
-        const dayType = getDayType(d);
+        const dt = getDayType(d);
+        // 休診日・水曜通常はスキップ
+        if (dt === 'thu_closed' || dt === 'holiday_closed') continue;
 
-        ['morning', 'afternoon'].forEach(period => {
+        // 各時間帯を処理
+        const periods = ['morning', 'afternoon', 'evening'];
+        for (const period of periods) {
           const required = getRequired(period, d);
-          if (!required || required === 0) return;
+          if (!required || required <= 0) continue;
+          // CHO日は午後なし
+          if (dt === 'wed_cho' && period === 'afternoon') continue;
+          // CC/CHO日は夜勤なし
+          if ((dt === 'wed_cc' || dt === 'wed_cho') && period === 'evening') continue;
 
-          const covered = deptStaff.filter(s => {
+          // 現在の充足数（🌸除外）
+          let covered = deptStaff.filter(s => {
+            if (isNoCount(s)) return false;
             const shift = result[`${s.id}|${d}`];
             return shift && SHIFT_COVERS[shift]?.includes(period);
           }).length;
-          if (covered >= required) return;
 
-          const candidates = deptStaff
-            .filter(s => {
+          if (covered >= required) continue;
+          const need = required - covered;
+
+          // 🔰カウント
+          const curBeginner = deptStaff.filter(s => {
+            if (s.skill_level !== 'beginner') return false;
+            const shift = result[`${s.id}|${d}`];
+            return shift && SHIFT_COVERS[shift]?.includes(period);
+          }).length;
+          const beginnerLimit = getBeginnerLimit(period, d);
+
+          // シフト決定
+          const shift = period === 'morning'
+            ? (dt === 'wed_cc' ? 'CC' : dt === 'wed_cho' ? 'CHO' : '日勤')
+            : period === 'afternoon'
+            ? (dt === 'wed_cc' ? 'CCのみ' : currentDept === 2 ? 'リハ遅' : '遅番')
+            : (currentDept === 2 ? 'リハ遅' : currentDept === 1 ? '遅番' : '遅番');
+
+          // 候補スタッフ（段階的に緩和）
+          let candidates = [];
+          for (let pass = 0; pass < 3; pass++) {
+            candidates = deptStaff.filter(s => {
               const key = `${s.id}|${d}`;
-              if (result[key]) return false;
-              const planH = getStaffPlanHours(s);
-              const shift = selectDayShift(period, currentDept, dayType);
-              if (optRespectHours && planH > 0 && (staffHours[s.id]||0) + (SHIFT_HOURS[shift]||0) > planH + 5) return false;
-              if (optNoConsecWeekend && (dow === 0 || dow === 6) && d > 1) {
-                const prevDow = new Date(genYear, genMonth-1, d-1).getDay();
-                if (prevDow === 0 || prevDow === 6) {
-                  const prevKey = `${s.id}-${d-1}`;
-                  if (result[prevKey] && !OFF_SHIFTS.includes(result[prevKey])) return false;
-                }
+              if (result[key]) return false; // 既に割り当て済み
+              if (isNoCount(s) && pass < 2) return false; // 🌸は最後の手段
+              // 夜勤不可チェック
+              if (period === 'evening' && isNoNightAuto(s)) return false;
+              // 🔰上限チェック
+              if (s.skill_level === 'beginner' && beginnerLimit !== null && curBeginner >= beginnerLimit) return false;
+              // 所定時間チェック（pass0のみ厳格）
+              if (pass === 0 && optRespectHours) {
+                const planH = getStaffPlanHours(s);
+                if (planH > 0 && (staffHours[s.id]||0) + (SHIFT_HOURS[shift]||0) > planH + 3) return false;
+              }
+              // 夜勤上限チェック
+              if (period === 'evening' && optRespectNight) {
+                if ((staffNightCount[s.id]||0) >= getStaffMaxNight(s)) return false;
               }
               return true;
-            })
-            .sort((a, b) => (staffHours[a.id]||0) - (staffHours[b.id]||0)); // 時間少ない順
+            }).sort((a, b) => {
+              // 通常スタッフ優先、🔰は後回し
+              if (a.skill_level === 'beginner' && b.skill_level !== 'beginner') return 1;
+              if (a.skill_level !== 'beginner' && b.skill_level === 'beginner') return -1;
+              if (period === 'evening') return (staffNightCount[a.id]||0) - (staffNightCount[b.id]||0);
+              return (staffHours[a.id]||0) - (staffHours[b.id]||0);
+            });
 
-          const need = required - covered;
-          candidates.slice(0, need).forEach(s => {
+            if (candidates.length >= need) break;
+          }
+
+          // 必要数だけ割り当て
+          let assigned = 0;
+          let begAdded = curBeginner;
+          for (const s of candidates) {
+            if (assigned >= need) break;
+            // 🔰上限再確認
+            if (s.skill_level === 'beginner' && beginnerLimit !== null && begAdded >= beginnerLimit) continue;
+
             const key = `${s.id}|${d}`;
-            const shift = selectDayShift(period, currentDept, dayType);
             result[key] = shift;
             staffHours[s.id] = (staffHours[s.id]||0) + (SHIFT_HOURS[shift]||0);
-          });
-        });
+            if (period === 'evening') staffNightCount[s.id] = (staffNightCount[s.id]||0) + 1;
+            if (s.skill_level === 'beginner') begAdded++;
+            assigned++;
+          }
+        }
       }
     }
 
-    // STEP5: 残りの希望（勤務系）を反映
+    // ===== STEP5: 希望勤務シフトを反映 =====
     if (optRespectRequest) {
       deptStaff.forEach(staff => {
         for (let d = 1; d <= daysInMonth; d++) {
@@ -2191,12 +2204,11 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
           if (result[key]) continue;
           const req = reqMap[key];
           if (!req) continue;
-          // 休診日は希望があっても勤務シフトを入れない
           const dt = getDayType(d);
-          if ((dt === 'thu_closed' || dt === 'holiday_closed') && !OFF_SHIFTS.includes(req)) continue;
-          // CC日はCC・CCのみ・休み系以外を入れない
+          if (dt === 'thu_closed' || dt === 'holiday_closed') continue;
+          // CC日はCC・CCのみ以外の勤務不可
           if (dt === 'wed_cc' && !['CC','CCのみ','休み','有休','半有休','希望休'].includes(req)) continue;
-          // CHO日はCHO・休み系以外を入れない
+          // CHO日はCHO以外の勤務不可
           if (dt === 'wed_cho' && !['CHO','休み','有休','半有休','希望休'].includes(req)) continue;
           const planH = getStaffPlanHours(staff);
           if (optRespectHours && planH > 0 && (staffHours[staff.id]||0) + (SHIFT_HOURS[req]||0) > planH + 5) continue;
@@ -2207,34 +2219,33 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       });
     }
 
-    // STEP6: 所定時間に達していないスタッフに日勤を追加
+    // ===== STEP6: 所定時間に達していないスタッフに日勤を追加 =====
     deptStaff.forEach(staff => {
       const planH = getStaffPlanHours(staff);
-      if (planH <= 0) return;
       for (let d = 1; d <= daysInMonth; d++) {
         const key = `${staff.id}|${d}`;
         if (result[key]) continue;
         const dow = new Date(genYear, genMonth-1, d).getDay();
-        const dayType2 = getDayType(d);
-        // 土日・休診日は所定時間に関係なく休み
-        if (dow === 0 || dow === 6 || dayType2 === 'thu_closed' || dayType2 === 'holiday_closed' || dayType2 === 'wed_normal') {
+        const dt2 = getDayType(d);
+        // 土日・休診日・CC日・CHO日・水曜通常は休み
+        if (dow === 0 || dow === 6 || dt2 === 'thu_closed' || dt2 === 'holiday_closed' ||
+            dt2 === 'wed_normal' || dt2 === 'wed_cc' || dt2 === 'wed_cho') {
           result[key] = '休み';
           continue;
         }
-        if ((staffHours[staff.id]||0) >= planH) {
+        // 所定時間に達したら休み
+        if (planH > 0 && (staffHours[staff.id]||0) >= planH) {
           result[key] = '休み';
           continue;
         }
-        // 休診日・水曜通常・CC日・CHO日は日勤を入れない
-        if (dayType2 === 'wed_normal' || dayType2 === 'thu_closed' || 
-            dayType2 === 'holiday_closed' || dayType2 === 'wed_cc' || dayType2 === 'wed_cho') {
+        if (planH <= 0) {
           result[key] = '休み';
           continue;
         }
         result[key] = '日勤';
         staffHours[staff.id] = (staffHours[staff.id]||0) + 8.5;
       }
-      // 残りは休み
+      // 残りは全て休み
       for (let d = 1; d <= daysInMonth; d++) {
         const key = `${staff.id}|${d}`;
         if (!result[key]) result[key] = '休み';
@@ -2264,14 +2275,13 @@ function selectDayShift(period, deptId, dayType) {
   if (period === 'morning') {
     if (dayType === 'wed_cc') return 'CC';
     if (dayType === 'wed_cho') return 'CHO';
-    return '日勤';
+    return '日勤'; // 午前は基本日勤
   }
   if (period === 'afternoon') {
     if (dayType === 'wed_cc') return 'CCのみ';
-    // CHO日は午後フラグなし → 割り当てしない
-    if (dayType === 'wed_cho') return null;
+    if (dayType === 'wed_cho') return null; // CHO日は午後なし
     if (deptId === 2) return 'リハ遅';
-    return '遅番';
+    return '遅番'; // 午後は遅番優先
   }
   return '日勤';
 }
@@ -2279,7 +2289,8 @@ function selectDayShift(period, deptId, dayType) {
 function selectEveningShift(deptId, dayType) {
   if (deptId === 2) return 'リハ遅';
   if (deptId === 1) return '遅番';
-  return '夜勤';
+  // 医療事務・放射線：遅番を優先、必要人数が足りない場合に夜勤
+  return '遅番';
 }
 
 function showGenerateSummary(deptStaff, result, staffHours, staffNightCount, daysInMonth, getStaffPlanHours, getRequired) {
