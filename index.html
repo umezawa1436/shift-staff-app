@@ -689,7 +689,21 @@
     </div>
   </div>
 
-  <div class="calendar-wrap">
+  <!-- 確定シフト表示 -->
+  <div id="confirmedWrap" style="display:none;padding:16px;flex:1;overflow-y:auto">
+    <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center">
+      <button class="month-btn" id="confPrevMonth">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
+      </button>
+      <div style="font-size:18px;font-weight:700" id="confMonthTitle"></div>
+      <button class="month-btn" id="confNextMonth">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg>
+      </button>
+    </div>
+    <div id="confirmedGrid"></div>
+  </div>
+
+  <div class="calendar-wrap" id="calendarWrap">
     <div class="weekdays">
       <div class="weekday sun">日</div>
       <div class="weekday">月</div>
@@ -1222,11 +1236,17 @@ let currentTab = 'request';
 
 function switchTab(tab) {
   currentTab = tab;
-  document.getElementById('tabRequest').classList.toggle('active', tab === 'request');
-  document.getElementById('tabConfirmed').classList.toggle('active', tab === 'confirmed');
-  document.getElementById('calendarWrap').style.display = tab === 'request' ? 'block' : 'none';
-  document.getElementById('submitBar').style.display = tab === 'request' ? 'block' : 'none';
-  document.getElementById('confirmedWrap').style.display = tab === 'confirmed' ? 'block' : 'none';
+  const tabReq = document.getElementById('tabRequest');
+  const tabConf = document.getElementById('tabConfirmed');
+  const calWrap = document.getElementById('calendarWrap');
+  const subBar = document.getElementById('submitBar');
+  const confWrap = document.getElementById('confirmedWrap');
+
+  if (tabReq) tabReq.classList.toggle('active', tab === 'request');
+  if (tabConf) tabConf.classList.toggle('active', tab === 'confirmed');
+  if (calWrap) calWrap.style.display = tab === 'request' ? 'block' : 'none';
+  if (subBar) subBar.style.display = tab === 'request' ? 'block' : 'none';
+  if (confWrap) confWrap.style.display = tab === 'confirmed' ? 'block' : 'none';
 
   if (tab === 'confirmed') {
     confYear = currentYear;
