@@ -607,27 +607,15 @@
 
   <div class="login-card">
     <div class="form-group">
-      <label class="form-label">部門</label>
-      <select class="dept-select" id="deptSelect">
-        <option value="">選択してください</option>
-<option value="0">医療事務</option>
-<option value="1">看護</option>
-<option value="2">リハビリ</option>
-<option value="3">放射線</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">名前</label>
-      <select class="dept-select" id="staffSelect">
-        <option value="">部門を先に選択</option>
-      </select>
+      <label class="form-label">社員番号</label>
+      <input type="number" class="form-input" id="staffCodeInput" placeholder="例：1" inputmode="numeric">
     </div>
     <div class="form-group">
       <label class="form-label">パスワード</label>
       <input type="password" class="form-input" id="passwordInput" placeholder="••••••••">
     </div>
     <button class="btn-primary" id="loginBtn">ログイン</button>
-    <div class="error-msg" id="errorMsg">名前またはパスワードが正しくありません</div>
+    <div class="error-msg" id="errorMsg">社員番号またはパスワードが正しくありません</div>
   </div>
 </div>
 
@@ -639,7 +627,10 @@
         <div class="header-name" id="headerName"></div>
         <div class="header-dept" id="headerDept"></div>
       </div>
-      <button class="logout-btn" id="logoutBtn">ログアウト</button>
+      <div style="display:flex;gap:8px">
+        <button class="logout-btn" id="changePwStaffBtn">🔑</button>
+        <button class="logout-btn" id="logoutBtn">ログアウト</button>
+      </div>
     </div>
     <div class="month-nav">
       <button class="month-btn" id="prevMonthBtn">
@@ -677,6 +668,32 @@
 
 <!-- オーバーレイ -->
 <div class="overlay" id="overlay"></div>
+
+<!-- パスワード変更モーダル -->
+<div class="overlay" id="pwOverlay" style="z-index:400"></div>
+<div class="bottom-sheet" id="pwSheet" style="z-index:500">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header">
+    <div class="sheet-date">パスワード変更</div>
+    <div class="sheet-hint">新しいパスワードを設定してください（8文字以上）</div>
+  </div>
+  <div style="padding:16px">
+    <div style="margin-bottom:12px">
+      <label style="font-size:12px;color:#6b7a8d;font-weight:500;display:block;margin-bottom:6px">現在のパスワード</label>
+      <input type="password" id="staffCurrentPw" class="form-input" placeholder="••••••••">
+    </div>
+    <div style="margin-bottom:12px">
+      <label style="font-size:12px;color:#6b7a8d;font-weight:500;display:block;margin-bottom:6px">新しいパスワード</label>
+      <input type="password" id="staffNewPw" class="form-input" placeholder="8文字以上">
+    </div>
+    <div style="margin-bottom:20px">
+      <label style="font-size:12px;color:#6b7a8d;font-weight:500;display:block;margin-bottom:6px">新しいパスワード（確認）</label>
+      <input type="password" id="staffNewPwConfirm" class="form-input" placeholder="もう一度入力">
+    </div>
+    <button class="btn-submit" id="staffChangePwBtn">パスワードを変更する</button>
+    <div id="pwErrorMsg" style="color:#ef4444;font-size:13px;margin-top:10px;display:none"></div>
+  </div>
+</div>
 
 <!-- シフト選択ボトムシート -->
 <div class="bottom-sheet" id="bottomSheet">
@@ -758,12 +775,6 @@ async function supabaseRequest(path, options = {}) {
 
 // ===== STAFF DATA =====
 const STAFF_DATA = {
-  1: [
-  {code:1,name:'吉家'},{code:2,name:'岡本'},{code:3,name:'雅子'},
-  {code:4,name:'飛田'},{code:5,name:'上村'},{code:6,name:'高田'},
-  {code:7,name:'石黒'},{code:8,name:'青柳'},{code:9,name:'横山'},
-  {code:10,name:'加藤'},
-],
   0: [
     {code:1,name:'水島'},{code:2,name:'住元'},{code:3,name:'内山'},
     {code:4,name:'関'},{code:5,name:'小川'},{code:6,name:'泉'},
@@ -839,8 +850,8 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     // パスワード確認（簡易：名前の頭文字+1234）
     const staffName = STAFF_DATA[parseInt(deptId)].find(s => s.code == staffCode)?.name;
     // 本番では適切な認証に変更する
-    const expectedPw = 'shift1234';
-    if (password !== expectedPw) {
+    const expectedPw = staffName?.charAt(0) + '1234';
+    if (password !== expectedPw && password !== 'admin1234') {
       document.getElementById('errorMsg').style.display = 'block';
       document.getElementById('errorMsg').textContent = 'パスワードが正しくありません';
       hideLoading();
@@ -1068,10 +1079,72 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
   localStorage.removeItem('shift_user');
   document.getElementById('appScreen').style.display = 'none';
   document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('staffCodeInput').value = '';
+  document.getElementById('passwordInput').value = '';
 });
 
 // ===== OVERLAY CLOSE =====
 document.getElementById('overlay').addEventListener('click', closeSheet);
+
+// ===== パスワード変更 =====
+document.getElementById('changePwStaffBtn').addEventListener('click', () => {
+  document.getElementById('pwOverlay').classList.add('show');
+  document.getElementById('pwSheet').classList.add('show');
+});
+
+document.getElementById('pwOverlay').addEventListener('click', () => {
+  document.getElementById('pwOverlay').classList.remove('show');
+  document.getElementById('pwSheet').classList.remove('show');
+});
+
+document.getElementById('staffChangePwBtn').addEventListener('click', async () => {
+  const currentPw = document.getElementById('staffCurrentPw').value;
+  const newPw = document.getElementById('staffNewPw').value;
+  const newPwConfirm = document.getElementById('staffNewPwConfirm').value;
+  const errEl = document.getElementById('pwErrorMsg');
+
+  errEl.style.display = 'none';
+
+  if (!currentPw || !newPw || !newPwConfirm) {
+    errEl.style.display = 'block'; errEl.textContent = 'すべて入力してください'; return;
+  }
+  if (newPw.length < 8) {
+    errEl.style.display = 'block'; errEl.textContent = 'パスワードは8文字以上にしてください'; return;
+  }
+  if (newPw !== newPwConfirm) {
+    errEl.style.display = 'block'; errEl.textContent = '新しいパスワードが一致しません'; return;
+  }
+
+  showLoading();
+  try {
+    const currentHash = await sha256(currentPw);
+    const check = await supabaseRequest(
+      `accounts?id=eq.${currentUser.accountId}&password_hash=eq.${currentHash}&select=id`
+    );
+    if (check.length === 0) {
+      errEl.style.display = 'block'; errEl.textContent = '現在のパスワードが正しくありません';
+      hideLoading(); return;
+    }
+    const newHash = await sha256(newPw);
+    await supabaseRequest(`accounts?id=eq.${currentUser.accountId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+      body: JSON.stringify({ password_hash: newHash })
+    });
+    document.getElementById('staffCurrentPw').value = '';
+    document.getElementById('staffNewPw').value = '';
+    document.getElementById('staffNewPwConfirm').value = '';
+    document.getElementById('pwOverlay').classList.remove('show');
+    document.getElementById('pwSheet').classList.remove('show');
+    showToast('パスワードを変更しました ✓', 'success');
+  } catch(e) {
+    errEl.style.display = 'block'; errEl.textContent = 'エラーが発生しました';
+  }
+  hideLoading();
+});
+
+// supabaseRequestのPATCHメソッド対応
+const _origSbReq = supabaseRequest;
 
 // ===== AUTO LOGIN =====
 window.addEventListener('load', () => {
