@@ -483,6 +483,7 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -861,8 +862,15 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
 
     if (editable) {
       const rowLockStyle = rowLocked ? 'background:#fef9c3;' : '';
-      html += `<tr style="${rowLockStyle}"><td class="staff-name" style="cursor:pointer;user-select:none" onclick="toggleRowLock('${staff.id}',${daysInMonth})" title="${rowLocked?'行ロック解除':'行ロック'}">
-        <span>${staff.name}</span>
+      // 属性表示
+      const empLabel = staff.emp_type === 'short' ? '<span style="font-size:9px;color:#0f766e;background:#ccfbf1;padding:1px 4px;border-radius:3px;margin-left:3px">時短</span>' 
+        : staff.emp_type === 'part' ? '<span style="font-size:9px;color:#6b7280;background:#f3f4f6;padding:1px 4px;border-radius:3px;margin-left:3px">パート</span>'
+        : '<span style="font-size:9px;color:#1d4ed8;background:#dbeafe;padding:1px 4px;border-radius:3px;margin-left:3px">常勤</span>';
+      const skillLabel = staff.skill_level === 'beginner' ? '<span style="margin-left:2px;font-size:11px">🔰</span>'
+        : staff.skill_level === 'no_count' ? '<span style="margin-left:2px;font-size:11px">🌸</span>'
+        : '';
+      html += `<tr style="${rowLockStyle}"><td class="staff-name" style="cursor:pointer;user-select:none;white-space:nowrap" onclick="toggleRowLock('${staff.id}',${daysInMonth})" title="${rowLocked?'行ロック解除':'行ロック'}">
+        <span style="font-size:12px;font-weight:600">${staff.name}</span>${empLabel}${skillLabel}
         <span style="margin-left:4px;font-size:10px">${rowLocked?'🔒':'<span style=\"color:#d1d5db\">🔓</span>'}</span>
       </td>`;
     } else {
