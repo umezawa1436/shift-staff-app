@@ -537,7 +537,6 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -2056,6 +2055,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     // STEP1.5: 休診日（木曜休診・休診祝日）を全員「休み」に設定
     for (let d = 1; d <= daysInMonth; d++) {
       const dow = new Date(genYear, genMonth-1, d).getDay();
+      const dt = getDayType(d);
       // 木曜（デフォルト休診）
       if (dow === 4 && !openThursdays.has(d)) {
         deptStaff.forEach(staff => {
@@ -2190,9 +2190,12 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
           if (result[key]) continue;
           const req = reqMap[key];
           if (!req) continue;
-          // 休診日は希望があっても勤務シフトを入れない
+          // 休診日・CC/CHO日の夜勤系は入れない
           const dt = getDayType(d);
           if ((dt === 'thu_closed' || dt === 'holiday_closed') && !OFF_SHIFTS.includes(req)) continue;
+          if ((dt === 'wed_cc' || dt === 'wed_cho') && NIGHT_SHIFTS.includes(req)) continue;
+          // CHO日は午後系シフトも入れない
+          if (dt === 'wed_cho' && ['遅番','遅L','午後','CCのみ'].includes(req)) continue;
           const planH = getStaffPlanHours(staff);
           if (optRespectHours && planH > 0 && (staffHours[staff.id]||0) + (SHIFT_HOURS[req]||0) > planH + 5) continue;
           result[key] = req;
@@ -2262,7 +2265,8 @@ function selectDayShift(period, deptId, dayType) {
   }
   if (period === 'afternoon') {
     if (dayType === 'wed_cc') return 'CCのみ';
-    if (dayType === 'wed_cho') return 'CHO';
+    // CHO日は午後フラグなし → 割り当てしない
+    if (dayType === 'wed_cho') return null;
     if (deptId === 2) return 'リハ遅';
     return '遅番';
   }
