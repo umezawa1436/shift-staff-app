@@ -537,7 +537,6 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -2172,6 +2171,9 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
             candidates = deptStaff.filter(s => {
               const key = `${s.id}|${d}`;
               if (result[key]) return false; // 既に割り当て済み
+              // 所定時間0Hは候補から除外
+              const sPlanH = getStaffPlanHours(s);
+              if (sPlanH <= 0) return false;
               if (isNoCount(s) && pass < 2) return false; // 🌸は最後の手段
               // 夜勤不可チェック
               if (period === 'evening' && isNoNightAuto(s)) return false;
@@ -2184,8 +2186,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
               if (s.skill_level === 'beginner' && beginnerLimit !== null && curBeginner >= beginnerLimit) return false;
               // 所定時間チェック（pass0のみ厳格）
               if (pass === 0 && optRespectHours) {
-                const planH = getStaffPlanHours(s);
-                if (planH > 0 && (staffHours[s.id]||0) + (SHIFT_HOURS[shift]||0) > planH + 3) return false;
+                if ((staffHours[s.id]||0) + (SHIFT_HOURS[shift]||0) > sPlanH + 3) return false;
               }
               // 夜勤上限チェック
               if (period === 'evening' && optRespectNight) {
@@ -2253,6 +2254,14 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     // ===== STEP6: 所定時間に達していないスタッフに日勤を追加 =====
     deptStaff.forEach(staff => {
       const planH = getStaffPlanHours(staff);
+      // 所定時間0Hのスタッフは全日休み
+      if (planH <= 0) {
+        for (let d = 1; d <= daysInMonth; d++) {
+          const key = `${staff.id}|${d}`;
+          if (!result[key]) result[key] = '休み';
+        }
+        return;
+      }
       for (let d = 1; d <= daysInMonth; d++) {
         const key = `${staff.id}|${d}`;
         if (result[key]) continue;
@@ -2265,11 +2274,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
           continue;
         }
         // 所定時間に達したら休み
-        if (planH > 0 && (staffHours[staff.id]||0) >= planH) {
-          result[key] = '休み';
-          continue;
-        }
-        if (planH <= 0) {
+        if ((staffHours[staff.id]||0) >= planH) {
           result[key] = '休み';
           continue;
         }
