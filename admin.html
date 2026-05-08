@@ -2375,6 +2375,157 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       }
     });
 
+    // ===== STEP7: 超過削減（必要人数を超えたスタッフを休みに変換）=====
+    // GASロジックと同様：優先度の低いシフトから削除
+    const removeRank = (shift) => {
+      if (shift === '中抜け') return 100;
+      if (shift === '長日') return 90;
+      if (shift === '午後' || shift === '時短') return 80;
+      if (shift === '午前') return 60;
+      if (shift === '日勤') return 40;
+      if (shift === '日勤+') return 35;
+      if (shift === '遅L') return 25;
+      if (shift === '夜勤') return 10;
+      return 50;
+    };
+    let changed7 = true, guard7 = 0;
+    while (changed7 && guard7++ < 200) {
+      changed7 = false;
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dt7 = getDayType(d);
+        if (dt7 === 'thu_closed' || dt7 === 'holiday_closed') continue;
+        for (const period of ['morning','afternoon','evening']) {
+          const req = getRequired(period, d);
+          if (!req || req <= 0) continue;
+          // 現在の充足数（🌸除外）
+          const covered7 = deptStaff.filter(s => {
+            if (isNoCount(s)) return false;
+            const sh = result[`${s.id}|${d}`];
+            return sh && SHIFT_COVERS[sh]?.includes(period);
+          }).length;
+          if (covered7 <= req) continue;
+          // 超過あり → 削除候補を探す（優先度高い=削除しやすい）
+          const removable = deptStaff
+            .filter(s => {
+              if (isNoCount(s)) return false;
+              const key = `${s.id}|${d}`;
+              if (lockedCells[key]) return false;
+              const sh = result[key];
+              if (!sh || !SHIFT_COVERS[sh]?.includes(period)) return false;
+              // 削除しても他の時間帯の充足が維持されるか確認
+              const otherPeriods = ['morning','afternoon','evening'].filter(p => p !== period);
+              for (const op of otherPeriods) {
+                const req2 = getRequired(op, d);
+                if (!req2 || req2 <= 0) continue;
+                const cov2 = deptStaff.filter(s2 => {
+                  if (isNoCount(s2)) return false;
+                  const sh2 = s2.id === s.id ? '休み' : result[`${s2.id}|${d}`];
+                  return sh2 && SHIFT_COVERS[sh2]?.includes(op);
+                }).length;
+                if (cov2 < req2) return false; // 削除すると他が不足になる
+              }
+              return true;
+            })
+            .sort((a, b) => removeRank(result[`${b.id}|${d}`]) - removeRank(result[`${a.id}|${d}`]));
+
+          if (removable.length > 0) {
+            result[`${removable[0].id}|${d}`] = '休み';
+            changed7 = true;
+          }
+        }
+      }
+    }
+
+    // ===== STEP8: 所定時間補完（不足スタッフに追加勤務）=====
+    for (let pass8 = 0; pass8 < 3; pass8++) {
+      const needWork = deptStaff
+        .filter(s => !isNoCount(s) && getStaffPlanHours(s) > 0)
+        .map(s => ({ s, need: getStaffPlanHours(s) - (staffHours[s.id]||0) }))
+        .filter(x => x.need > 0.5)
+        .sort((a, b) => b.need - a.need);
+      if (!needWork.length) break;
+
+      let changed8 = false;
+      for (const { s, need } of needWork) {
+        for (let d = 1; d <= daysInMonth; d++) {
+          if ((staffHours[s.id]||0) >= getStaffPlanHours(s) - 0.1) break;
+          const key = `${s.id}|${d}`;
+          if (result[key] !== '休み') continue;
+          if (lockedCells[key]) continue;
+          const dt8 = getDayType(d);
+          if (dt8 === 'thu_closed' || dt8 === 'holiday_closed') continue;
+          const dow8 = new Date(genYear, genMonth-1, d).getDay();
+          if (dow8 === 0 || dow8 === 6) continue;
+          if (dt8 === 'wed_normal') continue;
+
+          // スコアリングで最適シフトを選択
+          const candidates8 = (enabledPatterns.length > 0 ? enabledPatterns : ['日勤'])
+            .filter(sh => {
+              // CC/CHO日の制限
+              if (dt8 === 'wed_cc' && !['CC','CCのみ'].includes(sh)) return false;
+              if (dt8 === 'wed_cho' && sh !== 'CHO') return false;
+              // 時短属性
+              if (s.emp_type === 'short' && !['時短','CC','CCのみ','CHO'].includes(sh)) return false;
+              if (s.emp_type !== 'short' && sh === '時短') return false;
+              // 夜勤不可
+              if (isNoNightAuto(s) && NIGHT_SHIFTS.includes(sh)) return false;
+              return true;
+            })
+            .map(sh => {
+              let score = 0;
+              const h = SHIFT_HOURS[sh] || 0;
+              score -= Math.abs(h - Math.max(0, need)) * 100;
+              if (sh === '日勤' || sh === '日勤+') score += 800;
+              else if (sh === '時短') score += 500;
+              else if (sh === '午前' || sh === '午後') score += 400;
+              else if (sh === '遅番' || sh === '遅L') score += 300;
+              else if (sh === '夜勤') score += 200;
+              else if (sh === '長日') score -= 200;
+              else if (sh === '中抜け') score -= 500;
+              score += Math.random() * 10;
+              return { sh, score };
+            })
+            .sort((a, b) => b.score - a.score);
+
+          if (candidates8.length > 0) {
+            const bestShift = candidates8[0].sh;
+            result[key] = bestShift;
+            staffHours[s.id] = (staffHours[s.id]||0) + (SHIFT_HOURS[bestShift]||0);
+            changed8 = true;
+          }
+        }
+      }
+      if (!changed8) break;
+    }
+
+    // ===== STEP9: 🌸スタッフの所定時間補完 =====
+    deptStaff.filter(s => isNoCount(s)).forEach(s => {
+      const planH = getStaffPlanHours(s);
+      if (planH <= 0) return;
+      let guard9 = 0;
+      while ((staffHours[s.id]||0) < planH - 2 && guard9++ < daysInMonth + 5) {
+        let placed = false;
+        for (let d = 1; d <= daysInMonth; d++) {
+          const key = `${s.id}|${d}`;
+          if (result[key] !== '休み') continue;
+          if (lockedCells[key]) continue;
+          const dt9 = getDayType(d);
+          if (dt9 === 'thu_closed' || dt9 === 'holiday_closed') continue;
+          const dow9 = new Date(genYear, genMonth-1, d).getDay();
+          if (dow9 === 0 || dow9 === 6) continue;
+          if (dt9 === 'wed_normal') continue;
+
+          const need9 = planH - (staffHours[s.id]||0);
+          const sh9 = s.emp_type === 'short' ? '時短' : (dt9 === 'wed_cc' ? 'CC' : dt9 === 'wed_cho' ? 'CHO' : '日勤');
+          result[key] = sh9;
+          staffHours[s.id] = (staffHours[s.id]||0) + (SHIFT_HOURS[sh9]||0);
+          placed = true;
+          break;
+        }
+        if (!placed) break;
+      }
+    });
+
     // 時短スタッフの強制修正
     deptStaff.forEach(staff => {
       if (staff.emp_type !== 'short') return;
