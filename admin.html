@@ -537,7 +537,6 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -912,8 +911,8 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
   function getShiftDayType(d) {
     const dow = new Date(year, month-1, d).getDay();
     // 休診祝日
-    const _closedH = shiftClosedHolidays || window._shiftClosedHolidays || new Set();
-    const _openThu = shiftOpenThursdays || window._shiftOpenThursdays || new Set();
+    const _closedH = (typeof shiftClosedHolidays !== 'undefined' ? shiftClosedHolidays : null) || window._shiftClosedHolidays || new Set();
+    const _openThu = (typeof shiftOpenThursdays !== 'undefined' ? shiftOpenThursdays : null) || window._shiftOpenThursdays || new Set();
     if (holidays.has(d) && _closedH.has(d)) return 'holiday_closed';
     if (holidays.has(d)) return 'holiday_jp';
     if (dow === 0 || dow === 6) return 'weekend';
