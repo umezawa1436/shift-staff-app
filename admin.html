@@ -211,28 +211,15 @@
     <div class="login-title">管理者ログイン</div>
     <div class="login-sub">やちよ総合診療クリニック シフト管理</div>
     <div class="form-group">
-      <label class="form-label">権限</label>
-      <select class="form-select" id="roleSelect">
-        <option value="">選択してください</option>
-        <option value="master">マスター</option>
-        <option value="leader">リーダー</option>
-      </select>
-    </div>
-    <div class="form-group" id="deptGroup" style="display:none">
-      <label class="form-label">部門</label>
-      <select class="form-select" id="adminDeptSelect">
-        <option value="0">医療事務</option>
-        <option value="1">看護</option>
-        <option value="2">リハビリ</option>
-        <option value="3">放射線</option>
-      </select>
+      <label class="form-label">メールアドレス</label>
+      <input type="email" class="form-input" id="adminEmail" placeholder="example@clinic.jp" autocomplete="email">
     </div>
     <div class="form-group">
       <label class="form-label">パスワード</label>
-      <input type="password" class="form-input" id="adminPassword" placeholder="••••••••">
+      <input type="password" class="form-input" id="adminPassword" placeholder="••••••••" autocomplete="current-password">
     </div>
     <button class="btn-login" id="adminLoginBtn">ログイン</button>
-    <div class="error-box" id="adminError">パスワードが正しくありません</div>
+    <div class="error-box" id="adminError">メールアドレスまたはパスワードが正しくありません</div>
   </div>
 </div>
 
@@ -269,6 +256,10 @@
         <div class="nav-item" id="staffNavItem" data-page="staff">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           <span>スタッフ管理</span>
+        </div>
+        <div class="nav-item" id="accountNavItem" data-page="account">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/><path d="M16 11l2 2 4-4"/></svg>
+          <span>アカウント管理</span>
         </div>
       </div>
       <div class="sidebar-footer">
@@ -427,6 +418,38 @@
           </div>
         </div>
 
+        <!-- ACCOUNT -->
+        <div class="page" id="page-account">
+          <div class="card">
+            <div class="card-title">パスワード変更</div>
+            <div style="max-width:400px">
+              <div class="form-group" style="margin-bottom:16px">
+                <label class="form-label">現在のパスワード</label>
+                <input type="password" class="form-input" id="currentPw" placeholder="••••••••">
+              </div>
+              <div class="form-group" style="margin-bottom:16px">
+                <label class="form-label">新しいパスワード</label>
+                <input type="password" class="form-input" id="newPw" placeholder="8文字以上">
+              </div>
+              <div class="form-group" style="margin-bottom:20px">
+                <label class="form-label">新しいパスワード（確認）</label>
+                <input type="password" class="form-input" id="newPwConfirm" placeholder="もう一度入力">
+              </div>
+              <button class="btn btn-primary" id="changePwBtn">パスワードを変更する</button>
+            </div>
+          </div>
+          <div class="card" id="accountListCard" style="display:none">
+            <div class="card-title">アカウント一覧（マスターのみ）</div>
+            <div class="action-row">
+              <button class="btn btn-primary" id="addAccountBtn">＋ アカウント追加</button>
+            </div>
+            <table class="data-table" id="accountTable">
+              <thead><tr><th>名前</th><th>メール</th><th>権限</th><th>部門</th><th>操作</th></tr></thead>
+              <tbody id="accountBody"></tbody>
+            </table>
+          </div>
+        </div>
+
         <!-- STAFF -->
         <div class="page" id="page-staff">
           <div class="action-row">
@@ -483,7 +506,6 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -563,31 +585,68 @@ function showToast(msg, type='') {
 function closeModal(id) { document.getElementById(id).classList.remove('show'); }
 
 // LOGIN
-document.getElementById('roleSelect').addEventListener('change', function() {
-  document.getElementById('deptGroup').style.display = this.value === 'leader' ? 'block' : 'none';
-});
+// SHA-256ハッシュ関数
+async function sha256(message) {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
-document.getElementById('adminLoginBtn').addEventListener('click', () => {
-  const role = document.getElementById('roleSelect').value;
-  const deptId = document.getElementById('adminDeptSelect').value;
+document.getElementById('adminLoginBtn').addEventListener('click', async () => {
+  const email = document.getElementById('adminEmail').value.trim().toLowerCase();
   const pw = document.getElementById('adminPassword').value;
   const errEl = document.getElementById('adminError');
 
-  if (!role || !pw) { errEl.style.display='block'; errEl.textContent='すべて入力してください'; return; }
-  if (role === 'leader' && !deptId) { errEl.style.display='block'; errEl.textContent='部門を選択してください'; return; }
+  if (!email || !pw) {
+    errEl.style.display='block';
+    errEl.textContent='すべて入力してください';
+    return;
+  }
 
-  const expected = role === 'master' ? MASTER_PW : LEADER_PW;
-  if (pw !== expected) { errEl.style.display='block'; errEl.textContent='パスワードが正しくありません'; return; }
+  showLoading();
+  try {
+    const hash = await sha256(pw);
+    const result = await sb(`accounts?email=eq.${encodeURIComponent(email)}&password_hash=eq.${hash}&select=*`);
 
-  adminUser = { role, deptId: role === 'master' ? null : parseInt(deptId), deptName: role === 'master' ? '全部門' : DEPT_NAMES[parseInt(deptId)] };
-  currentDept = role === 'master' ? 0 : parseInt(deptId);
+    if (result.length === 0) {
+      errEl.style.display='block';
+      errEl.textContent='メールアドレスまたはパスワードが正しくありません';
+      hideLoading();
+      return;
+    }
 
-  document.getElementById('staffNavItem').style.display = role === 'master' ? 'flex' : 'none';
-  document.getElementById('sidebarUserName').textContent = role === 'master' ? '梅澤 慶太郎' : `${adminUser.deptName} リーダー`;
-  document.getElementById('sidebarUserRole').textContent = role === 'master' ? 'マスター管理者' : 'リーダー';
-  document.getElementById('loginScreen').style.display = 'none';
-  document.getElementById('appScreen').style.display = 'block';
-  initApp();
+    const account = result[0];
+    adminUser = {
+      id: account.id,
+      role: account.role,
+      email: account.email,
+      name: account.name,
+      deptId: account.dept_id,
+      deptName: account.dept_id !== null ? DEPT_NAMES[account.dept_id] : '全部門',
+    };
+    currentDept = account.dept_id ?? 0;
+
+    errEl.style.display='none';
+    document.getElementById('staffNavItem').style.display = account.role === 'master' ? 'flex' : 'none';
+    document.getElementById('sidebarUserName').textContent = account.name;
+    document.getElementById('sidebarUserRole').textContent =
+      account.role === 'master' ? 'マスター管理者' :
+      account.role === 'leader' ? `${adminUser.deptName} リーダー` : 'スタッフ';
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('appScreen').style.display = 'block';
+    initApp();
+  } catch(e) {
+    console.error(e);
+    errEl.style.display='block';
+    errEl.textContent='接続エラーが発生しました';
+  }
+  hideLoading();
+});
+
+// Enterキーでログイン
+document.getElementById('adminPassword').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('adminLoginBtn').click();
 });
 
 // INIT
@@ -652,7 +711,7 @@ document.querySelectorAll('.nav-item[data-page]').forEach(item => {
     item.classList.add('active');
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById(`page-${page}`).classList.add('active');
-    const titles = {dashboard:'ダッシュボード',requests:'希望一覧',shift:'シフト表',generate:'自動生成',settings:'設定',staff:'スタッフ管理'};
+    const titles = {dashboard:'ダッシュボード',requests:'希望一覧',shift:'シフト表',generate:'自動生成',settings:'設定',staff:'スタッフ管理',account:'アカウント管理'};
     document.getElementById('topbarTitle').textContent = titles[page] || page;
     refreshCurrentPage();
   });
@@ -665,6 +724,7 @@ function refreshCurrentPage() {
   else if (active === 'generate') loadGenPage();
   else if (active === 'settings') loadSettings();
   else if (active === 'staff') loadStaffTable();
+  else if (active === 'account') loadAccountPage();
 }
 
 // ===== DASHBOARD =====
@@ -2167,6 +2227,189 @@ document.getElementById('discardGenerateBtn').addEventListener('click', () => {
 
 // ===== SETTINGS =====
 
+
+// ===== アカウント管理 =====
+async function loadAccountPage() {
+  // パスワード変更はすべてのロールで可能
+  document.getElementById('changePwBtn').onclick = changePassword;
+
+  // マスターのみアカウント一覧を表示
+  if (adminUser.role === 'master') {
+    document.getElementById('accountListCard').style.display = 'block';
+    await loadAccountList();
+  }
+}
+
+async function changePassword() {
+  const currentPw = document.getElementById('currentPw').value;
+  const newPw = document.getElementById('newPw').value;
+  const newPwConfirm = document.getElementById('newPwConfirm').value;
+
+  if (!currentPw || !newPw || !newPwConfirm) {
+    showToast('すべて入力してください', 'error'); return;
+  }
+  if (newPw.length < 8) {
+    showToast('新しいパスワードは8文字以上にしてください', 'error'); return;
+  }
+  if (newPw !== newPwConfirm) {
+    showToast('新しいパスワードが一致しません', 'error'); return;
+  }
+
+  showLoading();
+  try {
+    const currentHash = await sha256(currentPw);
+    // 現在のパスワードを確認
+    const check = await sb(`accounts?id=eq.${adminUser.id}&password_hash=eq.${currentHash}&select=id`);
+    if (check.length === 0) {
+      showToast('現在のパスワードが正しくありません', 'error');
+      hideLoading(); return;
+    }
+
+    const newHash = await sha256(newPw);
+    await sb(`accounts?id=eq.${adminUser.id}`, {
+      method: 'PATCH',
+      headers: { 'Prefer': 'return=representation' },
+      body: JSON.stringify({ password_hash: newHash })
+    });
+
+    document.getElementById('currentPw').value = '';
+    document.getElementById('newPw').value = '';
+    document.getElementById('newPwConfirm').value = '';
+    showToast('パスワードを変更しました ✓', 'success');
+  } catch(e) { console.error(e); showToast('変更エラー', 'error'); }
+  hideLoading();
+}
+
+async function loadAccountList() {
+  showLoading();
+  try {
+    const accounts = await sb(`accounts?order=role,name&select=id,email,name,role,dept_id`);
+    const ROLE_LABELS = { master:'マスター', leader:'リーダー', staff:'スタッフ' };
+    document.getElementById('accountBody').innerHTML = accounts.map(a => `
+      <tr>
+        <td>${a.name}</td>
+        <td>${a.email}</td>
+        <td><span class="badge ${a.role==='master'?'badge-master':a.role==='leader'?'badge-leader':'badge-part'}">${ROLE_LABELS[a.role]||a.role}</span></td>
+        <td>${a.dept_id !== null ? DEPT_NAMES[a.dept_id] : '全部門'}</td>
+        <td style="display:flex;gap:6px">
+          <button class="btn btn-outline btn-sm" onclick="showEditAccountModal('${a.id}','${a.name}','${a.email}','${a.role}',${a.dept_id})">編集</button>
+          ${a.id !== adminUser.id ? `<button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="deleteAccount('${a.id}','${a.name}')">削除</button>` : ''}
+        </td>
+      </tr>
+    `).join('');
+  } catch(e) { console.error(e); }
+  hideLoading();
+}
+
+function showAddAccountModal() {
+  document.getElementById('addAccountModalEl')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'addAccountModalEl';
+  modal.className = 'modal-overlay show';
+  modal.innerHTML = `
+    <div class="modal">
+      <div class="modal-title">アカウント追加</div>
+      <div class="form-group"><label class="form-label">名前</label><input type="text" class="form-input" id="newAccName" placeholder="山田 太郎"></div>
+      <div class="form-group"><label class="form-label">メールアドレス</label><input type="email" class="form-input" id="newAccEmail" placeholder="example@clinic.jp"></div>
+      <div class="form-group"><label class="form-label">初期パスワード</label><input type="password" class="form-input" id="newAccPw" placeholder="8文字以上"></div>
+      <div class="form-group"><label class="form-label">権限</label>
+        <select class="form-select" id="newAccRole" onchange="document.getElementById('newAccDeptGroup').style.display=this.value==='leader'||this.value==='staff'?'block':'none'">
+          <option value="leader">リーダー</option>
+          <option value="staff">スタッフ</option>
+          <option value="master">マスター</option>
+        </select>
+      </div>
+      <div class="form-group" id="newAccDeptGroup">
+        <label class="form-label">部門</label>
+        <select class="form-select" id="newAccDept">
+          <option value="0">医療事務</option><option value="1">看護</option>
+          <option value="2">リハビリ</option><option value="3">放射線</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="document.getElementById('addAccountModalEl').remove()">キャンセル</button>
+        <button class="btn btn-primary" onclick="addAccount()">追加する</button>
+      </div>
+    </div>`;
+  modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
+async function addAccount() {
+  const name = document.getElementById('newAccName').value.trim();
+  const email = document.getElementById('newAccEmail').value.trim().toLowerCase();
+  const pw = document.getElementById('newAccPw').value;
+  const role = document.getElementById('newAccRole').value;
+  const deptId = ['leader','staff'].includes(role) ? parseInt(document.getElementById('newAccDept').value) : null;
+
+  if (!name || !email || !pw) { showToast('すべて入力してください', 'error'); return; }
+  if (pw.length < 8) { showToast('パスワードは8文字以上にしてください', 'error'); return; }
+
+  showLoading();
+  try {
+    const hash = await sha256(pw);
+    await sb('accounts', { method:'POST', body:JSON.stringify([{ name, email, password_hash:hash, role, dept_id:deptId }]) });
+    document.getElementById('addAccountModalEl')?.remove();
+    await loadAccountList();
+    showToast(`${name}のアカウントを追加しました ✓`, 'success');
+  } catch(e) {
+    console.error(e);
+    showToast(e.message.includes('unique') ? 'このメールアドレスは既に登録されています' : '追加エラー', 'error');
+  }
+  hideLoading();
+}
+
+function showEditAccountModal(id, name, email, role, deptId) {
+  document.getElementById('editAccountModalEl')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'editAccountModalEl';
+  modal.className = 'modal-overlay show';
+  modal.innerHTML = `
+    <div class="modal">
+      <div class="modal-title">${name}のアカウント編集</div>
+      <div class="form-group"><label class="form-label">名前</label><input type="text" class="form-input" id="editAccName" value="${name}"></div>
+      <div class="form-group"><label class="form-label">メールアドレス</label><input type="email" class="form-input" id="editAccEmail" value="${email}"></div>
+      <div class="form-group"><label class="form-label">新しいパスワード（変更する場合のみ）</label><input type="password" class="form-input" id="editAccPw" placeholder="空欄で変更なし"></div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="document.getElementById('editAccountModalEl').remove()">キャンセル</button>
+        <button class="btn btn-primary" onclick="updateAccount('${id}')">保存する</button>
+      </div>
+    </div>`;
+  modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
+async function updateAccount(id) {
+  const name = document.getElementById('editAccName').value.trim();
+  const email = document.getElementById('editAccEmail').value.trim().toLowerCase();
+  const pw = document.getElementById('editAccPw').value;
+
+  if (!name || !email) { showToast('名前とメールは必須です', 'error'); return; }
+  if (pw && pw.length < 8) { showToast('パスワードは8文字以上にしてください', 'error'); return; }
+
+  showLoading();
+  try {
+    const update = { name, email };
+    if (pw) update.password_hash = await sha256(pw);
+    await sb(`accounts?id=eq.${id}`, { method:'PATCH', headers:{'Prefer':'return=representation'}, body:JSON.stringify(update) });
+    document.getElementById('editAccountModalEl')?.remove();
+    await loadAccountList();
+    showToast('アカウントを更新しました ✓', 'success');
+  } catch(e) { showToast('更新エラー', 'error'); }
+  hideLoading();
+}
+
+async function deleteAccount(id, name) {
+  if (!confirm(`${name}のアカウントを削除しますか？`)) return;
+  showLoading();
+  try {
+    await sb(`accounts?id=eq.${id}`, { method:'DELETE' });
+    await loadAccountList();
+    showToast(`${name}のアカウントを削除しました`, 'success');
+  } catch(e) { showToast('削除エラー', 'error'); }
+  hideLoading();
+}
+
 // ===== 祝日・特殊日管理 =====
 let specialYear = new Date().getFullYear();
 let specialMonth = new Date().getMonth() + 1;
@@ -2860,6 +3103,8 @@ async function applyFixedShiftsToGrid(staffId, fixedShifts) {
   hideLoading();
 }
 
+document.getElementById('addAccountBtn')?.addEventListener('click', () => showAddAccountModal());
+
 document.getElementById('addStaffBtn').addEventListener('click', () => {
   document.getElementById('addStaffModal').classList.add('show');
 });
@@ -2908,6 +3153,7 @@ document.getElementById('adminLogoutBtn').addEventListener('click', () => {
   adminUser = null;
   document.getElementById('appScreen').style.display = 'none';
   document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('adminEmail').value = '';
   document.getElementById('adminPassword').value = '';
 });
 
