@@ -483,7 +483,6 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -1578,7 +1577,9 @@ document.addEventListener('keydown', (e) => {
   if ((e.key==='Delete'||e.key==='Backspace') && selectedCells.size>0) {
     if (e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA') return;
     e.preventDefault();
+    const updatedStaffIds = new Set([...selectedCells].map(k => parseKey(k)[0]));
     applyShiftToSelected(null);
+    updatedStaffIds.forEach(sid => refreshHoursCell(sid));
     showToast(`${selectedCells.size}セルを削除しました`);
     return;
   }
@@ -2622,6 +2623,10 @@ async function loadStaffTable() {
                 style="padding:6px 14px;background:var(--primary);color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">
                 保存
               </button>
+              <button onclick="showClearFixedShiftsModal('${staff.id}','${staff.name}')"
+                style="padding:6px 14px;background:white;color:var(--danger);border:1.5px solid var(--danger);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">
+                一括解除
+              </button>
             </div>
           </div>
 
@@ -2699,6 +2704,97 @@ async function saveAllFixedShifts(staffId) {
       showFixedShiftApplyModal(staffId, staffName, fixedShifts);
     }
   } catch(e) { console.error(e); showToast('保存エラー','error'); }
+  hideLoading();
+}
+
+
+function showClearFixedShiftsModal(staffId, staffName) {
+  document.getElementById('clearFixedModal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'clearFixedModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px)';
+  
+  const months = Array.from({length:12},(_,i)=>i+1);
+  
+  modal.innerHTML = `
+    <div style="background:white;border-radius:20px;padding:28px;width:100%;max-width:440px;box-shadow:0 20px 60px rgba(0,0,0,0.2)">
+      <div style="font-size:18px;font-weight:700;margin-bottom:6px">${staffName}の固定シフトを一括解除</div>
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:20px">指定した月の曜日固定シフトを削除します（ロック済みは除く）</div>
+      <div style="display:flex;gap:12px;margin-bottom:20px">
+        <div style="flex:1">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">対象年</div>
+          <select id="clearFixedYear" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
+            <option value="${currentYear}">${currentYear}年</option>
+            <option value="${currentYear+1}">${currentYear+1}年</option>
+          </select>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">対象月</div>
+          <select id="clearFixedMonth" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
+            ${months.map(m => `<option value="${m}" ${m===currentMonth?'selected':''}>${m}月</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div style="background:#fef2f2;border-radius:10px;padding:12px;margin-bottom:20px;font-size:13px;color:var(--danger)">
+        ⚠️ 解除すると該当月の固定シフトがすべて削除されます
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button onclick="document.getElementById('clearFixedModal').remove()"
+          style="padding:10px 18px;border:1.5px solid var(--border);border-radius:10px;background:white;cursor:pointer;font-family:inherit">キャンセル</button>
+        <button onclick="clearFixedShifts('${staffId}','${staffName}')"
+          style="padding:10px 18px;background:var(--danger);color:white;border:none;border-radius:10px;font-weight:600;cursor:pointer;font-family:inherit">解除する</button>
+      </div>
+    </div>
+  `;
+  modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
+async function clearFixedShifts(staffId, staffName) {
+  const year = parseInt(document.getElementById('clearFixedYear').value);
+  const month = parseInt(document.getElementById('clearFixedMonth').value);
+  document.getElementById('clearFixedModal')?.remove();
+
+  showLoading();
+  try {
+    const staff = allStaff.find(s => s.id === staffId);
+    const fixedShifts = staff?.fixed_shifts || {};
+    const daysInMonth = new Date(year, month, 0).getDate();
+
+    // 固定シフトに該当する日を特定
+    const targetDays = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dow = new Date(year, month-1, d).getDay();
+      if (fixedShifts[dow]) {
+        const key = `${staffId}|${d}`;
+        if (!lockedCells[key]) targetDays.push(d);
+      }
+    }
+
+    if (targetDays.length === 0) {
+      showToast('解除対象のシフトがありません');
+      hideLoading();
+      return;
+    }
+
+    // DBから削除
+    for (const d of targetDays) {
+      await sb(`shifts?staff_id=eq.${staffId}&year=eq.${year}&month=eq.${month}&day=eq.${d}&is_locked=eq.false`, {method:'DELETE'});
+    }
+
+    // ローカルのshiftDataからも削除
+    if (year === shiftYear && month === shiftMonth) {
+      targetDays.forEach(d => {
+        const key = `${staffId}|${d}`;
+        delete shiftData[key];
+        updateCellDisplay(key);
+      });
+      refreshSummaryRows();
+      refreshHoursCell(staffId);
+    }
+
+    showToast(`${month}月の固定シフト${targetDays.length}日分を解除しました ✓`, 'success');
+  } catch(e) { console.error(e); showToast('解除エラー','error'); }
   hideLoading();
 }
 
