@@ -2763,14 +2763,20 @@ async function clearFixedShifts(staffId, staffName) {
     const daysInMonth = new Date(year, month, 0).getDate();
 
     // 固定シフトに該当する日を特定
+    // fixedShiftsのキーは文字列または数値の可能性があるため両方チェック
     const targetDays = [];
+    console.log('fixedShifts:', fixedShifts);
     for (let d = 1; d <= daysInMonth; d++) {
       const dow = new Date(year, month-1, d).getDay();
-      if (fixedShifts[dow]) {
+      // キーが文字列・数値どちらでも対応
+      const fixedShift = fixedShifts[dow] || fixedShifts[String(dow)];
+      console.log(`d=${d} dow=${dow} fixedShift=${fixedShift}`);
+      if (fixedShift) {
         const key = `${staffId}|${d}`;
         if (!lockedCells[key]) targetDays.push(d);
       }
     }
+    console.log('targetDays:', targetDays);
 
     if (targetDays.length === 0) {
       showToast('解除対象のシフトがありません');
