@@ -843,6 +843,18 @@ function closeSheet() {
 // ===== LOGIN =====
 // deptSelect removed
 
+// 部門選択で名前リストを更新
+document.getElementById('deptSelect').addEventListener('change', function() {
+  const deptId = parseInt(this.value);
+  const staffSel = document.getElementById('staffSelect');
+  staffSel.innerHTML = '<option value="">選択してください</option>';
+  if (STAFF_DATA[deptId]) {
+    STAFF_DATA[deptId].forEach(s => {
+      staffSel.innerHTML += `<option value="${s.code}">${s.name}</option>`;
+    });
+  }
+});
+
 document.getElementById('loginBtn').addEventListener('click', async () => {
   const deptId = document.getElementById('deptSelect').value;
   const staffCode = document.getElementById('staffSelect').value;
