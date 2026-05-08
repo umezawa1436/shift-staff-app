@@ -2326,33 +2326,39 @@ function showGenerateSummary(deptStaff, result, staffHours, staffNightCount, day
   const summary = document.createElement('div');
   summary.id = 'generateSummary';
   summary.style.cssText = 'display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap';
+  summary.style.cssText = 'margin-bottom:16px';
+  const fillColor = fillRate>=100 ? '#065f46' : '#92400e';
+  const fillBg = fillRate>=100 ? '#d1fae5' : '#fef3c7';
+  const hoursColor = hoursOk===deptStaff.length ? '#065f46' : '#92400e';
   summary.innerHTML = `
-    <div style="background:${fillRate>=100?'#d1fae5':'#fef3c7'};border-radius:10px;padding:12px 16px;flex:1;min-width:160px">
-      <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">必要人数充足率</div>
-      <div style="font-size:24px;font-weight:700;color:${fillRate>=100?'#065f46':'#92400e'}">${fillRate}%</div>
-      <div style="font-size:11px;color:var(--text-muted)">${totalCovered}/${totalRequired} 人日</div>
-    </div>
-    <div style="background:${hoursOk===deptStaff.length?'#d1fae5':'#fef3c7'};border-radius:10px;padding:12px 16px;flex:1;min-width:160px">
-      <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">所定時間達成</div>
-      <div style="font-size:24px;font-weight:700;color:${hoursOk===deptStaff.length?'#065f46':'#92400e'}">${hoursOk}/${deptStaff.length}名</div>
-      <div style="font-size:11px;color:var(--text-muted)">95%以上達成</div>
-    </div>
-    <div style="background:#eff6ff;border-radius:10px;padding:12px 16px;flex:2;min-width:200px">
-      <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:600">スタッフ別労働時間</div>
-      ${deptStaff.map(s => {
-        const plan = getStaffPlanHours(s);
-        const actual = Math.round((staffHours[s.id]||0) * 10) / 10;
-        const rate = plan > 0 ? Math.round(actual/plan*100) : 100;
-        const color = rate >= 95 ? '#065f46' : rate >= 80 ? '#92400e' : '#be123c';
-        const workDays = deptStaff[0] ? Math.round(actual / 8.5) : 0;
-        return `<div style="font-size:11px;display:flex;justify-content:space-between;margin-bottom:3px;padding:2px 0;border-bottom:1px solid #e2e8f0">
-          <span>${s.name}</span>
-          <span style="color:${color};font-weight:600">${actual}H / ${plan}H（目安${Math.round(actual/8.5)}日勤務）</span>
-        </div>`;
-      }).join('')}
+    <div style="background:${fillBg};border-radius:12px;padding:14px 18px;display:flex;gap:24px;align-items:center;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="font-size:28px;font-weight:800;color:${fillColor}">${fillRate}%</div>
+        <div>
+          <div style="font-size:12px;font-weight:600;color:${fillColor}">必要人数充足率</div>
+          <div style="font-size:11px;color:var(--text-muted)">${totalCovered}/${totalRequired} 人日</div>
+        </div>
+      </div>
+      <div style="width:1px;height:40px;background:var(--border)"></div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="font-size:28px;font-weight:800;color:${hoursColor}">${hoursOk}/${deptStaff.length}</div>
+        <div>
+          <div style="font-size:12px;font-weight:600;color:${hoursColor}">所定時間達成</div>
+          <div style="font-size:11px;color:var(--text-muted)">95%以上</div>
+        </div>
+      </div>
+      <div style="width:1px;height:40px;background:var(--border)"></div>
+      <div style="font-size:12px;color:var(--text-muted);line-height:1.8">
+        ${deptStaff.map(s => {
+          const plan = getStaffPlanHours(s);
+          const actual = Math.round((staffHours[s.id]||0)*10)/10;
+          const rate = plan>0 ? Math.round(actual/plan*100) : 100;
+          const c = rate>=95?'#065f46':rate>=80?'#92400e':'#be123c';
+          return `<span style="margin-right:12px"><b style="color:${c}">${s.name}</b> ${actual}H`;
+        }).join('')}
+      </div>
     </div>
   `;
-  const titleEl = card.querySelector('.card-title');
   titleEl.insertAdjacentElement('afterend', summary);
 }
 
