@@ -361,9 +361,41 @@
     .shift-希望休 .day-shift { color: #9a3412; }
 
     /* ===== BOTTOM SUBMIT BAR ===== */
-    .submit-bar {
+    .bottom-nav {
       position: sticky;
       bottom: 0;
+      background: white;
+      border-top: 1px solid var(--border);
+      display: flex;
+      z-index: 100;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .nav-tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 10px 8px;
+      border: none;
+      background: white;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.15s;
+      border-top: 2px solid transparent;
+    }
+
+    .nav-tab.active {
+      color: var(--primary);
+      border-top-color: var(--primary);
+      font-weight: 600;
+    }
+
+    .submit-bar {
       background: white;
       padding: 16px 20px;
       padding-bottom: calc(16px + env(safe-area-inset-bottom));
@@ -670,7 +702,20 @@
     <div class="calendar-grid" id="calendarGrid"></div>
   </div>
 
-  <div class="submit-bar">
+  <!-- ボトムナビ -->
+  <div class="bottom-nav">
+    <button class="nav-tab active" id="tabRequest" onclick="switchTab('request')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>
+      <span>希望提出</span>
+    </button>
+    <button class="nav-tab" id="tabConfirmed" onclick="switchTab('confirmed')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 14h8M8 18h5"/></svg>
+      <span>確定シフト</span>
+    </button>
+  </div>
+
+  <!-- 希望提出バー -->
+  <div class="submit-bar" id="submitBar">
     <div class="submit-info">
       <div class="submit-count">入力済み <span id="inputCount">0</span> 日</div>
     </div>
@@ -1167,6 +1212,161 @@ document.getElementById('staffChangePwBtn').addEventListener('click', async () =
     errEl.style.display = 'block'; errEl.textContent = 'エラーが発生しました';
   }
   hideLoading();
+});
+
+
+// ===== タブ切替 =====
+let confYear = new Date().getFullYear();
+let confMonth = new Date().getMonth() + 1;
+let currentTab = 'request';
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('tabRequest').classList.toggle('active', tab === 'request');
+  document.getElementById('tabConfirmed').classList.toggle('active', tab === 'confirmed');
+  document.getElementById('calendarWrap').style.display = tab === 'request' ? 'block' : 'none';
+  document.getElementById('submitBar').style.display = tab === 'request' ? 'block' : 'none';
+  document.getElementById('confirmedWrap').style.display = tab === 'confirmed' ? 'block' : 'none';
+
+  if (tab === 'confirmed') {
+    confYear = currentYear;
+    confMonth = currentMonth;
+    updateConfMonthTitle();
+    loadConfirmedShifts();
+  }
+}
+
+function updateConfMonthTitle() {
+  document.getElementById('confMonthTitle').textContent = `${confYear}年${confMonth}月`;
+}
+
+async function loadConfirmedShifts() {
+  if (!currentUser?.id) return;
+  const grid = document.getElementById('confirmedGrid');
+  grid.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:20px">読み込み中...</div>';
+
+  try {
+    const shifts = await supabaseRequest(
+      `shifts?staff_id=eq.${currentUser.id}&year=eq.${confYear}&month=eq.${confMonth}&select=day,shift_type_id&order=day`
+    );
+
+    const daysInMonth = new Date(confYear, confMonth, 0).getDate();
+    const DOW = ['日','月','火','水','木','金','土'];
+    const shiftMap = {};
+    shifts.forEach(s => { shiftMap[s.day] = s.shift_type_id; });
+
+    // 月間サマリー
+    let totalH = 0;
+    let workDays = 0;
+    let offDays = 0;
+    shifts.forEach(s => {
+      const h = SHIFTS.flatMap(c => c.items).find(i => i.id === s.shift_type_id);
+      // 時間はSHIFT_HOURSから
+    });
+
+    // カレンダー形式で表示
+    const SHIFT_COLORS_MAP = {
+      '日勤':'#dbeafe','日勤+':'#bfdbfe','午前':'#dcfce7','午後':'#fef9c3',
+      '遅番':'#ffedd5','遅L':'#fef3c7','リハ遅':'#f3e8ff','夜勤':'#ede9fe',
+      '長日':'#ffe4e6','中抜け':'#ccfbf1','時短':'#dcfce7','CC':'#dbeafe',
+      'CHO':'#e0f2fe','CCのみ':'#e0f9ff',
+      '休み':'#f3f4f6','有休':'#fdf4ff','半有休':'#fce7f3','希望休':'#fff7ed'
+    };
+    const SHIFT_TEXT_COLORS = {
+      '日勤':'#1d4ed8','日勤+':'#1e40af','午前':'#15803d','午後':'#a16207',
+      '遅番':'#c2410c','遅L':'#92400e','リハ遅':'#7e22ce','夜勤':'#5b21b6',
+      '長日':'#be123c','中抜け':'#0f766e','時短':'#166534','CC':'#1d4ed8',
+      'CHO':'#075985','CCのみ':'#0e7490',
+      '休み':'#6b7280','有休':'#86198f','半有休':'#9d174d','希望休':'#9a3412'
+    };
+
+    if (shifts.length === 0) {
+      grid.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted)">
+        <div style="font-size:40px;margin-bottom:12px">📋</div>
+        <div style="font-size:15px;font-weight:600">確定シフトがまだありません</div>
+        <div style="font-size:13px;margin-top:6px">管理者がシフトを確定すると表示されます</div>
+      </div>`;
+      return;
+    }
+
+    // カレンダーグリッド
+    const firstDow = new Date(confYear, confMonth-1, 1).getDay();
+    let html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:16px">';
+
+    // 曜日ヘッダー
+    ['日','月','火','水','木','金','土'].forEach((d,i) => {
+      html += `<div style="text-align:center;font-size:11px;font-weight:600;color:${i===0?'#ef4444':i===6?'#3b82f6':'var(--text-muted)'};padding:4px 0">${d}</div>`;
+    });
+
+    // 空白
+    for (let i = 0; i < firstDow; i++) {
+      html += '<div></div>';
+    }
+
+    // 日付
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dow = new Date(confYear, confMonth-1, d).getDay();
+      const shift = shiftMap[d] || '';
+      const bg = SHIFT_COLORS_MAP[shift] || 'white';
+      const color = SHIFT_TEXT_COLORS[shift] || 'var(--text-muted)';
+      const dowColor = dow===0?'#ef4444':dow===6?'#3b82f6':'var(--text)';
+
+      html += `<div style="border-radius:10px;padding:6px 4px;text-align:center;background:${bg};border:1.5px solid ${shift?color+'40':'var(--border)'}">
+        <div style="font-size:12px;font-weight:600;color:${dowColor}">${d}</div>
+        <div style="font-size:10px;font-weight:700;color:${color};margin-top:2px">${shift||'―'}</div>
+      </div>`;
+    }
+    html += '</div>';
+
+    // 勤務サマリー
+    const SHIFT_HOURS_MAP = {
+      '日勤':8.5,'日勤+':9,'午前':5,'午後':5,'遅番':7.5,'遅L':8.5,
+      'リハ遅':8,'夜勤':4,'長日':11,'中抜け':8,'時短':6,'CC':8,'CHO':7,
+      'CCのみ':3,'休み':0,'有休':0,'半有休':0,'希望休':0
+    };
+
+    let totalHours = 0;
+    let workCount = 0;
+    let restCount = 0;
+    shifts.forEach(s => {
+      const h = SHIFT_HOURS_MAP[s.shift_type_id] || 0;
+      totalHours += h;
+      if (['休み','有休','半有休','希望休'].includes(s.shift_type_id)) restCount++;
+      else if (h > 0) workCount++;
+    });
+
+    html += `<div style="background:var(--bg);border-radius:14px;padding:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;text-align:center">
+      <div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">勤務日数</div>
+        <div style="font-size:22px;font-weight:700;color:var(--primary)">${workCount}<span style="font-size:12px">日</span></div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">休日数</div>
+        <div style="font-size:22px;font-weight:700;color:#6b7280">${restCount}<span style="font-size:12px">日</span></div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">実働時間</div>
+        <div style="font-size:22px;font-weight:700;color:#10b981">${Math.round(totalHours*10)/10}<span style="font-size:12px">H</span></div>
+      </div>
+    </div>`;
+
+    grid.innerHTML = html;
+
+  } catch(e) {
+    console.error(e);
+    grid.innerHTML = '<div style="text-align:center;color:var(--danger);padding:20px">読み込みエラーが発生しました</div>';
+  }
+}
+
+document.getElementById('confPrevMonth')?.addEventListener('click', () => {
+  confMonth--; if(confMonth<1){confMonth=12;confYear--;}
+  updateConfMonthTitle();
+  loadConfirmedShifts();
+});
+document.getElementById('confNextMonth')?.addEventListener('click', () => {
+  confMonth++; if(confMonth>12){confMonth=1;confYear++;}
+  updateConfMonthTitle();
+  loadConfirmedShifts();
 });
 
 // ===== AUTO LOGIN =====
