@@ -537,6 +537,7 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -2190,12 +2191,13 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
           if (result[key]) continue;
           const req = reqMap[key];
           if (!req) continue;
-          // 休診日・CC/CHO日の夜勤系は入れない
+          // 休診日は希望があっても勤務シフトを入れない
           const dt = getDayType(d);
           if ((dt === 'thu_closed' || dt === 'holiday_closed') && !OFF_SHIFTS.includes(req)) continue;
-          if ((dt === 'wed_cc' || dt === 'wed_cho') && NIGHT_SHIFTS.includes(req)) continue;
-          // CHO日は午後系シフトも入れない
-          if (dt === 'wed_cho' && ['遅番','遅L','午後','CCのみ'].includes(req)) continue;
+          // CC日はCC・CCのみ・休み系以外を入れない
+          if (dt === 'wed_cc' && !['CC','CCのみ','休み','有休','半有休','希望休'].includes(req)) continue;
+          // CHO日はCHO・休み系以外を入れない
+          if (dt === 'wed_cho' && !['CHO','休み','有休','半有休','希望休'].includes(req)) continue;
           const planH = getStaffPlanHours(staff);
           if (optRespectHours && planH > 0 && (staffHours[staff.id]||0) + (SHIFT_HOURS[req]||0) > planH + 5) continue;
           result[key] = req;
@@ -2223,8 +2225,9 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
           result[key] = '休み';
           continue;
         }
-        // 休診日・水曜通常は休み（dayType2は上で計算済み）
-        if (dayType2 === 'wed_normal' || dayType2 === 'thu_closed' || dayType2 === 'holiday_closed') {
+        // 休診日・水曜通常・CC日・CHO日は日勤を入れない
+        if (dayType2 === 'wed_normal' || dayType2 === 'thu_closed' || 
+            dayType2 === 'holiday_closed' || dayType2 === 'wed_cc' || dayType2 === 'wed_cho') {
           result[key] = '休み';
           continue;
         }
