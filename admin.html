@@ -2325,7 +2325,6 @@ function showGenerateSummary(deptStaff, result, staffHours, staffNightCount, day
   if (existing) existing.remove();
   const summary = document.createElement('div');
   summary.id = 'generateSummary';
-  summary.style.cssText = 'display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap';
   summary.style.cssText = 'margin-bottom:16px';
   const fillColor = fillRate>=100 ? '#065f46' : '#92400e';
   const fillBg = fillRate>=100 ? '#d1fae5' : '#fef3c7';
@@ -2359,7 +2358,10 @@ function showGenerateSummary(deptStaff, result, staffHours, staffNightCount, day
       </div>
     </div>
   `;
-  titleEl.insertAdjacentElement('afterend', summary);
+  const card2 = document.getElementById('previewCard');
+  const titleEl2 = card2?.querySelector('.card-title');
+  if (titleEl2) titleEl2.insertAdjacentElement('afterend', summary);
+  else card2?.prepend(summary);
 }
 
 // 祝日（2026年簡易版）
