@@ -392,6 +392,17 @@
                 <label><input type="checkbox" id="optFillRequired" checked> 必要人数を充足する</label>
               </div>
             </div>
+
+            <!-- シフトパターン選択 -->
+            <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
+              <div style="font-size:13px;font-weight:700;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">
+                <span>📋 使用シフトパターン</span>
+                <button onclick="saveShiftPatternSettings()" style="padding:4px 12px;background:var(--primary);color:white;border:none;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit">この設定を保存</button>
+              </div>
+              <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">チェックしたシフトのみ自動生成に使用します（部門ごとに保存されます）</div>
+              <div id="shiftPatternOptions" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px"></div>
+            </div>
+
             <button class="btn-generate" id="generateBtn">🚀 シフトを自動生成する</button>
           </div>
 
@@ -537,6 +548,7 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -1823,9 +1835,74 @@ document.getElementById('saveShiftBtn').addEventListener('click', async () => {
 });
 
 // ===== AUTO GENERATE =====
+
+// ===== シフトパターン設定 =====
+const SHIFT_PATTERN_OPTIONS = [
+  { id: '日勤',   label: '日勤',   time: '8:30-18:00' },
+  { id: '日勤+',  label: '日勤+',  time: '8:30-18:30' },
+  { id: '午前',   label: '午前',   time: '8:30-13:30' },
+  { id: '午後',   label: '午後',   time: '13:00-18:30' },
+  { id: '遅番',   label: '遅番',   time: '13:00-21:30' },
+  { id: '遅L',    label: '遅L',    time: '12:00-21:30' },
+  { id: 'リハ遅', label: 'リハ遅', time: '12:00-21:00' },
+  { id: '夜勤',   label: '夜勤',   time: '17:30-21:30' },
+  { id: '長日',   label: '長日',   time: '8:30-21:30' },
+  { id: '中抜け', label: '中抜け', time: '8:30-21:30' },
+  { id: '時短',   label: '時短',   time: '8:30-14:30' },
+];
+
+// デフォルトのシフトパターン設定
+const DEFAULT_SHIFT_PATTERNS = {
+  0: ['日勤','日勤+','午前','午後','遅番','遅L','夜勤','長日','時短'],     // 医療事務
+  1: ['日勤','日勤+','遅番','遅L','夜勤','長日','時短'],                    // 看護
+  2: ['日勤','日勤+','リハ遅','夜勤','長日','時短'],                        // リハビリ
+  3: ['日勤','日勤+','午前','遅番','遅L','夜勤','時短'],                    // 放射線
+};
+
+let shiftPatternSettings = {}; // 部門ごとの設定
+
+function loadShiftPatternSettings() {
+  // ローカルストレージから読み込み
+  try {
+    const saved = localStorage.getItem('shiftPatternSettings');
+    if (saved) shiftPatternSettings = JSON.parse(saved);
+  } catch(e) {}
+  renderShiftPatternOptions();
+}
+
+function saveShiftPatternSettings() {
+  // 現在のチェック状態を保存
+  const checked = SHIFT_PATTERN_OPTIONS
+    .filter(s => document.getElementById(`sp-${s.id}`)?.checked)
+    .map(s => s.id);
+  shiftPatternSettings[currentDept] = checked;
+  localStorage.setItem('shiftPatternSettings', JSON.stringify(shiftPatternSettings));
+  showToast(`${DEPT_NAMES[currentDept]}のシフトパターンを保存しました ✓`, 'success');
+}
+
+function renderShiftPatternOptions() {
+  const el = document.getElementById('shiftPatternOptions');
+  if (!el) return;
+  const enabled = shiftPatternSettings[currentDept] || DEFAULT_SHIFT_PATTERNS[currentDept] || SHIFT_PATTERN_OPTIONS.map(s => s.id);
+  el.innerHTML = SHIFT_PATTERN_OPTIONS.map(s => `
+    <label style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:var(--bg);border-radius:8px;cursor:pointer;font-size:12px">
+      <input type="checkbox" id="sp-${s.id}" ${enabled.includes(s.id)?'checked':''} style="width:14px;height:14px">
+      <span style="font-weight:600">${s.label}</span>
+      <span style="color:var(--text-muted);font-size:10px">${s.time}</span>
+    </label>
+  `).join('');
+}
+
+function getEnabledShiftPatterns() {
+  return SHIFT_PATTERN_OPTIONS
+    .filter(s => document.getElementById(`sp-${s.id}`)?.checked)
+    .map(s => s.id);
+}
+
 async function loadGenPage() {
   await loadWedTypes();
   renderWedGrid();
+  loadShiftPatternSettings();
 }
 
 async function loadWedTypes() {
@@ -2359,19 +2436,39 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
   hideLoading();
 });
 
-function selectDayShift(period, deptId, dayType) {
+function selectDayShift(period, deptId, dayType, enabledPatterns) {
+  const ep = enabledPatterns || SHIFT_PATTERN_OPTIONS.map(s => s.id);
   if (period === 'morning') {
     if (dayType === 'wed_cc') return 'CC';
     if (dayType === 'wed_cho') return 'CHO';
-    return '日勤'; // 午前は基本日勤
+    // 午前：日勤 → 日勤+ → 午前 の順で有効なもの
+    for (const sh of ['日勤','日勤+','午前']) {
+      if (ep.includes(sh)) return sh;
+    }
+    return '日勤';
   }
   if (period === 'afternoon') {
     if (dayType === 'wed_cc') return 'CCのみ';
-    if (dayType === 'wed_cho') return null; // CHO日は午後なし
-    if (deptId === 2) return 'リハ遅';
-    return '遅番'; // 午後は遅番優先
+    if (dayType === 'wed_cho') return null;
+    if (deptId === 2) return ep.includes('リハ遅') ? 'リハ遅' : null;
+    // 午後：遅番 → 遅L → 長日 の順で有効なもの
+    for (const sh of ['遅番','遅L','長日']) {
+      if (ep.includes(sh)) return sh;
+    }
+    return null;
   }
   return '日勤';
+}
+
+function selectEveningShiftWithPattern(deptId, dayType, enabledPatterns) {
+  const ep = enabledPatterns || SHIFT_PATTERN_OPTIONS.map(s => s.id);
+  if (deptId === 2) return ep.includes('リハ遅') ? 'リハ遅' : null;
+  if (deptId === 1) return ep.includes('遅番') ? '遅番' : null;
+  // 遅番 → 遅L → 夜勤 → 長日 → 中抜けの順
+  for (const sh of ['遅番','遅L','夜勤','長日','中抜け']) {
+    if (ep.includes(sh)) return sh;
+  }
+  return null;
 }
 
 function selectEveningShift(deptId, dayType) {
