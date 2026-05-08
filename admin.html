@@ -2161,6 +2161,11 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
               if (isNoCount(s) && pass < 2) return false; // 🌸は最後の手段
               // 夜勤不可チェック
               if (period === 'evening' && isNoNightAuto(s)) return false;
+              // 時短スタッフは夜勤・午後不可（CC/CHO日除く）
+              if (s.emp_type === 'short') {
+                if (period === 'evening') return false;
+                if (period === 'afternoon' && dt !== 'wed_cc' && dt !== 'wed_cho') return false;
+              }
               // 🔰上限チェック
               if (s.skill_level === 'beginner' && beginnerLimit !== null && curBeginner >= beginnerLimit) return false;
               // 所定時間チェック（pass0のみ厳格）
@@ -2193,8 +2198,13 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
             if (s.skill_level === 'beginner' && beginnerLimit !== null && begAdded >= beginnerLimit) continue;
 
             const key = `${s.id}|${d}`;
-            result[key] = shift;
-            staffHours[s.id] = (staffHours[s.id]||0) + (SHIFT_HOURS[shift]||0);
+            // 時短スタッフは時短シフト（CC/CHO日はそのまま）
+            let assignShift = shift;
+            if (s.emp_type === 'short' && period === 'morning' && dt !== 'wed_cc' && dt !== 'wed_cho') {
+              assignShift = '時短';
+            }
+            result[key] = assignShift;
+            staffHours[s.id] = (staffHours[s.id]||0) + (SHIFT_HOURS[assignShift]||0);
             if (period === 'evening') staffNightCount[s.id] = (staffNightCount[s.id]||0) + 1;
             if (s.skill_level === 'beginner') begAdded++;
             assigned++;
@@ -2249,8 +2259,10 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
           result[key] = '休み';
           continue;
         }
-        result[key] = '日勤';
-        staffHours[staff.id] = (staffHours[staff.id]||0) + 8.5;
+        // 時短スタッフは時短シフト
+        const assignedShift = staff.emp_type === 'short' ? '時短' : '日勤';
+        result[key] = assignedShift;
+        staffHours[staff.id] = (staffHours[staff.id]||0) + (SHIFT_HOURS[assignedShift]||0);
       }
       // 残りは全て休み
       for (let d = 1; d <= daysInMonth; d++) {
