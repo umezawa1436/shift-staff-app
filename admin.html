@@ -400,7 +400,7 @@
                 <button onclick="saveShiftPatternSettings()" style="padding:4px 12px;background:var(--primary);color:white;border:none;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit">この設定を保存</button>
               </div>
               <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">チェックしたシフトのみ自動生成に使用します（部門ごとに保存されます）</div>
-              <div id="shiftPatternOptions" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px"></div>
+              <div id="shiftPatternOptions" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px"></div>
             </div>
 
             <button class="btn-generate" id="generateBtn">🚀 シフトを自動生成する</button>
@@ -1884,13 +1884,21 @@ function renderShiftPatternOptions() {
   const el = document.getElementById('shiftPatternOptions');
   if (!el) return;
   const enabled = shiftPatternSettings[currentDept] || DEFAULT_SHIFT_PATTERNS[currentDept] || SHIFT_PATTERN_OPTIONS.map(s => s.id);
-  el.innerHTML = SHIFT_PATTERN_OPTIONS.map(s => `
-    <label style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:var(--bg);border-radius:8px;cursor:pointer;font-size:12px">
-      <input type="checkbox" id="sp-${s.id}" ${enabled.includes(s.id)?'checked':''} style="width:14px;height:14px">
-      <span style="font-weight:600">${s.label}</span>
-      <span style="color:var(--text-muted);font-size:10px">${s.time}</span>
-    </label>
-  `).join('');
+  el.innerHTML = SHIFT_PATTERN_OPTIONS.map(s => {
+    const isChecked = enabled.includes(s.id);
+    return `<label style="display:flex;align-items:center;gap:8px;padding:8px 12px;
+      background:${isChecked?'#eff6ff':'white'};
+      border:1.5px solid ${isChecked?'var(--primary)':'var(--border)'};
+      border-radius:10px;cursor:pointer;transition:all 0.15s">
+      <input type="checkbox" id="sp-${s.id}" ${isChecked?'checked':''}
+        onchange="this.closest('label').style.background=this.checked?'#eff6ff':'white';this.closest('label').style.borderColor=this.checked?'var(--primary)':'var(--border)'"
+        style="width:15px;height:15px;accent-color:var(--primary);cursor:pointer">
+      <div>
+        <div style="font-size:13px;font-weight:700;color:var(--text)">${s.label}</div>
+        <div style="font-size:10px;color:var(--text-muted)">${s.time}</div>
+      </div>
+    </label>`;
+  }).join('');
 }
 
 function getEnabledShiftPatterns() {
