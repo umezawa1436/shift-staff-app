@@ -567,6 +567,42 @@
   </div>
 </div>
 
+<!-- バーチカル表示モーダル -->
+<div class="modal-overlay" id="verticalViewModal">
+  <div class="modal" style="max-width:1400px;width:95vw">
+    <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+      <span id="verticalViewTitle">バーチカル表示</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-outline" id="verticalPrevDay" style="padding:4px 12px">◀ 前日</button>
+        <button class="btn btn-outline" id="verticalNextDay" style="padding:4px 12px">翌日 ▶</button>
+      </div>
+    </div>
+    <div id="verticalViewContent" style="overflow:auto;max-height:70vh"></div>
+    <div class="modal-footer" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div style="font-size:12px;color:var(--text-muted)">
+        💡 帯クリックで休憩追加・編集
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline" onclick="closeModal('verticalViewModal')">閉じる</button>
+        <button class="btn btn-primary" id="saveBreaksBtn">休憩保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 休憩編集モーダル -->
+<div class="modal-overlay" id="breakEditModal">
+  <div class="modal">
+    <div class="modal-title" id="breakEditTitle">休憩時間を編集</div>
+    <div id="breakEditList"></div>
+    <button class="btn btn-outline" id="addBreakBtn" style="width:100%;margin-top:12px">＋ 休憩を追加</button>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('breakEditModal')">キャンセル</button>
+      <button class="btn btn-primary" id="applyBreakEditBtn">適用</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="requestDetailModal">
   <div class="modal modal-lg">
     <div class="modal-title" id="requestDetailTitle"></div>
@@ -606,7 +642,6 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -1104,16 +1139,16 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
     const thuLabel = dow===4 ? (dayType4header==='thu_open'?'<div style="font-size:8px;color:#1d4ed8">診療</div>':'<div style="font-size:8px;color:#ef4444">休診</div>') : '';
     const holidayLabel = (holidays.has(d) && dayType4header==='holiday_closed') ? '<div style="font-size:8px;color:#6b7280">休診</div>' : '';
     if (editable) {
-      html += `<th style="min-width:32px;cursor:pointer;${colStyle}" onclick="toggleColumnLock(${d})" title="${colLocked?'列ロック解除':'列ロック'}">
+      html += `<th style="min-width:32px;${colStyle}">
         <div class="day-header">
-          <div class="day-num ${cls}">${d}</div>
-          <div class="day-dow ${cls}">${DOW[dow]}</div>
+          <div class="day-num ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})" title="バーチカル表示">${d}</div>
+          <div class="day-dow ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})" title="バーチカル表示">${DOW[dow]}</div>
           ${wedLabel}${thuLabel}${holidayLabel}
-          <div style="font-size:9px;margin-top:1px">${colLocked?'🔒':'<span style=\"color:#d1d5db\">🔓</span>'}</div>
+          <div style="font-size:9px;margin-top:1px;cursor:pointer" onclick="toggleColumnLock(${d})" title="${colLocked?'列ロック解除':'列ロック'}">${colLocked?'🔒':'<span style=\"color:#d1d5db\">🔓</span>'}</div>
         </div>
       </th>`;
     } else {
-      html += `<th style="min-width:32px"><div class="day-header"><div class="day-num ${cls}">${d}</div><div class="day-dow ${cls}">${DOW[dow]}</div>${wedLabel}</div></th>`;
+      html += `<th style="min-width:32px"><div class="day-header"><div class="day-num ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})" title="バーチカル表示">${d}</div><div class="day-dow ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})">${DOW[dow]}</div>${wedLabel}</div></th>`;
     }
   }
   if (editable) html += '<th style="min-width:160px;text-align:center;cursor:pointer" onclick="showMonthlyHoursEditor()">実働/所定 <span style="font-size:10px;opacity:0.6">✏️</span></th>';
@@ -3664,6 +3699,308 @@ document.getElementById('saveBeginnerLimitsBtn')?.addEventListener('click', asyn
     beginnerLimitsData = {};
     inserts.forEach(i => { beginnerLimitsData[`${i.period_id}-${i.day_type}`] = i.max_beginners; });
   } catch(e) { console.error(e); showToast('保存エラー','error'); }
+  hideLoading();
+});
+
+// =====================================================
+// バーチカル表示（フェーズ3）
+// =====================================================
+let verticalCurrentDay = 1;       // 現在表示中の日
+let verticalBreaksCache = {};     // {staffId: [{break_start, break_end, id?}, ...]}
+let verticalBreaksLoaded = false; // ロード済みフラグ
+let verticalBreaksOriginal = {};  // ロード時の状態（保存判定用）
+
+// 時刻文字列を分単位の数値に変換 ("08:30" → 510)
+function timeStrToMin(t) {
+  if (!t || typeof t !== 'string') return 0;
+  const [h, m] = t.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+// 分単位の数値を時刻文字列に変換 (510 → "08:30")
+function minToTimeStr(min) {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
+
+// その日の休憩データをDBから取得
+async function loadDayBreaks(year, month, day) {
+  try {
+    const data = await sb(`shift_breaks?year=eq.${year}&month=eq.${month}&day=eq.${day}&order=staff_id,display_order&select=*`);
+    const breaks = {};
+    data.forEach(b => {
+      if (!breaks[b.staff_id]) breaks[b.staff_id] = [];
+      breaks[b.staff_id].push({
+        id: b.id,
+        break_start: b.break_start,
+        break_end: b.break_end
+      });
+    });
+    return breaks;
+  } catch(e) {
+    console.error('休憩データ取得エラー', e);
+    return {};
+  }
+}
+
+// バーチカル表示を開く
+window.openVerticalView = async function(day) {
+  verticalCurrentDay = day;
+  showLoading();
+  try {
+    // 休憩データをロード
+    verticalBreaksCache = await loadDayBreaks(shiftYear, shiftMonth, day);
+    // 元の状態を保存（保存判定用にディープコピー）
+    verticalBreaksOriginal = JSON.parse(JSON.stringify(verticalBreaksCache));
+    verticalBreaksLoaded = true;
+    renderVerticalView();
+    document.getElementById('verticalViewModal').classList.add('show');
+  } catch(e) {
+    console.error(e);
+    showToast('読み込みエラー', 'error');
+  }
+  hideLoading();
+};
+
+// バーチカル表示を描画
+function renderVerticalView() {
+  const day = verticalCurrentDay;
+  const dow = new Date(shiftYear, shiftMonth-1, day).getDay();
+  const dowJp = ['日','月','火','水','木','金','土'][dow];
+  document.getElementById('verticalViewTitle').textContent = 
+    `${shiftYear}年${shiftMonth}月${day}日(${dowJp}) ${DEPT_NAMES[currentDept]} バーチカル表示`;
+
+  const deptStaff = allStaff.filter(s => s.dept_id === currentDept);
+  
+  // その日に勤務するスタッフだけを抽出（休み系・空セル除外）
+  const workingStaff = deptStaff.filter(s => {
+    const sh = shiftData[`${s.id}|${day}`];
+    if (!sh) return false;
+    if (OFF_SHIFTS.includes(sh)) return false;
+    // 時間が定義されているシフトのみ
+    const st = shiftTypesAll.find(x => x.id === sh);
+    if (!st || !st.start_time || !st.end_time) return false;
+    return true;
+  });
+
+  if (workingStaff.length === 0) {
+    document.getElementById('verticalViewContent').innerHTML = 
+      '<div style="padding:40px;text-align:center;color:var(--text-muted)">この日に勤務するスタッフはいません</div>';
+    return;
+  }
+
+  // 時間軸：8:30 〜 21:30（10分単位）
+  const startMin = 8 * 60 + 30;  // 510
+  const endMin = 21 * 60 + 30;   // 1290
+  const totalMinutes = endMin - startMin; // 780分
+  const pixelsPerMin = 1.6; // 1分=1.6px、780分=1248px
+  const timelineWidth = totalMinutes * pixelsPerMin;
+  
+  // 時間目盛り（30分ごとにラベル、1時間ごとに濃い線）
+  let timelineHeader = '<div style="position:relative;height:32px;border-bottom:2px solid var(--border);background:#f8fafc">';
+  for (let m = startMin; m <= endMin; m += 30) {
+    const left = (m - startMin) * pixelsPerMin;
+    const isHour = (m % 60 === 0);
+    timelineHeader += `<div style="position:absolute;left:${left}px;top:0;height:100%;border-left:1px solid ${isHour?'#94a3b8':'#e2e8f0'};${isHour?'':'opacity:0.5'}"></div>`;
+    if (isHour) {
+      timelineHeader += `<div style="position:absolute;left:${left+2}px;top:6px;font-size:11px;color:#475569;font-weight:600">${minToTimeStr(m)}</div>`;
+    }
+  }
+  timelineHeader += '</div>';
+
+  // 各スタッフの行
+  let rows = '';
+  workingStaff.forEach(staff => {
+    const sh = shiftData[`${staff.id}|${day}`];
+    const st = shiftTypesAll.find(x => x.id === sh);
+    const shiftStart = timeStrToMin(st.start_time);
+    const shiftEnd = timeStrToMin(st.end_time);
+    
+    // 表示範囲外チェック
+    if (shiftEnd <= startMin || shiftStart >= endMin) return;
+    
+    // 帯の表示位置
+    const barStart = Math.max(shiftStart, startMin);
+    const barEnd = Math.min(shiftEnd, endMin);
+    const barLeft = (barStart - startMin) * pixelsPerMin;
+    const barWidth = (barEnd - barStart) * pixelsPerMin;
+    
+    // シフトの色クラス
+    const colorClass = SHIFT_COLORS[sh] || 'sc-custom';
+    
+    // 休憩を計算
+    const breaks = verticalBreaksCache[staff.id] || [];
+    let breaksHtml = '';
+    breaks.forEach((b, idx) => {
+      const bs = timeStrToMin(b.break_start);
+      const be = timeStrToMin(b.break_end);
+      if (be <= barStart || bs >= barEnd) return;
+      const bsClamp = Math.max(bs, barStart);
+      const beClamp = Math.min(be, barEnd);
+      const bLeft = (bsClamp - startMin) * pixelsPerMin;
+      const bWidth = (beClamp - bsClamp) * pixelsPerMin;
+      breaksHtml += `<div style="position:absolute;left:${bLeft}px;top:0;width:${bWidth}px;height:100%;background:white;border-left:1px dashed #94a3b8;border-right:1px dashed #94a3b8;display:flex;align-items:center;justify-content:center;font-size:9px;color:#64748b;pointer-events:none">休憩</div>`;
+    });
+
+    // スタッフ属性
+    const empBadge = staff.emp_type === 'short' ? '<span style="font-size:9px;color:#0f766e;background:#ccfbf1;padding:1px 4px;border-radius:3px;margin-left:4px">時短</span>' 
+      : staff.emp_type === 'part' ? '<span style="font-size:9px;color:#6b7280;background:#f3f4f6;padding:1px 4px;border-radius:3px;margin-left:4px">パート</span>'
+      : '';
+
+    rows += `<div style="display:flex;align-items:stretch;border-bottom:1px solid #e2e8f0">
+      <div style="min-width:140px;padding:8px 10px;background:#f8fafc;border-right:1px solid #e2e8f0;display:flex;align-items:center;font-size:13px;font-weight:600;white-space:nowrap">
+        ${escapeHtml(staff.name)}${empBadge}
+      </div>
+      <div style="position:relative;height:44px;width:${timelineWidth}px;background:#fafafa">
+        <div class="${colorClass}" style="position:absolute;left:${barLeft}px;top:6px;width:${barWidth}px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;cursor:pointer;border:1px solid rgba(0,0,0,0.1);box-shadow:0 1px 2px rgba(0,0,0,0.06)" 
+          onclick="openBreakEdit(${staff.id}, '${escapeHtml(staff.name)}', '${st.start_time}', '${st.end_time}')"
+          title="クリックで休憩編集">${sh} ${st.start_time}-${st.end_time}</div>
+        ${breaksHtml}
+      </div>
+    </div>`;
+  });
+
+  document.getElementById('verticalViewContent').innerHTML = 
+    `<div style="display:inline-block;min-width:100%">
+      <div style="display:flex">
+        <div style="min-width:140px;background:#e0e7ff;border-right:1px solid #94a3b8;border-bottom:2px solid var(--border);padding:6px 10px;font-size:12px;font-weight:700;color:#3730a3;display:flex;align-items:center">スタッフ</div>
+        ${timelineHeader.replace('<div style="position:relative;height:32px', `<div style="position:relative;height:32px;width:${timelineWidth}px`)}
+      </div>
+      ${rows}
+    </div>`;
+}
+
+// 前日・翌日ナビ
+document.getElementById('verticalPrevDay')?.addEventListener('click', async () => {
+  if (verticalCurrentDay <= 1) return;
+  // 未保存の休憩編集を確認
+  if (hasUnsavedBreaks()) {
+    if (!confirm('休憩の編集が未保存です。破棄して移動しますか？')) return;
+  }
+  await openVerticalView(verticalCurrentDay - 1);
+});
+
+document.getElementById('verticalNextDay')?.addEventListener('click', async () => {
+  const daysInMonth = new Date(shiftYear, shiftMonth, 0).getDate();
+  if (verticalCurrentDay >= daysInMonth) return;
+  if (hasUnsavedBreaks()) {
+    if (!confirm('休憩の編集が未保存です。破棄して移動しますか？')) return;
+  }
+  await openVerticalView(verticalCurrentDay + 1);
+});
+
+function hasUnsavedBreaks() {
+  return JSON.stringify(verticalBreaksCache) !== JSON.stringify(verticalBreaksOriginal);
+}
+
+// 休憩編集モーダルを開く
+let breakEditStaffId = null;
+let breakEditList = []; // [{break_start, break_end}, ...]
+window.openBreakEdit = function(staffId, staffName, shiftStart, shiftEnd) {
+  breakEditStaffId = staffId;
+  breakEditList = (verticalBreaksCache[staffId] || []).map(b => ({
+    break_start: b.break_start,
+    break_end: b.break_end,
+    id: b.id
+  }));
+  document.getElementById('breakEditTitle').textContent = `${staffName}の休憩時間（${shiftStart}〜${shiftEnd}）`;
+  renderBreakEditList();
+  document.getElementById('breakEditModal').classList.add('show');
+};
+
+function renderBreakEditList() {
+  const el = document.getElementById('breakEditList');
+  if (breakEditList.length === 0) {
+    el.innerHTML = '<div style="color:var(--text-muted);padding:16px;text-align:center;font-size:13px">休憩なし</div>';
+    return;
+  }
+  el.innerHTML = breakEditList.map((b, idx) => `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;padding:8px;background:#f8fafc;border-radius:8px">
+      <span style="font-size:12px;color:var(--text-muted);min-width:50px">休憩${idx+1}</span>
+      <input type="time" class="form-input" style="flex:1" value="${b.break_start}" 
+        step="600" onchange="updateBreak(${idx}, 'break_start', this.value)">
+      <span>〜</span>
+      <input type="time" class="form-input" style="flex:1" value="${b.break_end}" 
+        step="600" onchange="updateBreak(${idx}, 'break_end', this.value)">
+      <button class="btn btn-outline" style="padding:6px 10px;color:#dc2626" 
+        onclick="removeBreak(${idx})">×</button>
+    </div>
+  `).join('');
+}
+
+window.updateBreak = function(idx, field, value) {
+  if (!breakEditList[idx]) return;
+  breakEditList[idx][field] = value;
+};
+
+window.removeBreak = function(idx) {
+  breakEditList.splice(idx, 1);
+  renderBreakEditList();
+};
+
+document.getElementById('addBreakBtn')?.addEventListener('click', () => {
+  breakEditList.push({ break_start: '12:30', break_end: '13:30' });
+  renderBreakEditList();
+});
+
+document.getElementById('applyBreakEditBtn')?.addEventListener('click', () => {
+  // バリデーション
+  for (const b of breakEditList) {
+    if (!b.break_start || !b.break_end) {
+      showToast('休憩の開始・終了時間を入力してください', 'error');
+      return;
+    }
+    if (timeStrToMin(b.break_start) >= timeStrToMin(b.break_end)) {
+      showToast('休憩の終了時間は開始時間より後にしてください', 'error');
+      return;
+    }
+    // 10分単位チェック
+    if (timeStrToMin(b.break_start) % 10 !== 0 || timeStrToMin(b.break_end) % 10 !== 0) {
+      showToast('休憩時間は10分単位で設定してください', 'error');
+      return;
+    }
+  }
+  verticalBreaksCache[breakEditStaffId] = breakEditList.map(b => ({
+    break_start: b.break_start,
+    break_end: b.break_end,
+    id: b.id
+  }));
+  closeModal('breakEditModal');
+  renderVerticalView();
+});
+
+// 休憩を保存（DBへ）
+document.getElementById('saveBreaksBtn')?.addEventListener('click', async () => {
+  showLoading();
+  try {
+    // その日の既存データを全削除してから新規挿入（簡潔）
+    await sb(`shift_breaks?year=eq.${shiftYear}&month=eq.${shiftMonth}&day=eq.${verticalCurrentDay}`, {method:'DELETE'});
+    
+    // 新規挿入
+    const inserts = [];
+    Object.entries(verticalBreaksCache).forEach(([staffId, breaks]) => {
+      breaks.forEach((b, idx) => {
+        inserts.push({
+          staff_id: parseInt(staffId, 10),
+          year: shiftYear,
+          month: shiftMonth,
+          day: verticalCurrentDay,
+          break_start: b.break_start,
+          break_end: b.break_end,
+          display_order: idx
+        });
+      });
+    });
+    if (inserts.length > 0) {
+      await sb('shift_breaks', {method:'POST', body: JSON.stringify(inserts)});
+    }
+    verticalBreaksOriginal = JSON.parse(JSON.stringify(verticalBreaksCache));
+    showToast('休憩を保存しました ✓', 'success');
+  } catch(e) {
+    console.error(e);
+    showToast('保存エラー：' + (e.message || ''), 'error');
+  }
   hideLoading();
 });
 
