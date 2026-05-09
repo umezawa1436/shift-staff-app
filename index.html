@@ -64,262 +64,56 @@
 
     .login-logo svg { width: 40px; height: 40px; }
 
-    .login-title {
-      color: white;
-      font-size: 22px;
-      font-weight: 700;
-      margin-bottom: 6px;
-      letter-spacing: -0.3px;
-    }
+    .login-title { color: white; font-size: 22px; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.3px; }
+    .login-subtitle { color: rgba(255,255,255,0.7); font-size: 13px; margin-bottom: 40px; }
 
-    .login-subtitle {
-      color: rgba(255,255,255,0.7);
-      font-size: 13px;
-      margin-bottom: 40px;
-    }
-
-    .login-card {
-      background: white;
-      border-radius: 24px;
-      padding: 32px 24px;
-      width: 100%;
-      max-width: 380px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-    }
+    .login-card { background: white; border-radius: 24px; padding: 32px 24px; width: 100%; max-width: 380px; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
 
     .form-group { margin-bottom: 16px; }
+    .form-label { display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 8px; letter-spacing: 0.5px; text-transform: uppercase; }
 
-    .form-label {
-      display: block;
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--text-muted);
-      margin-bottom: 8px;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-    }
+    .form-input { width: 100%; padding: 14px 16px; border: 1.5px solid var(--border); border-radius: 12px; font-size: 16px; font-family: inherit; color: var(--text); background: var(--bg); transition: all 0.2s; outline: none; }
+    .form-input:focus { border-color: var(--primary); background: white; box-shadow: 0 0 0 3px rgba(15,76,129,0.1); }
 
-    .form-input {
-      width: 100%;
-      padding: 14px 16px;
-      border: 1.5px solid var(--border);
-      border-radius: 12px;
-      font-size: 16px;
-      font-family: inherit;
-      color: var(--text);
-      background: var(--bg);
-      transition: all 0.2s;
-      outline: none;
-    }
+    .dept-select { width: 100%; padding: 14px 16px; border: 1.5px solid var(--border); border-radius: 12px; font-size: 15px; font-family: inherit; color: var(--text); background: var(--bg); outline: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7a8d' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; }
 
-    .form-input:focus {
-      border-color: var(--primary);
-      background: white;
-      box-shadow: 0 0 0 3px rgba(15,76,129,0.1);
-    }
-
-    .dept-select {
-      width: 100%;
-      padding: 14px 16px;
-      border: 1.5px solid var(--border);
-      border-radius: 12px;
-      font-size: 15px;
-      font-family: inherit;
-      color: var(--text);
-      background: var(--bg);
-      outline: none;
-      appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7a8d' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-      background-repeat: no-repeat;
-      background-position: right 14px center;
-    }
-
-    .btn-primary {
-      width: 100%;
-      padding: 16px;
-      background: linear-gradient(135deg, var(--primary), var(--primary-light));
-      color: white;
-      border: none;
-      border-radius: 12px;
-      font-size: 16px;
-      font-weight: 600;
-      font-family: inherit;
-      cursor: pointer;
-      margin-top: 8px;
-      transition: all 0.2s;
-      letter-spacing: 0.3px;
-    }
-
+    .btn-primary { width: 100%; padding: 16px; background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; font-family: inherit; cursor: pointer; margin-top: 8px; transition: all 0.2s; letter-spacing: 0.3px; }
     .btn-primary:active { transform: scale(0.98); opacity: 0.9; }
 
-    .error-msg {
-      background: #fef2f2;
-      color: var(--danger);
-      padding: 10px 14px;
-      border-radius: 10px;
-      font-size: 13px;
-      margin-top: 12px;
-      display: none;
-    }
+    .error-msg { background: #fef2f2; color: var(--danger); padding: 10px 14px; border-radius: 10px; font-size: 13px; margin-top: 12px; display: none; }
 
     /* ===== MAIN APP ===== */
     #appScreen { display: none; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
 
-    .app-header {
-      background: white;
-      padding: 16px 20px 12px;
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      border-bottom: 1px solid var(--border);
-      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-    }
-
-    .header-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 12px;
-    }
-
-    .header-name {
-      font-size: 15px;
-      font-weight: 600;
-      color: var(--text);
-    }
-
-    .header-dept {
-      font-size: 12px;
-      color: var(--text-muted);
-    }
-
-    .logout-btn {
-      background: var(--bg);
-      border: none;
-      border-radius: 8px;
-      padding: 6px 12px;
-      font-size: 12px;
-      color: var(--text-muted);
-      cursor: pointer;
-      font-family: inherit;
-    }
-
-    .month-nav {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .month-title {
-      font-size: 18px;
-      font-weight: 700;
-      color: var(--text);
-      letter-spacing: -0.3px;
-    }
-
-    .month-btn {
-      width: 36px;
-      height: 36px;
-      border: 1.5px solid var(--border);
-      border-radius: 10px;
-      background: white;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-
+    .app-header { background: white; padding: 16px 20px 12px; position: sticky; top: 0; z-index: 100; border-bottom: 1px solid var(--border); box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+    .header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .header-name { font-size: 15px; font-weight: 600; color: var(--text); }
+    .header-dept { font-size: 12px; color: var(--text-muted); }
+    .logout-btn { background: var(--bg); border: none; border-radius: 8px; padding: 6px 12px; font-size: 12px; color: var(--text-muted); cursor: pointer; font-family: inherit; }
+    .month-nav { display: flex; align-items: center; justify-content: space-between; }
+    .month-title { font-size: 18px; font-weight: 700; color: var(--text); letter-spacing: -0.3px; }
+    .month-btn { width: 36px; height: 36px; border: 1.5px solid var(--border); border-radius: 10px; background: white; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s; }
     .month-btn:active { background: var(--bg); }
-
-    .submit-status {
-      font-size: 12px;
-      padding: 4px 10px;
-      border-radius: 20px;
-      font-weight: 500;
-    }
-
-    .status-draft { background: #fef3c7; color: #92400e; }
-    .status-submitted { background: #d1fae5; color: #065f46; }
 
     /* ===== CALENDAR ===== */
     .calendar-wrap { padding: 16px; flex: 1; }
-
-    .weekdays {
-      display: grid;
-      grid-template-columns: repeat(7, 1fr);
-      margin-bottom: 8px;
-    }
-
-    .weekday {
-      text-align: center;
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-muted);
-      padding: 4px 0;
-      letter-spacing: 0.5px;
-    }
-
+    .weekdays { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 8px; }
+    .weekday { text-align: center; font-size: 11px; font-weight: 600; color: var(--text-muted); padding: 4px 0; letter-spacing: 0.5px; }
     .weekday.sun { color: #ef4444; }
     .weekday.sat { color: #3b82f6; }
+    .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
 
-    .calendar-grid {
-      display: grid;
-      grid-template-columns: repeat(7, 1fr);
-      gap: 4px;
-    }
-
-    .cal-day {
-      aspect-ratio: 1;
-      border-radius: 10px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      position: relative;
-      transition: all 0.15s;
-      background: white;
-      border: 1.5px solid transparent;
-      min-height: 44px;
-    }
-
+    .cal-day { aspect-ratio: 1; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; transition: all 0.15s; background: white; border: 1.5px solid transparent; min-height: 44px; }
     .cal-day:active { transform: scale(0.94); }
-
     .cal-day.empty { background: transparent; cursor: default; }
     .cal-day.empty:active { transform: none; }
-
-    .cal-day.today {
-      border-color: var(--primary);
-      background: rgba(15,76,129,0.04);
-    }
-
-    .cal-day.past {
-      opacity: 0.4;
-      cursor: default;
-    }
-
+    .cal-day.today { border-color: var(--primary); background: rgba(15,76,129,0.04); }
+    .cal-day.past { opacity: 0.4; cursor: default; }
     .cal-day.past:active { transform: none; }
-
-    .day-num {
-      font-size: 14px;
-      font-weight: 600;
-      line-height: 1;
-    }
-
+    .day-num { font-size: 14px; font-weight: 600; line-height: 1; }
     .cal-day.sun .day-num { color: #ef4444; }
     .cal-day.sat .day-num { color: #3b82f6; }
-
-    .day-shift {
-      font-size: 9px;
-      font-weight: 600;
-      margin-top: 2px;
-      max-width: 100%;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      padding: 0 2px;
-    }
+    .day-shift { font-size: 9px; font-weight: 600; margin-top: 2px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
 
     /* シフト色 */
     .cal-day.has-shift { border-width: 2px; }
@@ -361,271 +155,75 @@
     .shift-希望休 .day-shift { color: #9a3412; }
 
     /* ===== BOTTOM SUBMIT BAR ===== */
-    .bottom-nav {
-      position: sticky;
-      bottom: 0;
-      background: white;
-      border-top: 1px solid var(--border);
-      display: flex;
-      z-index: 100;
-      padding-bottom: env(safe-area-inset-bottom);
-    }
+    .bottom-nav { position: sticky; bottom: 0; background: white; border-top: 1px solid var(--border); display: flex; z-index: 100; padding-bottom: env(safe-area-inset-bottom); }
+    .nav-tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 10px 8px; border: none; background: white; color: var(--text-muted); font-size: 11px; font-family: inherit; cursor: pointer; transition: all 0.15s; border-top: 2px solid transparent; }
+    .nav-tab.active { color: var(--primary); border-top-color: var(--primary); font-weight: 600; }
 
-    .nav-tab {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 4px;
-      padding: 10px 8px;
-      border: none;
-      background: white;
-      color: var(--text-muted);
-      font-size: 11px;
-      font-family: inherit;
-      cursor: pointer;
-      transition: all 0.15s;
-      border-top: 2px solid transparent;
-    }
-
-    .nav-tab.active {
-      color: var(--primary);
-      border-top-color: var(--primary);
-      font-weight: 600;
-    }
-
-    .submit-bar {
-      background: white;
-      padding: 16px 20px;
-      padding-bottom: calc(16px + env(safe-area-inset-bottom));
-      border-top: 1px solid var(--border);
-      box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
-    }
-
-    .submit-info {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 12px;
-    }
-
-    .submit-count {
-      font-size: 13px;
-      color: var(--text-muted);
-    }
-
-    .submit-count span {
-      font-weight: 700;
-      color: var(--primary);
-      font-size: 16px;
-    }
-
-    .btn-submit {
-      width: 100%;
-      padding: 16px;
-      background: linear-gradient(135deg, var(--success), #059669);
-      color: white;
-      border: none;
-      border-radius: 14px;
-      font-size: 16px;
-      font-weight: 700;
-      font-family: inherit;
-      cursor: pointer;
-      transition: all 0.2s;
-      letter-spacing: 0.3px;
-    }
-
+    .submit-bar { background: white; padding: 16px 20px; padding-bottom: calc(16px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); box-shadow: 0 -4px 20px rgba(0,0,0,0.08); }
+    .submit-info { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .submit-count { font-size: 13px; color: var(--text-muted); }
+    .submit-count span { font-weight: 700; color: var(--primary); font-size: 16px; }
+    .btn-submit { width: 100%; padding: 16px; background: linear-gradient(135deg, var(--success), #059669); color: white; border: none; border-radius: 14px; font-size: 16px; font-weight: 700; font-family: inherit; cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px; }
     .btn-submit:active { transform: scale(0.98); }
     .btn-submit:disabled { background: #d1d5db; cursor: not-allowed; transform: none; }
 
     /* ===== BOTTOM SHEET ===== */
-    .overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.4);
-      z-index: 200;
-      display: none;
-      backdrop-filter: blur(2px);
-    }
-
+    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200; display: none; backdrop-filter: blur(2px); }
     .overlay.show { display: block; }
 
-    .bottom-sheet {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      background: white;
-      border-radius: 24px 24px 0 0;
-      z-index: 300;
-      transform: translateY(100%);
-      transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
-      max-height: 80vh;
-      overflow-y: auto;
-      padding-bottom: env(safe-area-inset-bottom);
-    }
-
+    .bottom-sheet { position: fixed; bottom: 0; left: 0; right: 0; background: white; border-radius: 24px 24px 0 0; z-index: 300; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1); max-height: 80vh; overflow-y: auto; padding-bottom: env(safe-area-inset-bottom); }
     .bottom-sheet.show { transform: translateY(0); }
+    .sheet-handle { width: 40px; height: 4px; background: var(--border); border-radius: 2px; margin: 12px auto 0; }
+    .sheet-header { padding: 16px 20px 12px; border-bottom: 1px solid var(--border); }
+    .sheet-date { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+    .sheet-hint { font-size: 12px; color: var(--text-muted); }
 
-    .sheet-handle {
-      width: 40px;
-      height: 4px;
-      background: var(--border);
-      border-radius: 2px;
-      margin: 12px auto 0;
-    }
-
-    .sheet-header {
-      padding: 16px 20px 12px;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .sheet-date {
-      font-size: 18px;
-      font-weight: 700;
-      color: var(--text);
-      margin-bottom: 2px;
-    }
-
-    .sheet-hint {
-      font-size: 12px;
-      color: var(--text-muted);
-    }
-
-    .shift-list {
-      padding: 12px 16px;
-    }
-
-    .shift-category {
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--text-muted);
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      padding: 8px 4px 6px;
-    }
-
-    .shift-option {
-      display: flex;
-      align-items: center;
-      padding: 12px 14px;
-      border-radius: 12px;
-      margin-bottom: 4px;
-      cursor: pointer;
-      transition: all 0.15s;
-      border: 1.5px solid transparent;
-    }
-
+    .shift-list { padding: 12px 16px; }
+    .shift-category { font-size: 11px; font-weight: 700; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; padding: 8px 4px 6px; }
+    .shift-option { display: flex; align-items: center; padding: 12px 14px; border-radius: 12px; margin-bottom: 4px; cursor: pointer; transition: all 0.15s; border: 1.5px solid transparent; }
     .shift-option:active { transform: scale(0.98); }
+    .shift-option.selected { border-color: var(--primary); background: rgba(15,76,129,0.06); }
+    .shift-dot { width: 10px; height: 10px; border-radius: 50%; margin-right: 12px; flex-shrink: 0; }
+    .shift-name { font-size: 15px; font-weight: 500; flex: 1; }
+    .shift-time { font-size: 12px; color: var(--text-muted); }
 
-    .shift-option.selected {
-      border-color: var(--primary);
-      background: rgba(15,76,129,0.06);
-    }
-
-    .shift-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      margin-right: 12px;
-      flex-shrink: 0;
-    }
-
-    .shift-name {
-      font-size: 15px;
-      font-weight: 500;
-      flex: 1;
-    }
-
-    .shift-time {
-      font-size: 12px;
-      color: var(--text-muted);
-    }
-
-    .clear-btn {
-      margin: 4px 16px 16px;
-      padding: 12px;
-      background: #fef2f2;
-      color: var(--danger);
-      border: none;
-      border-radius: 12px;
-      font-size: 14px;
-      font-weight: 600;
-      font-family: inherit;
-      cursor: pointer;
-      width: calc(100% - 32px);
-      transition: all 0.15s;
-    }
-
+    .clear-btn { margin: 4px 16px 16px; padding: 12px; background: #fef2f2; color: var(--danger); border: none; border-radius: 12px; font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; width: calc(100% - 32px); transition: all 0.15s; }
     .clear-btn:active { opacity: 0.8; }
 
     /* ===== LOADING ===== */
-    .loading {
-      position: fixed;
-      inset: 0;
-      background: rgba(255,255,255,0.9);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      z-index: 999;
-      display: none;
-    }
-
-    .spinner {
-      width: 40px;
-      height: 40px;
-      border: 3px solid var(--border);
-      border-top-color: var(--primary);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      margin-bottom: 16px;
-    }
-
+    .loading { position: fixed; inset: 0; background: rgba(255,255,255,0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 999; display: none; }
+    .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 16px; }
     @keyframes spin { to { transform: rotate(360deg); } }
-
     .loading-text { font-size: 14px; color: var(--text-muted); }
 
     /* ===== TOAST ===== */
-    .toast {
-      position: fixed;
-      bottom: 100px;
-      left: 50%;
-      transform: translateX(-50%) translateY(20px);
-      background: var(--text);
-      color: white;
-      padding: 12px 24px;
-      border-radius: 100px;
-      font-size: 14px;
-      font-weight: 500;
-      z-index: 999;
-      opacity: 0;
-      transition: all 0.3s;
-      white-space: nowrap;
-    }
-
-    .toast.show {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
-
+    .toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--text); color: white; padding: 12px 24px; border-radius: 100px; font-size: 14px; font-weight: 500; z-index: 999; opacity: 0; transition: all 0.3s; white-space: nowrap; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
     .toast.success { background: var(--success); }
     .toast.error { background: var(--danger); }
+
+    /* ===== バーチカル表示モーダル ===== */
+    .vertical-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 400; display: none; backdrop-filter: blur(2px); }
+    .vertical-overlay.show { display: block; }
+    .vertical-modal { position: fixed; top: 5%; left: 2%; right: 2%; bottom: 5%; background: white; border-radius: 16px; z-index: 500; display: none; flex-direction: column; overflow: hidden; }
+    .vertical-modal.show { display: flex; }
+    .vertical-header { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .vertical-title { font-size: 14px; font-weight: 700; color: var(--text); }
+    .vertical-close { background: var(--bg); border: none; border-radius: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; font-family: inherit; }
+    .vertical-content { flex: 1; overflow: auto; padding: 8px; }
+    .v-row { display: flex; align-items: stretch; border-bottom: 1px solid #e2e8f0; }
+    .v-row.is-self { background: #fef3c7; box-shadow: inset 3px 0 0 #f59e0b; }
+    .v-name { min-width: 100px; padding: 8px 10px; background: #f8fafc; border-right: 1px solid #e2e8f0; display: flex; align-items: center; font-size: 12px; font-weight: 600; white-space: nowrap; }
+    .v-row.is-self .v-name { background: #fde68a; }
+    .v-bar-area { position: relative; height: 44px; background: #fafafa; }
   </style>
 </head>
 <body>
 
-<!-- ローディング -->
-<div class="loading" id="loading">
-  <div class="spinner"></div>
-  <div class="loading-text">読み込み中...</div>
-</div>
-
-<!-- トースト -->
+<div class="loading" id="loading"><div class="spinner"></div><div class="loading-text">読み込み中...</div></div>
 <div class="toast" id="toast"></div>
 
-<!-- ログイン画面 -->
+<!-- ログイン -->
 <div id="loginScreen">
   <div class="login-logo">
     <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -650,9 +248,7 @@
     </div>
     <div class="form-group">
       <label class="form-label">名前</label>
-      <select class="dept-select" id="staffSelect">
-        <option value="">部門を先に選択</option>
-      </select>
+      <select class="dept-select" id="staffSelect"><option value="">部門を先に選択</option></select>
     </div>
     <div class="form-group">
       <label class="form-label">パスワード</label>
@@ -677,46 +273,28 @@
       </div>
     </div>
     <div class="month-nav">
-      <button class="month-btn" id="prevMonthBtn">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
-      </button>
-      <div>
-        <div class="month-title" id="monthTitle"></div>
-      </div>
-      <button class="month-btn" id="nextMonthBtn">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg>
-      </button>
+      <button class="month-btn" id="prevMonthBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg></button>
+      <div><div class="month-title" id="monthTitle"></div></div>
+      <button class="month-btn" id="nextMonthBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg></button>
     </div>
   </div>
 
-  <!-- 確定シフト表示 -->
   <div id="confirmedWrap" style="display:none;padding:16px;flex:1;overflow-y:auto">
     <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center">
-      <button class="month-btn" id="confPrevMonth">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
-      </button>
+      <button class="month-btn" id="confPrevMonth"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg></button>
       <div style="font-size:18px;font-weight:700" id="confMonthTitle"></div>
-      <button class="month-btn" id="confNextMonth">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg>
-      </button>
+      <button class="month-btn" id="confNextMonth"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg></button>
     </div>
     <div id="confirmedGrid"></div>
   </div>
 
   <div class="calendar-wrap" id="calendarWrap">
     <div class="weekdays">
-      <div class="weekday sun">日</div>
-      <div class="weekday">月</div>
-      <div class="weekday">火</div>
-      <div class="weekday">水</div>
-      <div class="weekday">木</div>
-      <div class="weekday">金</div>
-      <div class="weekday sat">土</div>
+      <div class="weekday sun">日</div><div class="weekday">月</div><div class="weekday">火</div><div class="weekday">水</div><div class="weekday">木</div><div class="weekday">金</div><div class="weekday sat">土</div>
     </div>
     <div class="calendar-grid" id="calendarGrid"></div>
   </div>
 
-  <!-- ボトムナビ -->
   <div class="bottom-nav">
     <button class="nav-tab active" id="tabRequest" onclick="switchTab('request')">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>
@@ -728,19 +306,25 @@
     </button>
   </div>
 
-  <!-- 希望提出バー -->
   <div class="submit-bar" id="submitBar">
-    <div class="submit-info">
-      <div class="submit-count">入力済み <span id="inputCount">0</span> 日</div>
-    </div>
+    <div class="submit-info"><div class="submit-count">入力済み <span id="inputCount">0</span> 日</div></div>
     <button class="btn-submit" id="submitBtn">希望を提出する</button>
   </div>
 </div>
 
-<!-- オーバーレイ -->
+<!-- バーチカル表示モーダル -->
+<div class="vertical-overlay" id="verticalOverlay"></div>
+<div class="vertical-modal" id="verticalModal">
+  <div class="vertical-header">
+    <div class="vertical-title" id="verticalTitle">バーチカル表示</div>
+    <button class="vertical-close" id="verticalCloseBtn">閉じる</button>
+  </div>
+  <div class="vertical-content" id="verticalContent"></div>
+</div>
+
 <div class="overlay" id="overlay"></div>
 
-<!-- パスワード変更モーダル -->
+<!-- パスワード変更 -->
 <div class="overlay" id="pwOverlay" style="z-index:400"></div>
 <div class="bottom-sheet" id="pwSheet" style="z-index:500">
   <div class="sheet-handle"></div>
@@ -779,11 +363,9 @@
 
 <script>
 // ===== CONFIG =====
-// ここにSupabaseの情報を入れる
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
 
-// SHA-256ハッシュ関数
 async function sha256(message) {
   const msgBuffer = new TextEncoder().encode(message);
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
@@ -791,16 +373,15 @@ async function sha256(message) {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// ===== STATE =====
 let currentUser = null;
 let currentYear = new Date().getFullYear();
 let currentMonth = new Date().getMonth() + 1;
-let requests = {}; // { 'YYYY-M-D': shiftId }
+let requests = {};
 let selectedDay = null;
-let staffList = {};
+let shiftTypesAll = [];
+let shiftTypesMap = {};
 
-// ===== SHIFT DEFINITIONS =====
-const SHIFTS = [
+let SHIFTS = [
   { category: '日勤系', items: [
     { id: '日勤', color: '#3b82f6', time: '08:30-18:00 (8.5H)' },
     { id: '日勤+', color: '#2563eb', time: '08:30-18:30 (9H)' },
@@ -831,7 +412,6 @@ const SHIFTS = [
   ]},
 ];
 
-// ===== SUPABASE API =====
 async function supabaseRequest(path, options = {}) {
   const url = `${SUPABASE_URL}/rest/v1/${path}`;
   const res = await fetch(url, {
@@ -852,7 +432,36 @@ async function supabaseRequest(path, options = {}) {
   return text ? JSON.parse(text) : [];
 }
 
-// ===== STAFF DATA =====
+// ===== shift_types ロード =====
+async function loadShiftTypesFromDB() {
+  try {
+    const types = await supabaseRequest('shift_types?order=display_order,id&select=*');
+    shiftTypesAll = types;
+    shiftTypesMap = {};
+    types.forEach(s => { shiftTypesMap[s.id] = s; });
+
+    // カスタムシフトをSHIFTSに追加
+    const defaults = ['日勤','日勤+','午前','午後','遅番','遅L','リハ遅','夜勤','長日','中抜け','時短','CC','CHO','CCのみ','休み','有休','半有休','希望休'];
+    const customs = types.filter(s => !defaults.includes(s.id));
+    if (customs.length > 0) {
+      const customCategory = {
+        category: 'カスタム',
+        items: customs.map(s => ({
+          id: s.id,
+          color: '#94a3b8',
+          time: (s.start_time && s.end_time) ? `${s.start_time}-${s.end_time} (${parseFloat(s.work_hours)||0}H)` : ''
+        }))
+      };
+      const offIdx = SHIFTS.findIndex(c => c.category === '休み・有給');
+      if (offIdx >= 0) SHIFTS.splice(offIdx, 0, customCategory);
+      else SHIFTS.push(customCategory);
+    }
+    console.log('[shift_types] ロード完了', { 総数: types.length, カスタム: customs.length });
+  } catch(e) {
+    console.error('[shift_types] ロードエラー、ハードコード値を使用', e);
+  }
+}
+
 const STAFF_DATA = {
   0: [
     {code:1,name:'水島'},{code:2,name:'住元'},{code:3,name:'内山'},
@@ -884,9 +493,8 @@ const STAFF_DATA = {
   ],
 };
 
-const DEPT_NAMES = { 0: '医療事務', 2: 'リハビリ', 3: '放射線' };
+const DEPT_NAMES = { 0: '医療事務', 1: '看護', 2: 'リハビリ', 3: '放射線' };
 
-// ===== UI HELPERS =====
 function showLoading() { document.getElementById('loading').style.display = 'flex'; }
 function hideLoading() { document.getElementById('loading').style.display = 'none'; }
 
@@ -901,16 +509,190 @@ function openSheet() {
   document.getElementById('overlay').classList.add('show');
   document.getElementById('bottomSheet').classList.add('show');
 }
-
 function closeSheet() {
   document.getElementById('overlay').classList.remove('show');
   document.getElementById('bottomSheet').classList.remove('show');
 }
 
-// ===== LOGIN =====
-// deptSelect removed
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 
-// 部門選択で名前リストを更新
+function timeStrToMin(t) {
+  if (!t || typeof t !== 'string') return 0;
+  const [h, m] = t.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+function minToTimeStr(min) {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
+
+// ===== バーチカル表示 =====
+async function openVerticalView(year, month, day) {
+  showLoading();
+  try {
+    const allDeptShifts = await supabaseRequest(
+      `shifts?year=eq.${year}&month=eq.${month}&day=eq.${day}&is_confirmed=eq.true&select=staff_id,shift_type_id`
+    );
+    const allDeptStaff = await supabaseRequest(
+      `staff?dept_id=eq.${currentUser.deptId}&select=id,name,emp_type&order=staff_code`
+    );
+    const breaksData = await supabaseRequest(
+      `shift_breaks?year=eq.${year}&month=eq.${month}&day=eq.${day}&order=staff_id,display_order&select=staff_id,break_start,break_end`
+    );
+    const breaksMap = {};
+    breaksData.forEach(b => {
+      if (!breaksMap[b.staff_id]) breaksMap[b.staff_id] = [];
+      breaksMap[b.staff_id].push(b);
+    });
+
+    const shiftMap = {};
+    allDeptShifts.forEach(s => { shiftMap[s.staff_id] = s.shift_type_id; });
+
+    const workingStaff = allDeptStaff.filter(s => {
+      const sh = shiftMap[s.id];
+      if (!sh) return false;
+      const st = shiftTypesMap[sh];
+      if (!st) return false;
+      if (st.is_off) return false;
+      if (!st.start_time || !st.end_time) return false;
+      return true;
+    });
+
+    renderVerticalView(year, month, day, workingStaff, shiftMap, breaksMap);
+    document.getElementById('verticalOverlay').classList.add('show');
+    document.getElementById('verticalModal').classList.add('show');
+  } catch(e) {
+    console.error(e);
+    showToast('読み込みエラー', 'error');
+  }
+  hideLoading();
+}
+
+function renderVerticalView(year, month, day, workingStaff, shiftMap, breaksMap) {
+  const dow = new Date(year, month-1, day).getDay();
+  const dowJp = ['日','月','火','水','木','金','土'][dow];
+  document.getElementById('verticalTitle').textContent = 
+    `${year}/${month}/${day}(${dowJp}) ${currentUser.deptName}`;
+
+  if (workingStaff.length === 0) {
+    document.getElementById('verticalContent').innerHTML = 
+      '<div style="padding:40px;text-align:center;color:var(--text-muted)">この日に勤務するスタッフはいません</div>';
+    return;
+  }
+
+  const startMin = 8 * 60 + 30;
+  const endMin = 21 * 60 + 30;
+  const totalMinutes = endMin - startMin;
+  const pixelsPerMin = 1.6;
+  const timelineWidth = totalMinutes * pixelsPerMin;
+  
+  let timelineHeader = `<div style="position:relative;height:32px;width:${timelineWidth}px;border-bottom:2px solid var(--border);background:#f8fafc">`;
+  for (let m = startMin; m <= endMin; m += 10) {
+    const left = (m - startMin) * pixelsPerMin;
+    const isHalf = (m % 30 === 0);
+    const isHour = (m % 60 === 0);
+    if (isHour) {
+      timelineHeader += `<div style="position:absolute;left:${left}px;top:0;height:100%;border-left:1px solid #94a3b8"></div>`;
+    } else if (isHalf) {
+      timelineHeader += `<div style="position:absolute;left:${left}px;top:0;height:100%;border-left:1px solid #cbd5e1"></div>`;
+    } else {
+      timelineHeader += `<div style="position:absolute;left:${left}px;bottom:0;height:6px;border-left:1px solid #e2e8f0"></div>`;
+    }
+    if (isHalf) {
+      timelineHeader += `<div style="position:absolute;left:${left+2}px;top:6px;font-size:10px;color:${isHour?'#475569':'#94a3b8'};font-weight:${isHour?'700':'500'}">${minToTimeStr(m)}</div>`;
+    }
+  }
+  timelineHeader += '</div>';
+
+  // シフト色マップ（admin.htmlと同じ色を使用）
+  const SHIFT_BG_COLORS = {
+    '日勤':'#dbeafe','日勤+':'#bfdbfe','午前':'#dcfce7','午後':'#fef9c3',
+    '遅番':'#ffedd5','遅L':'#fef3c7','リハ遅':'#f3e8ff','夜勤':'#ede9fe',
+    '長日':'#ffe4e6','中抜け':'#ccfbf1','時短':'#dcfce7','CC':'#dbeafe',
+    'CHO':'#e0f2fe','CCのみ':'#e0f9ff'
+  };
+  const SHIFT_TX_COLORS = {
+    '日勤':'#1d4ed8','日勤+':'#1e40af','午前':'#15803d','午後':'#a16207',
+    '遅番':'#c2410c','遅L':'#92400e','リハ遅':'#7e22ce','夜勤':'#5b21b6',
+    '長日':'#be123c','中抜け':'#0f766e','時短':'#166534','CC':'#1d4ed8',
+    'CHO':'#075985','CCのみ':'#0e7490'
+  };
+
+  let rows = '';
+  workingStaff.forEach(staff => {
+    const sh = shiftMap[staff.id];
+    const st = shiftTypesMap[sh];
+    const shiftStart = timeStrToMin(st.start_time);
+    const shiftEnd = timeStrToMin(st.end_time);
+    if (shiftEnd <= startMin || shiftStart >= endMin) return;
+    
+    const barStart = Math.max(shiftStart, startMin);
+    const barEnd = Math.min(shiftEnd, endMin);
+    const barLeft = (barStart - startMin) * pixelsPerMin;
+    const barWidth = (barEnd - barStart) * pixelsPerMin;
+    
+    const barBg = SHIFT_BG_COLORS[sh] || '#f1f5f9';
+    const barColor = SHIFT_TX_COLORS[sh] || '#475569';
+
+    const breaks = breaksMap[staff.id] || [];
+    let breaksHtml = '';
+    breaks.forEach(b => {
+      const bs = timeStrToMin(b.break_start);
+      const be = timeStrToMin(b.break_end);
+      if (be <= barStart || bs >= barEnd) return;
+      const bsClamp = Math.max(bs, barStart);
+      const beClamp = Math.min(be, barEnd);
+      const bLeft = (bsClamp - startMin) * pixelsPerMin;
+      const bWidth = (beClamp - bsClamp) * pixelsPerMin;
+      let breakContent = '';
+      if (bWidth >= 80) {
+        breakContent = `<div style="font-size:9px;line-height:1.2;text-align:center"><div>休憩</div><div style="font-size:8px;font-weight:600">${b.break_start}-${b.break_end}</div></div>`;
+      } else if (bWidth >= 40) {
+        breakContent = `<div style="font-size:8px;font-weight:600;line-height:1">${b.break_start}<br><span style="opacity:0.7">-${b.break_end}</span></div>`;
+      }
+      breaksHtml += `<div style="position:absolute;left:${bLeft}px;top:0;width:${bWidth}px;height:100%;background:white;border-left:1px dashed #94a3b8;border-right:1px dashed #94a3b8;display:flex;align-items:center;justify-content:center;color:#64748b;pointer-events:none;overflow:hidden">${breakContent}</div>`;
+    });
+
+    const isSelf = staff.id === currentUser.id;
+    const empBadge = staff.emp_type === 'short' ? '<span style="font-size:9px;color:#0f766e;background:#ccfbf1;padding:1px 4px;border-radius:3px;margin-left:4px">時短</span>' 
+      : staff.emp_type === 'part' ? '<span style="font-size:9px;color:#6b7280;background:#f3f4f6;padding:1px 4px;border-radius:3px;margin-left:4px">パート</span>' : '';
+
+    rows += `<div class="v-row${isSelf?' is-self':''}">
+      <div class="v-name">
+        ${escapeHtml(staff.name)}${isSelf?' <span style="font-size:9px;color:#92400e;background:#fef3c7;padding:1px 4px;border-radius:3px;margin-left:2px">自分</span>':''}${empBadge}
+      </div>
+      <div class="v-bar-area" style="width:${timelineWidth}px">
+        <div style="position:absolute;left:${barLeft}px;top:6px;width:${barWidth}px;height:32px;background:${barBg};color:${barColor};border-radius:6px;display:flex;align-items:center;justify-content:flex-start;padding-left:8px;font-size:11px;font-weight:700;border:1px solid rgba(0,0,0,0.1);box-shadow:0 1px 2px rgba(0,0,0,0.06);overflow:hidden;white-space:nowrap" title="${escapeHtml(sh)} ${st.start_time}-${st.end_time}">${escapeHtml(sh)} ${st.start_time}-${st.end_time}</div>
+        ${breaksHtml}
+      </div>
+    </div>`;
+  });
+
+  document.getElementById('verticalContent').innerHTML = 
+    `<div style="display:inline-block;min-width:100%">
+      <div style="display:flex">
+        <div style="min-width:100px;background:#e0e7ff;border-right:1px solid #94a3b8;border-bottom:2px solid var(--border);padding:6px 10px;font-size:12px;font-weight:700;color:#3730a3;display:flex;align-items:center">スタッフ</div>
+        ${timelineHeader}
+      </div>
+      ${rows}
+    </div>`;
+}
+
+document.getElementById('verticalCloseBtn').addEventListener('click', () => {
+  document.getElementById('verticalOverlay').classList.remove('show');
+  document.getElementById('verticalModal').classList.remove('show');
+});
+document.getElementById('verticalOverlay').addEventListener('click', () => {
+  document.getElementById('verticalOverlay').classList.remove('show');
+  document.getElementById('verticalModal').classList.remove('show');
+});
+
+// ===== LOGIN =====
 document.getElementById('deptSelect').addEventListener('change', function() {
   const deptId = parseInt(this.value);
   const staffSel = document.getElementById('staffSelect');
@@ -960,7 +742,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
 
     errEl.style.display = 'none';
     localStorage.setItem('shift_user', JSON.stringify(currentUser));
-    showApp();
+    await showApp();
   } catch(e) {
     console.error(e);
     showToast('接続エラーが発生しました', 'error');
@@ -968,17 +750,16 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
   hideLoading();
 });
 
-// ===== SHOW APP =====
 async function showApp() {
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('appScreen').style.display = 'flex';
   document.getElementById('headerName').textContent = currentUser.name;
   document.getElementById('headerDept').textContent = currentUser.deptName;
+  await loadShiftTypesFromDB();
   await loadRequests();
   renderCalendar();
 }
 
-// ===== LOAD REQUESTS =====
 async function loadRequests() {
   if (!currentUser?.id) return;
   try {
@@ -987,12 +768,9 @@ async function loadRequests() {
     );
     requests = {};
     data.forEach(r => { requests[`${currentYear}-${currentMonth}-${r.day}`] = r.request_type; });
-  } catch(e) {
-    console.error(e);
-  }
+  } catch(e) { console.error(e); }
 }
 
-// ===== CALENDAR =====
 function renderCalendar() {
   const grid = document.getElementById('calendarGrid');
   grid.innerHTML = '';
@@ -1003,7 +781,6 @@ function renderCalendar() {
 
   document.getElementById('monthTitle').textContent = `${currentYear}年${currentMonth}月`;
 
-  // 空白
   for (let i = 0; i < firstDay; i++) {
     const empty = document.createElement('div');
     empty.className = 'cal-day empty';
@@ -1022,19 +799,11 @@ function renderCalendar() {
     const cell = document.createElement('div');
     cell.className = `cal-day${isPast ? ' past' : ''}${isToday ? ' today' : ''}${dow === 0 ? ' sun' : ''}${dow === 6 ? ' sat' : ''}`;
 
-    if (shift) {
-      const safeClass = shift.replace(/\+/g, '\\+');
-      cell.classList.add('has-shift', `shift-${shift}`);
-    }
+    if (shift) cell.classList.add('has-shift', `shift-${shift}`);
 
-    cell.innerHTML = `
-      <div class="day-num">${d}</div>
-      ${shift ? `<div class="day-shift">${shift}</div>` : ''}
-    `;
+    cell.innerHTML = `<div class="day-num">${d}</div>${shift ? `<div class="day-shift">${shift}</div>` : ''}`;
 
-    if (!isPast) {
-      cell.addEventListener('click', () => openDaySheet(d, shift));
-    }
+    if (!isPast) cell.addEventListener('click', () => openDaySheet(d, shift));
 
     grid.appendChild(cell);
   }
@@ -1042,13 +811,11 @@ function renderCalendar() {
   updateCount();
 }
 
-// ===== DAY SHEET =====
 function openDaySheet(day, currentShift) {
   selectedDay = day;
   const date = new Date(currentYear, currentMonth - 1, day);
   const days = ['日', '月', '火', '水', '木', '金', '土'];
-  document.getElementById('sheetDate').textContent =
-    `${currentMonth}月${day}日（${days[date.getDay()]}）`;
+  document.getElementById('sheetDate').textContent = `${currentMonth}月${day}日（${days[date.getDay()]}）`;
 
   const list = document.getElementById('shiftList');
   list.innerHTML = '';
@@ -1075,7 +842,6 @@ function openDaySheet(day, currentShift) {
   openSheet();
 }
 
-// ===== SELECT SHIFT =====
 async function selectShift(shiftId) {
   const key = `${currentYear}-${currentMonth}-${selectedDay}`;
   requests[key] = shiftId;
@@ -1083,7 +849,6 @@ async function selectShift(shiftId) {
   renderCalendar();
 }
 
-// ===== CLEAR SHIFT =====
 document.getElementById('clearBtn').addEventListener('click', () => {
   const key = `${currentYear}-${currentMonth}-${selectedDay}`;
   delete requests[key];
@@ -1091,14 +856,12 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   renderCalendar();
 });
 
-// ===== COUNT =====
 function updateCount() {
   const count = Object.keys(requests).filter(k => k.startsWith(`${currentYear}-${currentMonth}-`)).length;
   document.getElementById('inputCount').textContent = count;
   document.getElementById('submitBtn').disabled = count === 0;
 }
 
-// ===== SUBMIT =====
 document.getElementById('submitBtn').addEventListener('click', async () => {
   if (!currentUser?.id) {
     showToast('ログインし直してください', 'error');
@@ -1109,13 +872,11 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
   try {
     const monthKeys = Object.keys(requests).filter(k => k.startsWith(`${currentYear}-${currentMonth}-`));
 
-    // 既存データ削除
     await supabaseRequest(
       `shift_requests?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}`,
       { method: 'DELETE' }
     );
 
-    // 新規挿入
     const inserts = monthKeys.map(k => {
       const day = parseInt(k.split('-')[2]);
       return {
@@ -1142,7 +903,6 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
   hideLoading();
 });
 
-// ===== MONTH NAV =====
 document.getElementById('prevMonthBtn').addEventListener('click', async () => {
   currentMonth--;
   if (currentMonth < 1) { currentMonth = 12; currentYear--; }
@@ -1157,21 +917,17 @@ document.getElementById('nextMonthBtn').addEventListener('click', async () => {
   renderCalendar();
 });
 
-// ===== LOGOUT =====
 document.getElementById('logoutBtn').addEventListener('click', () => {
   currentUser = null;
   requests = {};
   localStorage.removeItem('shift_user');
   document.getElementById('appScreen').style.display = 'none';
   document.getElementById('loginScreen').style.display = 'flex';
-  document.getElementById('staffCodeInput').value = '';
   document.getElementById('passwordInput').value = '';
 });
 
-// ===== OVERLAY CLOSE =====
 document.getElementById('overlay').addEventListener('click', closeSheet);
 
-// ===== パスワード変更 =====
 document.getElementById('changePwStaffBtn').addEventListener('click', () => {
   document.getElementById('pwOverlay').classList.add('show');
   document.getElementById('pwSheet').classList.add('show');
@@ -1228,8 +984,6 @@ document.getElementById('staffChangePwBtn').addEventListener('click', async () =
   hideLoading();
 });
 
-
-// ===== タブ切替 =====
 let confYear = new Date().getFullYear();
 let confMonth = new Date().getMonth() + 1;
 let currentTab = 'request';
@@ -1271,20 +1025,9 @@ async function loadConfirmedShifts() {
     );
 
     const daysInMonth = new Date(confYear, confMonth, 0).getDate();
-    const DOW = ['日','月','火','水','木','金','土'];
     const shiftMap = {};
     shifts.forEach(s => { shiftMap[s.day] = s.shift_type_id; });
 
-    // 月間サマリー
-    let totalH = 0;
-    let workDays = 0;
-    let offDays = 0;
-    shifts.forEach(s => {
-      const h = SHIFTS.flatMap(c => c.items).find(i => i.id === s.shift_type_id);
-      // 時間はSHIFT_HOURSから
-    });
-
-    // カレンダー形式で表示
     const SHIFT_COLORS_MAP = {
       '日勤':'#dbeafe','日勤+':'#bfdbfe','午前':'#dcfce7','午後':'#fef9c3',
       '遅番':'#ffedd5','遅L':'#fef3c7','リハ遅':'#f3e8ff','夜勤':'#ede9fe',
@@ -1309,49 +1052,38 @@ async function loadConfirmedShifts() {
       return;
     }
 
-    // カレンダーグリッド
     const firstDow = new Date(confYear, confMonth-1, 1).getDay();
-    let html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:16px">';
+    let html = '<div style="font-size:11px;color:var(--text-muted);text-align:center;margin-bottom:8px">📊 日付タップでバーチカル表示</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:16px">';
 
-    // 曜日ヘッダー
     ['日','月','火','水','木','金','土'].forEach((d,i) => {
       html += `<div style="text-align:center;font-size:11px;font-weight:600;color:${i===0?'#ef4444':i===6?'#3b82f6':'var(--text-muted)'};padding:4px 0">${d}</div>`;
     });
 
-    // 空白
-    for (let i = 0; i < firstDow; i++) {
-      html += '<div></div>';
-    }
+    for (let i = 0; i < firstDow; i++) html += '<div></div>';
 
-    // 日付
     for (let d = 1; d <= daysInMonth; d++) {
       const dow = new Date(confYear, confMonth-1, d).getDay();
       const shift = shiftMap[d] || '';
-      const bg = SHIFT_COLORS_MAP[shift] || 'white';
-      const color = SHIFT_TEXT_COLORS[shift] || 'var(--text-muted)';
+      let bg = SHIFT_COLORS_MAP[shift] || (shift ? '#f1f5f9' : 'white');
+      let color = SHIFT_TEXT_COLORS[shift] || (shift ? '#475569' : 'var(--text-muted)');
       const dowColor = dow===0?'#ef4444':dow===6?'#3b82f6':'var(--text)';
 
-      html += `<div style="border-radius:10px;padding:6px 4px;text-align:center;background:${bg};border:1.5px solid ${shift?color+'40':'var(--border)'}">
+      html += `<div data-day="${d}" class="conf-day-cell" style="border-radius:10px;padding:6px 4px;text-align:center;background:${bg};border:1.5px solid ${shift?color+'40':'var(--border)'};cursor:pointer">
         <div style="font-size:12px;font-weight:600;color:${dowColor}">${d}</div>
         <div style="font-size:10px;font-weight:700;color:${color};margin-top:2px">${shift||'―'}</div>
       </div>`;
     }
     html += '</div>';
 
-    // 勤務サマリー
-    const SHIFT_HOURS_MAP = {
-      '日勤':8.5,'日勤+':9,'午前':5,'午後':5,'遅番':7.5,'遅L':8.5,
-      'リハ遅':8,'夜勤':4,'長日':11,'中抜け':8,'時短':6,'CC':8,'CHO':7,
-      'CCのみ':3,'休み':0,'有休':0,'半有休':0,'希望休':0
-    };
-
     let totalHours = 0;
     let workCount = 0;
     let restCount = 0;
     shifts.forEach(s => {
-      const h = SHIFT_HOURS_MAP[s.shift_type_id] || 0;
+      const st = shiftTypesMap[s.shift_type_id];
+      const h = st ? (parseFloat(st.work_hours) || 0) : 0;
       totalHours += h;
-      if (['休み','有休','半有休','希望休'].includes(s.shift_type_id)) restCount++;
+      if (st?.is_off) restCount++;
       else if (h > 0) workCount++;
     });
 
@@ -1372,6 +1104,14 @@ async function loadConfirmedShifts() {
 
     grid.innerHTML = html;
 
+    // 日付セルクリック → バーチカル表示
+    grid.querySelectorAll('.conf-day-cell').forEach(cell => {
+      cell.addEventListener('click', () => {
+        const day = parseInt(cell.dataset.day, 10);
+        openVerticalView(confYear, confMonth, day);
+      });
+    });
+
   } catch(e) {
     console.error(e);
     grid.innerHTML = '<div style="text-align:center;color:var(--danger);padding:20px">読み込みエラーが発生しました</div>';
@@ -1389,16 +1129,14 @@ document.getElementById('confNextMonth')?.addEventListener('click', () => {
   loadConfirmedShifts();
 });
 
-// ===== AUTO LOGIN =====
-window.addEventListener('load', () => {
+window.addEventListener('load', async () => {
   const saved = localStorage.getItem('shift_user');
   if (saved) {
     try {
       const user = JSON.parse(saved);
-      // accountIdがある場合のみ自動ログイン（新認証方式のみ）
       if (user && user.accountId && user.id) {
         currentUser = user;
-        showApp();
+        await showApp();
       } else {
         localStorage.removeItem('shift_user');
       }
