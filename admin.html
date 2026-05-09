@@ -124,6 +124,58 @@
     /* カスタムシフト共通スタイル */
     .sc-custom{background:#f1f5f9;color:#475569;border:1px dashed #94a3b8}
 
+    /* ===== 印刷用CSS（バーチカル表示） ===== */
+    @media print {
+      @page {
+        size: A4 landscape;
+        margin: 5mm;
+      }
+      /* 印刷時は印刷対象以外を非表示 */
+      body * { visibility: hidden; }
+      #verticalViewModal, #verticalViewModal * { visibility: visible; }
+      #verticalViewModal {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        max-width: none !important;
+        max-height: none !important;
+        background: white !important;
+        box-shadow: none !important;
+        border: none !important;
+        padding: 0 !important;
+      }
+      .modal-overlay { background: white !important; }
+      .modal-overlay#verticalViewModal { background: white !important; }
+      /* モーダル内のボタンとフッターは非表示 */
+      #verticalViewModal .modal-footer,
+      #verticalViewModal #verticalPrevDay,
+      #verticalViewModal #verticalNextDay,
+      #verticalViewModal #saveBreaksBtn,
+      #verticalViewModal #verticalPrintBtn,
+      #verticalViewModal .modal-title button,
+      #verticalViewModal .modal-title > div { display: none !important; }
+      #verticalViewModal .modal-title {
+        font-size: 14pt !important;
+        text-align: center !important;
+        padding: 8px 0 !important;
+        margin-bottom: 8px !important;
+        border-bottom: 1px solid #888 !important;
+      }
+      #verticalViewContent {
+        max-height: none !important;
+        overflow: visible !important;
+        font-size: 9pt !important;
+      }
+      /* シフト帯の影は印刷で目立つので消す */
+      #verticalViewContent .v-shift-bar {
+        box-shadow: none !important;
+        cursor: default !important;
+      }
+      /* スクロール禁止 */
+      html, body { overflow: visible !important; height: auto !important; }
+    }
+
     /* MODAL */
     .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;display:none;align-items:center;justify-content:center;backdrop-filter:blur(2px); }
     .modal-overlay.show { display:flex; }
@@ -584,6 +636,7 @@
       </div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-outline" onclick="closeModal('verticalViewModal')">閉じる</button>
+        <button class="btn btn-outline" id="verticalPrintBtn">🖨 印刷</button>
         <button class="btn btn-primary" id="saveBreaksBtn">休憩保存</button>
       </div>
     </div>
@@ -4078,6 +4131,11 @@ document.getElementById('applyBreakEditBtn')?.addEventListener('click', () => {
 });
 
 // 休憩を保存（DBへ）
+// 印刷ボタン
+document.getElementById('verticalPrintBtn')?.addEventListener('click', () => {
+  window.print();
+});
+
 document.getElementById('saveBreaksBtn')?.addEventListener('click', async () => {
   showLoading();
   try {
