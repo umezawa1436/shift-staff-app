@@ -642,6 +642,7 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -3853,9 +3854,12 @@ function renderVerticalView() {
         ${escapeHtml(staff.name)}${empBadge}
       </div>
       <div style="position:relative;height:44px;width:${timelineWidth}px;background:#fafafa">
-        <div class="${colorClass}" style="position:absolute;left:${barLeft}px;top:6px;width:${barWidth}px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;cursor:pointer;border:1px solid rgba(0,0,0,0.1);box-shadow:0 1px 2px rgba(0,0,0,0.06)" 
-          onclick="openBreakEdit(${staff.id}, '${escapeHtml(staff.name)}', '${st.start_time}', '${st.end_time}')"
-          title="クリックで休憩編集">${sh} ${st.start_time}-${st.end_time}</div>
+        <div class="${colorClass} v-shift-bar" style="position:absolute;left:${barLeft}px;top:6px;width:${barWidth}px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;cursor:pointer;border:1px solid rgba(0,0,0,0.1);box-shadow:0 1px 2px rgba(0,0,0,0.06)" 
+          data-staff-id="${staff.id}"
+          data-staff-name="${escapeHtml(staff.name)}"
+          data-shift-start="${st.start_time}"
+          data-shift-end="${st.end_time}"
+          title="クリックで休憩編集">${escapeHtml(sh)} ${st.start_time}-${st.end_time}</div>
         ${breaksHtml}
       </div>
     </div>`;
@@ -3869,6 +3873,19 @@ function renderVerticalView() {
       </div>
       ${rows}
     </div>`;
+
+  // 帯クリックイベントをまとめて設定（data属性方式）
+  document.querySelectorAll('#verticalViewContent .v-shift-bar').forEach(el => {
+    el.addEventListener('click', () => {
+      const sid = el.dataset.staffId;
+      const sname = el.dataset.staffName;
+      const sstart = el.dataset.shiftStart;
+      const send = el.dataset.shiftEnd;
+      // staff_idの型を考慮（数値型と文字列型の両方に対応）
+      const sidParsed = /^\d+$/.test(sid) ? parseInt(sid, 10) : sid;
+      openBreakEdit(sidParsed, sname, sstart, send);
+    });
+  });
 }
 
 // 前日・翌日ナビ
