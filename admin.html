@@ -4455,6 +4455,40 @@ document.getElementById('exportCsvBtn')?.addEventListener('click', () => {
   }
   csv += '\n';
 
+  // ===== シフトパターン凡例（このシフト表で使われているシフトを集計）=====
+  csv += '\n【シフトパターン凡例】\n';
+  csv += 'シフト名,時間,実働,午前カバー,午後カバー,夜間カバー,分類,使用回数\n';
+  
+  // このシフト表で使用されているシフトをカウント
+  const usedShiftCount = {};
+  deptStaff.forEach(staff => {
+    for (let d = 1; d <= daysInMonth; d++) {
+      const sh = shiftData[`${staff.id}|${d}`];
+      if (sh) usedShiftCount[sh] = (usedShiftCount[sh] || 0) + 1;
+    }
+  });
+  
+  // shift_typesから情報を取得して凡例を出力（display_order順）
+  shiftTypesAll.forEach(s => {
+    const count = usedShiftCount[s.id] || 0;
+    if (count === 0) return; // 使われていないシフトは省略
+    const time = (s.start_time && s.end_time) ? `${s.start_time}-${s.end_time}` : '';
+    const hours = s.work_hours ? `${parseFloat(s.work_hours)}H` : '';
+    const m = s.covers_morning ? '○' : '−';
+    const a = s.covers_afternoon ? '○' : '−';
+    const e = s.covers_evening ? '○' : '−';
+    // 分類タグ
+    const tags = [];
+    if (s.is_off) tags.push('休み');
+    if (s.is_night) tags.push('夜勤');
+    if (s.is_late) tags.push('遅番');
+    if (s.is_long) tags.push('長日');
+    if (s.is_mid_break) tags.push('中抜け');
+    if (!s.is_default) tags.push('カスタム');
+    const tagStr = tags.length > 0 ? tags.join('・') : '通常';
+    csv += `${s.id},${time},${hours},${m},${a},${e},${tagStr},${count}\n`;
+  });
+
   // BOM付きUTF-8でダウンロード
   const bom = '\uFEFF';
   const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8' });
