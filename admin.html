@@ -121,6 +121,8 @@
     .sc-CHO{background:#e0f2fe;color:#075985}.sc-CCのみ{background:#e0f9ff;color:#0e7490}
     .sc-休み{background:#f3f4f6;color:#6b7280}.sc-有休{background:#fdf4ff;color:#86198f}
     .sc-半有休{background:#fce7f3;color:#9d174d}.sc-希望休{background:#fff7ed;color:#9a3412}
+    /* カスタムシフト共通スタイル */
+    .sc-custom{background:#f1f5f9;color:#475569;border:1px dashed #94a3b8}
 
     /* MODAL */
     .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;display:none;align-items:center;justify-content:center;backdrop-filter:blur(2px); }
@@ -215,7 +217,9 @@
       .generate-options { grid-template-columns:1fr; }
       .settings-grid { grid-template-columns:1fr; }
     }
-  </style>
+      .btn-icon { background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:14px;transition:all 0.15s; }
+    .btn-icon:hover { background:#f1f5f9; }
+</style>
 </head>
 <body>
 
@@ -449,6 +453,19 @@
             <div id="beginnerLimitsGrid"></div>
             <button class="btn btn-primary" style="margin-top:16px" id="saveBeginnerLimitsBtn">保存</button>
           </div>
+
+          <!-- シフトパターン管理 -->
+          <div class="card">
+            <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+              <span style="display:flex;align-items:center;gap:8px">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                シフトパターン管理
+              </span>
+              <button class="btn btn-primary" id="addCustomShiftBtn" style="font-size:13px;padding:8px 16px">＋ カスタム追加</button>
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">既定シフト（14種）に加えて、カスタムシフトを自由に追加できます。既定シフトは編集・削除できません。</div>
+            <div id="shiftPatternsList" style="overflow-x:auto"></div>
+          </div>
         </div>
 
         <!-- ACCOUNT -->
@@ -500,6 +517,56 @@
 </div>
 
 <!-- MODALS -->
+<!-- カスタムシフト追加・編集モーダル -->
+<div class="modal-overlay" id="customShiftModal">
+  <div class="modal">
+    <div class="modal-title" id="customShiftModalTitle">カスタムシフト追加</div>
+    <input type="hidden" id="customShiftEditId" value="">
+    <div class="form-group">
+      <label class="form-label">シフト名（10文字以内）<span style="color:#dc2626">*</span></label>
+      <input type="text" class="form-input" id="customShiftName" placeholder="例：早番" maxlength="10">
+    </div>
+    <div class="form-group" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <label class="form-label">開始時間 <span style="color:#dc2626">*</span></label>
+        <input type="time" class="form-input" id="customShiftStart">
+      </div>
+      <div>
+        <label class="form-label">終了時間 <span style="color:#dc2626">*</span></label>
+        <input type="time" class="form-input" id="customShiftEnd">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">実働時間（H）<span style="color:#dc2626">*</span></label>
+      <input type="number" class="form-input" id="customShiftHours" min="0" max="24" step="0.5" placeholder="例：8.0">
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">休憩時間を除いた実働時間</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">カバーする時間帯</label>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customCoverMorning"> 午前</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customCoverAfternoon"> 午後</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customCoverEvening"> 夜間</label>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">必要人数の充足判定で使われます</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">分類フラグ（月間上限のカウント対象）</label>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customIsNight"> 夜勤</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customIsLate"> 遅番</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customIsLong"> 長日</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customIsMidBreak"> 中抜け</label>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">スタッフごとの月間上限（夜勤上限など）にカウントされます</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('customShiftModal')">キャンセル</button>
+      <button class="btn btn-primary" id="saveCustomShiftBtn">保存</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="requestDetailModal">
   <div class="modal modal-lg">
     <div class="modal-title" id="requestDetailTitle"></div>
@@ -584,11 +651,92 @@ const SHIFT_COVERS = {
   'CCのみ':['afternoon'],'休み':[],'有休':[],'半有休':[],'希望休':[]
 };
 
-// 夜勤系シフト
+// 夜勤系シフト（起動時にDBから動的にリビルドされる）
 const NIGHT_SHIFTS = ['遅番','遅L','リハ遅','夜勤'];
+const LATE_SHIFTS = ['遅番','遅L','リハ遅'];
 const LONG_SHIFTS = ['長日'];
 const MID_BREAK_SHIFTS = ['中抜け'];
 const OFF_SHIFTS = ['休み','有休','半有休','希望休'];
+
+// シフトタイプの動的ロード結果（フェーズ2で使用）
+let shiftTypesAll = []; // 全シフト（is_off含む）
+let shiftTypesActive = []; // 勤務シフトのみ（is_off=false）
+
+// =====================================================
+// 起動時にshift_typesテーブルから読み込み、互換マップを再構築
+// 既存のSHIFT_HOURS, SHIFT_COVERS, NIGHT_SHIFTS等の中身を
+// データベース内容で書き換える（カスタムシフト含む）
+// =====================================================
+async function loadShiftTypesAndBuildMaps() {
+  try {
+    const types = await sb('shift_types?order=display_order,id&select=*');
+    shiftTypesAll = types;
+    shiftTypesActive = types.filter(s => !s.is_off);
+
+    // SHIFT_HOURS をクリアして再構築
+    Object.keys(SHIFT_HOURS).forEach(k => delete SHIFT_HOURS[k]);
+    types.forEach(s => {
+      SHIFT_HOURS[s.id] = parseFloat(s.work_hours) || 0;
+    });
+
+    // SHIFT_COVERS をクリアして再構築
+    Object.keys(SHIFT_COVERS).forEach(k => delete SHIFT_COVERS[k]);
+    types.forEach(s => {
+      const covers = [];
+      if (s.covers_morning) covers.push('morning');
+      if (s.covers_afternoon) covers.push('afternoon');
+      if (s.covers_evening) covers.push('evening');
+      SHIFT_COVERS[s.id] = covers;
+    });
+
+    // 各分類フラグ配列をクリアして再構築
+    NIGHT_SHIFTS.length = 0;
+    LATE_SHIFTS.length = 0;
+    LONG_SHIFTS.length = 0;
+    MID_BREAK_SHIFTS.length = 0;
+    OFF_SHIFTS.length = 0;
+    SHIFT_OPTIONS.length = 0;
+    types.forEach(s => {
+      if (s.is_night) NIGHT_SHIFTS.push(s.id);
+      if (s.is_late) LATE_SHIFTS.push(s.id);
+      if (s.is_long) LONG_SHIFTS.push(s.id);
+      if (s.is_mid_break) MID_BREAK_SHIFTS.push(s.id);
+      if (s.is_off) OFF_SHIFTS.push(s.id);
+      // SHIFT_OPTIONS は表示順で全シフトを並べる（is_offも含む）
+      SHIFT_OPTIONS.push(s.id);
+    });
+
+    // SHIFT_COLORS にカスタムシフトのデフォルトクラスを追加
+    types.forEach(s => {
+      if (!SHIFT_COLORS[s.id]) {
+        // カスタムシフトは「sc-custom」クラスをデフォルトに
+        SHIFT_COLORS[s.id] = 'sc-custom';
+      }
+    });
+
+    // SHIFT_PATTERN_OPTIONS もリビルド（自動生成用のチェックボックス一覧）
+    // CC/CHO/CCのみと休み系は除外（既存仕様）
+    SHIFT_PATTERN_OPTIONS.length = 0;
+    types.forEach(s => {
+      if (s.is_off) return; // 休み系は除外
+      if (['CC','CHO','CCのみ'].includes(s.id)) return; // CC/CHO関連は除外
+      const time = (s.start_time && s.end_time) ? `${s.start_time}-${s.end_time}` : '';
+      SHIFT_PATTERN_OPTIONS.push({ id: s.id, label: s.label || s.id, time: time });
+    });
+
+    console.log('[shift_types] ロード完了', {
+      総数: types.length,
+      勤務シフト: shiftTypesActive.length,
+      休み系: OFF_SHIFTS.length,
+      夜勤: NIGHT_SHIFTS,
+      遅番: LATE_SHIFTS,
+      長日: LONG_SHIFTS,
+      中抜け: MID_BREAK_SHIFTS
+    });
+  } catch(e) {
+    console.error('[shift_types] ロードエラー、ハードコード値を使用', e);
+  }
+}
 
 // SUPABASE
 async function sb(path, options = {}) {
@@ -617,6 +765,7 @@ function showToast(msg, type='') {
   setTimeout(() => t.className = 'toast', 3000);
 }
 function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+function openModal(id) { document.getElementById(id).classList.add('show'); }
 
 // LOGIN
 // SHA-256ハッシュ関数
@@ -687,6 +836,8 @@ document.getElementById('adminPassword').addEventListener('keydown', e => {
 async function initApp() {
   showLoading();
   try {
+    // 最初にshift_typesをロードして互換マップを構築（カスタムシフト対応）
+    await loadShiftTypesAndBuildMaps();
     await loadStaff();
     updateMonthDisplays();
     buildAllDeptTabs();
@@ -1134,26 +1285,20 @@ function openShiftEditModal(staffId, staffName, day, gridId) {
   document.getElementById('shiftEditTitle').textContent = `${staffName} - ${shiftMonth}月${day}日（${DOW[date.getDay()]}）${multiLabel}`;
   editingCell = { staffId, day, gridId, key };
   const opts = document.getElementById('shiftEditOptions');
-  const SHIFT_INFO = {
-    '日勤':   {time:'08:30-18:00', hours:'8.5H'},
-    '日勤+':  {time:'08:30-18:30', hours:'9H'},
-    '午前':   {time:'08:30-13:30', hours:'5H'},
-    '午後':   {time:'13:00-18:30', hours:'5H'},
-    '遅番':   {time:'13:00-21:30', hours:'7.5H'},
-    '遅L':    {time:'12:00-21:30', hours:'8.5H'},
-    'リハ遅': {time:'12:00-21:00', hours:'8H'},
-    '夜勤':   {time:'17:30-21:30', hours:'4H'},
-    '長日':   {time:'08:30-21:30', hours:'11H'},
-    '中抜け': {time:'08:30-21:30', hours:'8H'},
-    '時短':   {time:'08:30-14:30', hours:'6H'},
-    'CC':     {time:'08:30-17:00', hours:'8H'},
-    'CHO':    {time:'08:30-16:30', hours:'7H'},
-    'CCのみ': {time:'14:00-17:00', hours:'3H'},
-    '休み':   {time:'', hours:''},
-    '有休':   {time:'所定+8.5H', hours:''},
-    '半有休': {time:'所定+5H', hours:''},
-    '希望休': {time:'', hours:''},
-  };
+  // SHIFT_INFO を shift_types テーブルから動的生成（カスタムシフト対応）
+  const SHIFT_INFO = {};
+  shiftTypesAll.forEach(s => {
+    if (s.is_off) {
+      // 休み系は時間表示なし、ただし有休・半有休は所定時間扱いの説明あり
+      if (s.id === '有休') SHIFT_INFO[s.id] = {time:'所定+8.5H', hours:''};
+      else if (s.id === '半有休') SHIFT_INFO[s.id] = {time:'所定+5H', hours:''};
+      else SHIFT_INFO[s.id] = {time:'', hours:''};
+    } else {
+      const t = (s.start_time && s.end_time) ? `${s.start_time}-${s.end_time}` : '';
+      const h = s.work_hours ? `${parseFloat(s.work_hours)}H` : '';
+      SHIFT_INFO[s.id] = {time: t, hours: h};
+    }
+  });
   opts.innerHTML = SHIFT_OPTIONS.map(s => {
     const cur = shiftData[key];
     const info = SHIFT_INFO[s] || {};
@@ -2120,8 +2265,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       staffMidCount[s.id] = 0;
       staffLateCount[s.id] = 0;
     });
-    // 遅番系シフト（NIGHT_SHIFTSのうち夜勤を除いたもの）
-    const LATE_SHIFTS = ['遅番','遅L','リハ遅'];
+    // 遅番系シフト LATE_SHIFTS はグローバル定義を使用（カスタムシフト対応）
 
     // ===== デバッグログ初期化 =====
     const _genLog = [];
@@ -3523,6 +3667,191 @@ document.getElementById('saveBeginnerLimitsBtn')?.addEventListener('click', asyn
   hideLoading();
 });
 
+// =====================================================
+// シフトパターン管理（フェーズ1）
+// =====================================================
+let shiftPatternsCache = [];
+
+async function loadShiftPatterns() {
+  try {
+    shiftPatternsCache = await sb('shift_types?order=display_order,id&select=*');
+    renderShiftPatternsList();
+  } catch(e) {
+    console.error('シフトパターン読み込みエラー', e);
+    document.getElementById('shiftPatternsList').innerHTML = '<div style="color:#dc2626;padding:16px">読み込みエラー</div>';
+  }
+}
+
+function renderShiftPatternsList() {
+  // 休み系（is_off=true）は除外して表示（管理対象外）
+  const list = shiftPatternsCache.filter(s => !s.is_off);
+  if (!list.length) {
+    document.getElementById('shiftPatternsList').innerHTML = '<div style="color:var(--text-muted);padding:16px">シフトパターンがありません</div>';
+    return;
+  }
+  let html = '<table class="req-table" style="min-width:900px"><thead><tr>';
+  html += '<th style="text-align:left">シフト名</th>';
+  html += '<th>時間</th>';
+  html += '<th>実働</th>';
+  html += '<th>午前</th><th>午後</th><th>夜間</th>';
+  html += '<th>夜勤</th><th>遅番</th><th>長日</th><th>中抜</th>';
+  html += '<th>種別</th>';
+  html += '<th>操作</th>';
+  html += '</tr></thead><tbody>';
+  list.forEach(s => {
+    const isDefault = !!s.is_default;
+    const time = (s.start_time && s.end_time) ? `${s.start_time}-${s.end_time}` : '-';
+    const checkmark = (v) => v ? '<span style="color:#16a34a;font-weight:700">✓</span>' : '<span style="color:#cbd5e1">−</span>';
+    html += `<tr>
+      <td style="text-align:left;font-weight:600">${escapeHtml(s.label || s.id)}</td>
+      <td style="font-size:12px">${time}</td>
+      <td>${(s.work_hours||0).toFixed(1)}h</td>
+      <td>${checkmark(s.covers_morning)}</td>
+      <td>${checkmark(s.covers_afternoon)}</td>
+      <td>${checkmark(s.covers_evening)}</td>
+      <td>${checkmark(s.is_night)}</td>
+      <td>${checkmark(s.is_late)}</td>
+      <td>${checkmark(s.is_long)}</td>
+      <td>${checkmark(s.is_mid_break)}</td>
+      <td>${isDefault ? '<span style="background:#e0e7ff;color:#4338ca;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">既定</span>' : '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">カスタム</span>'}</td>
+      <td>${isDefault ? '<span style="color:var(--text-muted);font-size:11px">編集不可</span>' : `<button class="btn-icon" onclick="editCustomShift('${escapeHtml(s.id)}')" title="編集">✏️</button> <button class="btn-icon" onclick="deleteCustomShift('${escapeHtml(s.id)}')" title="削除" style="color:#dc2626">🗑</button>`}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('shiftPatternsList').innerHTML = html;
+}
+
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// 追加ボタン
+document.getElementById('addCustomShiftBtn')?.addEventListener('click', () => {
+  document.getElementById('customShiftModalTitle').textContent = 'カスタムシフト追加';
+  document.getElementById('customShiftEditId').value = '';
+  document.getElementById('customShiftName').value = '';
+  document.getElementById('customShiftStart').value = '';
+  document.getElementById('customShiftEnd').value = '';
+  document.getElementById('customShiftHours').value = '';
+  document.getElementById('customCoverMorning').checked = false;
+  document.getElementById('customCoverAfternoon').checked = false;
+  document.getElementById('customCoverEvening').checked = false;
+  document.getElementById('customIsNight').checked = false;
+  document.getElementById('customIsLate').checked = false;
+  document.getElementById('customIsLong').checked = false;
+  document.getElementById('customIsMidBreak').checked = false;
+  // 名前フィールドを編集可能に
+  document.getElementById('customShiftName').readOnly = false;
+  openModal('customShiftModal');
+});
+
+// 編集
+window.editCustomShift = function(id) {
+  const s = shiftPatternsCache.find(x => x.id === id);
+  if (!s) { showToast('シフトが見つかりません', 'error'); return; }
+  if (s.is_default) { showToast('既定シフトは編集できません', 'error'); return; }
+  document.getElementById('customShiftModalTitle').textContent = 'カスタムシフト編集';
+  document.getElementById('customShiftEditId').value = s.id;
+  document.getElementById('customShiftName').value = s.label || s.id;
+  document.getElementById('customShiftName').readOnly = true; // 編集時は名前変更不可（idと連動するため）
+  document.getElementById('customShiftStart').value = s.start_time || '';
+  document.getElementById('customShiftEnd').value = s.end_time || '';
+  document.getElementById('customShiftHours').value = s.work_hours || 0;
+  document.getElementById('customCoverMorning').checked = !!s.covers_morning;
+  document.getElementById('customCoverAfternoon').checked = !!s.covers_afternoon;
+  document.getElementById('customCoverEvening').checked = !!s.covers_evening;
+  document.getElementById('customIsNight').checked = !!s.is_night;
+  document.getElementById('customIsLate').checked = !!s.is_late;
+  document.getElementById('customIsLong').checked = !!s.is_long;
+  document.getElementById('customIsMidBreak').checked = !!s.is_mid_break;
+  openModal('customShiftModal');
+};
+
+// 削除
+window.deleteCustomShift = async function(id) {
+  const s = shiftPatternsCache.find(x => x.id === id);
+  if (!s) return;
+  if (s.is_default) { showToast('既定シフトは削除できません', 'error'); return; }
+  if (!confirm(`カスタムシフト「${s.label || s.id}」を削除しますか？
+
+注意：既にこのシフトを使っている既存のシフト表データには影響しませんが、新規割り当てができなくなります。`)) return;
+  showLoading();
+  try {
+    await sb(`shift_types?id=eq.${encodeURIComponent(id)}`, {method:'DELETE'});
+    showToast('削除しました', 'success');
+    await loadShiftPatterns();
+    await loadShiftTypesAndBuildMaps();
+  } catch(e) {
+    console.error(e);
+    showToast('削除エラー：' + (e.message || ''), 'error');
+  }
+  hideLoading();
+};
+
+// 保存（追加・編集共通）
+document.getElementById('saveCustomShiftBtn')?.addEventListener('click', async () => {
+  const editId = document.getElementById('customShiftEditId').value;
+  const name = document.getElementById('customShiftName').value.trim();
+  const start = document.getElementById('customShiftStart').value;
+  const end = document.getElementById('customShiftEnd').value;
+  const hours = parseFloat(document.getElementById('customShiftHours').value);
+  
+  // バリデーション
+  if (!name) { showToast('シフト名を入力してください', 'error'); return; }
+  if (name.length > 10) { showToast('シフト名は10文字以内', 'error'); return; }
+  if (!start || !end) { showToast('開始・終了時間を入力してください', 'error'); return; }
+  if (isNaN(hours) || hours < 0 || hours > 24) { showToast('実働時間は0〜24Hで入力してください', 'error'); return; }
+  
+  // 新規追加時の重複チェック
+  if (!editId) {
+    const exists = shiftPatternsCache.some(s => s.id === name || s.label === name);
+    if (exists) { showToast('同じ名前のシフトが既に存在します', 'error'); return; }
+  }
+  
+  const payload = {
+    label: name,
+    short_label: name,
+    start_time: start,
+    end_time: end,
+    work_hours: hours,
+    covers_morning: document.getElementById('customCoverMorning').checked,
+    covers_afternoon: document.getElementById('customCoverAfternoon').checked,
+    covers_evening: document.getElementById('customCoverEvening').checked,
+    is_night: document.getElementById('customIsNight').checked,
+    is_late: document.getElementById('customIsLate').checked,
+    is_long: document.getElementById('customIsLong').checked,
+    is_mid_break: document.getElementById('customIsMidBreak').checked,
+    is_off: false,
+    is_default: false
+  };
+  
+  showLoading();
+  try {
+    if (editId) {
+      // 更新
+      await sb(`shift_types?id=eq.${encodeURIComponent(editId)}`, {method:'PATCH', body: JSON.stringify(payload)});
+      showToast('更新しました', 'success');
+    } else {
+      // 新規追加（idは名前と同じにする）
+      payload.id = name;
+      // display_orderは既存の最大値+1
+      const maxOrder = Math.max(50, ...shiftPatternsCache.filter(s => !s.is_off).map(s => s.display_order || 0));
+      payload.display_order = maxOrder + 1;
+      await sb('shift_types', {method:'POST', body: JSON.stringify([payload])});
+      showToast('追加しました', 'success');
+    }
+    closeModal('customShiftModal');
+    await loadShiftPatterns();
+    // 互換マップを再構築（追加されたカスタムシフトを反映）
+    await loadShiftTypesAndBuildMaps();
+  } catch(e) {
+    console.error(e);
+    showToast('保存エラー：' + (e.message || ''), 'error');
+  }
+  hideLoading();
+});
+
 async function loadSettings() {
   showLoading();
   try {
@@ -3533,6 +3862,9 @@ async function loadSettings() {
     // 初心者上限設定の初期化
     beginnerLimitsDept = currentDept;
     await loadBeginnerLimits();
+
+    // シフトパターン管理の初期化
+    await loadShiftPatterns();
 
     const hours = await sb(`monthly_hours?year=eq.${currentYear}&dept_id=is.null&order=month&select=month,hours`);
     const hoursMap = {};
