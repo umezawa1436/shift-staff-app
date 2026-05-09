@@ -1126,11 +1126,14 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
 
   // ヘッダー行
   let html = '<thead><tr>';
-  html += `<th class="staff-col" style="min-width:80px;font-size:9px;color:var(--text-muted);text-align:center;line-height:1.4;padding:4px">
-    <div style="font-weight:700;color:#475569">日</div>
-    <div style="font-size:9px">クリックで詳細</div>
-    <div style="border-top:1px solid #cbd5e1;margin:2px 0"></div>
-    <div style="font-size:9px">🔓=ロック</div>
+  html += `<th class="staff-col" style="min-width:80px;padding:0;font-size:9px;color:var(--text-muted);text-align:center;line-height:1.4">
+    <div style="padding:4px 2px">
+      <div style="font-weight:700;color:#475569">日</div>
+      <div style="font-size:9px">クリックで詳細</div>
+    </div>
+    <div style="border-top:1px solid #cbd5e1;background:#f8fafc;padding:2px 0">
+      <div style="font-size:9px">🔓=ロック</div>
+    </div>
   </th>`;
   for (let d = 1; d <= daysInMonth; d++) {
     const dow = new Date(year, month-1, d).getDay();
@@ -1145,13 +1148,16 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
     const thuLabel = dow===4 ? (dayType4header==='thu_open'?'<div style="font-size:8px;color:#1d4ed8">診療</div>':'<div style="font-size:8px;color:#ef4444">休診</div>') : '';
     const holidayLabel = (holidays.has(d) && dayType4header==='holiday_closed') ? '<div style="font-size:8px;color:#6b7280">休診</div>' : '';
     if (editable) {
-      html += `<th style="min-width:32px;${colStyle}">
-        <div class="day-header">
-          <div class="day-num ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})" title="バーチカル表示">${d}</div>
-          <div class="day-dow ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})" title="バーチカル表示">${DOW[dow]}</div>
-          ${wedLabel}${thuLabel}${holidayLabel}
-          <div style="border-top:1px solid #cbd5e1;margin:2px 4px 0;"></div>
-          <div style="font-size:9px;margin-top:1px;cursor:pointer" onclick="toggleColumnLock(${d})" title="${colLocked?'列ロック解除':'列ロック'}">${colLocked?'🔒':'<span style=\"color:#d1d5db\">🔓</span>'}</div>
+      html += `<th style="min-width:32px;padding:0;${colStyle}">
+        <div class="day-header" style="display:flex;flex-direction:column">
+          <div style="padding:4px 2px;cursor:pointer" onclick="openVerticalView(${d})" title="バーチカル表示">
+            <div class="day-num ${cls}">${d}</div>
+            <div class="day-dow ${cls}">${DOW[dow]}</div>
+            ${wedLabel}${thuLabel}${holidayLabel}
+          </div>
+          <div style="border-top:1px solid #cbd5e1;background:#f8fafc;padding:2px 0;cursor:pointer" onclick="toggleColumnLock(${d})" title="${colLocked?'列ロック解除':'列ロック'}">
+            <div style="font-size:9px">${colLocked?'🔒':'<span style=\"color:#d1d5db\">🔓</span>'}</div>
+          </div>
         </div>
       </th>`;
     } else {
@@ -3859,7 +3865,20 @@ function renderVerticalView() {
       const beClamp = Math.min(be, barEnd);
       const bLeft = (bsClamp - startMin) * pixelsPerMin;
       const bWidth = (beClamp - bsClamp) * pixelsPerMin;
-      breaksHtml += `<div style="position:absolute;left:${bLeft}px;top:0;width:${bWidth}px;height:100%;background:white;border-left:1px dashed #94a3b8;border-right:1px dashed #94a3b8;display:flex;align-items:center;justify-content:center;font-size:9px;color:#64748b;pointer-events:none">休憩</div>`;
+      const breakDur = beClamp - bsClamp;
+      // 帯の幅に応じて表示内容を調整
+      let breakContent = '';
+      if (bWidth >= 80) {
+        // 幅広：「休憩 12:30-13:30」
+        breakContent = `<div style="font-size:9px;line-height:1.2;text-align:center"><div>休憩</div><div style="font-size:8px;font-weight:600">${b.break_start}-${b.break_end}</div></div>`;
+      } else if (bWidth >= 40) {
+        // 中幅：「12:30」だけ
+        breakContent = `<div style="font-size:8px;font-weight:600;line-height:1">${b.break_start}<br><span style="opacity:0.7">-${b.break_end}</span></div>`;
+      } else {
+        // 狭い：何も表示しない
+        breakContent = '';
+      }
+      breaksHtml += `<div style="position:absolute;left:${bLeft}px;top:0;width:${bWidth}px;height:100%;background:white;border-left:1px dashed #94a3b8;border-right:1px dashed #94a3b8;display:flex;align-items:center;justify-content:center;color:#64748b;pointer-events:none;overflow:hidden">${breakContent}</div>`;
     });
 
     // スタッフ属性
@@ -3872,12 +3891,12 @@ function renderVerticalView() {
         ${escapeHtml(staff.name)}${empBadge}
       </div>
       <div style="position:relative;height:44px;width:${timelineWidth}px;background:#fafafa">
-        <div class="${colorClass} v-shift-bar" style="position:absolute;left:${barLeft}px;top:6px;width:${barWidth}px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;cursor:pointer;border:1px solid rgba(0,0,0,0.1);box-shadow:0 1px 2px rgba(0,0,0,0.06)" 
+        <div class="${colorClass} v-shift-bar" style="position:absolute;left:${barLeft}px;top:6px;width:${barWidth}px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:flex-start;padding-left:8px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid rgba(0,0,0,0.1);box-shadow:0 1px 2px rgba(0,0,0,0.06);overflow:hidden;white-space:nowrap" 
           data-staff-id="${staff.id}"
           data-staff-name="${escapeHtml(staff.name)}"
           data-shift-start="${st.start_time}"
           data-shift-end="${st.end_time}"
-          title="クリックで休憩編集">${escapeHtml(sh)} ${st.start_time}-${st.end_time}</div>
+          title="クリックで休憩編集 (${escapeHtml(sh)} ${st.start_time}-${st.end_time})">${escapeHtml(sh)} ${st.start_time}-${st.end_time}</div>
         ${breaksHtml}
       </div>
     </div>`;
