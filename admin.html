@@ -1126,7 +1126,12 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
 
   // ヘッダー行
   let html = '<thead><tr>';
-  html += `<th class="staff-col" style="min-width:80px;font-size:11px;color:var(--text-muted)">🔓=クリックでロック</th>`;
+  html += `<th class="staff-col" style="min-width:80px;font-size:9px;color:var(--text-muted);text-align:center;line-height:1.4;padding:4px">
+    <div style="font-weight:700;color:#475569">日</div>
+    <div style="font-size:9px">クリックで詳細</div>
+    <div style="border-top:1px solid #cbd5e1;margin:2px 0"></div>
+    <div style="font-size:9px">🔓=ロック</div>
+  </th>`;
   for (let d = 1; d <= daysInMonth; d++) {
     const dow = new Date(year, month-1, d).getDay();
     const isHoliday = holidays.has(d);
@@ -1145,6 +1150,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
           <div class="day-num ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})" title="バーチカル表示">${d}</div>
           <div class="day-dow ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})" title="バーチカル表示">${DOW[dow]}</div>
           ${wedLabel}${thuLabel}${holidayLabel}
+          <div style="border-top:1px solid #cbd5e1;margin:2px 4px 0;"></div>
           <div style="font-size:9px;margin-top:1px;cursor:pointer" onclick="toggleColumnLock(${d})" title="${colLocked?'列ロック解除':'列ロック'}">${colLocked?'🔒':'<span style=\"color:#d1d5db\">🔓</span>'}</div>
         </div>
       </th>`;
@@ -3800,12 +3806,24 @@ function renderVerticalView() {
   
   // 時間目盛り（30分ごとにラベル、1時間ごとに濃い線）
   let timelineHeader = '<div style="position:relative;height:32px;border-bottom:2px solid var(--border);background:#f8fafc">';
-  for (let m = startMin; m <= endMin; m += 30) {
+  // 10分単位の小目盛り（一番下の短い線）
+  for (let m = startMin; m <= endMin; m += 10) {
     const left = (m - startMin) * pixelsPerMin;
+    const isHalf = (m % 30 === 0);
     const isHour = (m % 60 === 0);
-    timelineHeader += `<div style="position:absolute;left:${left}px;top:0;height:100%;border-left:1px solid ${isHour?'#94a3b8':'#e2e8f0'};${isHour?'':'opacity:0.5'}"></div>`;
     if (isHour) {
-      timelineHeader += `<div style="position:absolute;left:${left+2}px;top:6px;font-size:11px;color:#475569;font-weight:600">${minToTimeStr(m)}</div>`;
+      // 1時間：濃い縦線（ヘッダー高さ全体）
+      timelineHeader += `<div style="position:absolute;left:${left}px;top:0;height:100%;border-left:1px solid #94a3b8"></div>`;
+    } else if (isHalf) {
+      // 30分：薄い縦線
+      timelineHeader += `<div style="position:absolute;left:${left}px;top:0;height:100%;border-left:1px solid #cbd5e1"></div>`;
+    } else {
+      // 10分：底辺だけの短い線
+      timelineHeader += `<div style="position:absolute;left:${left}px;bottom:0;height:6px;border-left:1px solid #e2e8f0"></div>`;
+    }
+    // 30分ごとに時刻ラベル
+    if (isHalf) {
+      timelineHeader += `<div style="position:absolute;left:${left+2}px;top:6px;font-size:10px;color:${isHour?'#475569':'#94a3b8'};font-weight:${isHour?'700':'500'}">${minToTimeStr(m)}</div>`;
     }
   }
   timelineHeader += '</div>';
@@ -3932,18 +3950,71 @@ function renderBreakEditList() {
     el.innerHTML = '<div style="color:var(--text-muted);padding:16px;text-align:center;font-size:13px">休憩なし</div>';
     return;
   }
-  el.innerHTML = breakEditList.map((b, idx) => `
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;padding:8px;background:#f8fafc;border-radius:8px">
-      <span style="font-size:12px;color:var(--text-muted);min-width:50px">休憩${idx+1}</span>
-      <input type="time" class="form-input" style="flex:1" value="${b.break_start}" 
-        step="600" onchange="updateBreak(${idx}, 'break_start', this.value)">
-      <span>〜</span>
-      <input type="time" class="form-input" style="flex:1" value="${b.break_end}" 
-        step="600" onchange="updateBreak(${idx}, 'break_end', this.value)">
-      <button class="btn btn-outline" style="padding:6px 10px;color:#dc2626" 
-        onclick="removeBreak(${idx})">×</button>
-    </div>
-  `).join('');
+  el.innerHTML = breakEditList.map((b, idx) => {
+    // 何分間か計算
+    const durMin = timeStrToMin(b.break_end) - timeStrToMin(b.break_start);
+    return `
+    <div style="margin-bottom:12px;padding:10px;background:#f8fafc;border-radius:8px">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <span style="font-size:12px;color:var(--text-muted);min-width:50px;font-weight:600">休憩${idx+1}</span>
+        <span style="font-size:12px;color:var(--text-muted)">開始</span>
+        <input type="time" class="form-input" style="flex:1" value="${b.break_start}" 
+          step="600" data-break-idx="${idx}" data-break-field="break_start">
+        <span style="font-size:12px;color:var(--text-muted)">時間</span>
+        <input type="number" class="form-input" style="width:80px" min="10" max="240" step="10" 
+          value="${durMin}" data-break-idx="${idx}" data-break-field="duration">
+        <span style="font-size:12px">分</span>
+        <button class="btn btn-outline" style="padding:4px 10px;color:#dc2626" data-remove-break="${idx}">×</button>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;padding-left:60px">
+        <button class="btn-preset" data-preset-idx="${idx}" data-preset-min="30" style="padding:4px 12px;background:#e0e7ff;color:#4338ca;border:1px solid #c7d2fe;border-radius:6px;font-size:11px;cursor:pointer">30分</button>
+        <button class="btn-preset" data-preset-idx="${idx}" data-preset-min="45" style="padding:4px 12px;background:#e0e7ff;color:#4338ca;border:1px solid #c7d2fe;border-radius:6px;font-size:11px;cursor:pointer">45分</button>
+        <button class="btn-preset" data-preset-idx="${idx}" data-preset-min="60" style="padding:4px 12px;background:#e0e7ff;color:#4338ca;border:1px solid #c7d2fe;border-radius:6px;font-size:11px;cursor:pointer">60分</button>
+        <button class="btn-preset" data-preset-idx="${idx}" data-preset-min="90" style="padding:4px 12px;background:#e0e7ff;color:#4338ca;border:1px solid #c7d2fe;border-radius:6px;font-size:11px;cursor:pointer">90分</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  // イベントリスナー設定（time/numberの変更）
+  el.querySelectorAll('input[data-break-idx]').forEach(input => {
+    input.addEventListener('change', (e) => {
+      const idx = parseInt(e.target.dataset.breakIdx, 10);
+      const field = e.target.dataset.breakField;
+      const value = e.target.value;
+      if (!breakEditList[idx]) return;
+      if (field === 'break_start') {
+        // 開始時間を変更したら、duration を維持して終了時間を再計算
+        const durMin = timeStrToMin(breakEditList[idx].break_end) - timeStrToMin(breakEditList[idx].break_start);
+        breakEditList[idx].break_start = value;
+        breakEditList[idx].break_end = minToTimeStr(timeStrToMin(value) + durMin);
+        renderBreakEditList();
+      } else if (field === 'duration') {
+        const dur = parseInt(value, 10) || 60;
+        breakEditList[idx].break_end = minToTimeStr(timeStrToMin(breakEditList[idx].break_start) + dur);
+        renderBreakEditList();
+      }
+    });
+  });
+
+  // プリセットボタン
+  el.querySelectorAll('.btn-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.presetIdx, 10);
+      const dur = parseInt(btn.dataset.presetMin, 10);
+      if (!breakEditList[idx]) return;
+      breakEditList[idx].break_end = minToTimeStr(timeStrToMin(breakEditList[idx].break_start) + dur);
+      renderBreakEditList();
+    });
+  });
+
+  // 削除ボタン
+  el.querySelectorAll('[data-remove-break]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.removeBreak, 10);
+      breakEditList.splice(idx, 1);
+      renderBreakEditList();
+    });
+  });
 }
 
 window.updateBreak = function(idx, field, value) {
