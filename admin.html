@@ -871,6 +871,11 @@ const SHIFT_COLORS = {
 };
 
 // シフトの実働時間
+// 有休の加算時間：土日祝なら9H、平日なら8.5H
+function getYukyuHours(dow, isHoliday) {
+  return (dow === 0 || dow === 6 || isHoliday) ? 9 : 8.5;
+}
+
 const SHIFT_HOURS = {
   '日勤':8.5,'日勤+':9,'午前':5,'午後':5,'遅番':7.5,'遅L':8.5,
   'リハ遅':8,'夜勤':4,'長日':11,'中抜け':8,'時短':6,'CC':8,'CHO':7,
@@ -1401,7 +1406,11 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
       const colorClass = SHIFT_COLORS[dispShift] || '';
       const shiftH = SHIFT_HOURS[confirmedShift] || 0;
       totalH += shiftH;
-      if (confirmedShift === '有休') totalH += 8.5;
+      // 有休/半有休の所定加算（有休は土日祝9H、平日8.5H）
+      const dateOfDay = new Date(shiftYear, shiftMonth - 1, d);
+      const dowOfDay = dateOfDay.getDay();
+      const isHolidayOfDay = holidays.has(d);
+      if (confirmedShift === '有休') totalH += getYukyuHours(dowOfDay, isHolidayOfDay);
       if (confirmedShift === '半有休') totalH += 5;
 
       // 希望マーク：希望データがある日
@@ -1539,7 +1548,7 @@ function openShiftEditModal(staffId, staffName, day, gridId) {
   shiftTypesAll.forEach(s => {
     if (s.is_off) {
       // 休み系は時間表示なし、ただし有休・半有休は所定時間扱いの説明あり
-      if (s.id === '有休') SHIFT_INFO[s.id] = {time:'所定+8.5H', hours:''};
+      if (s.id === '有休') SHIFT_INFO[s.id] = {time:'平日+8.5H / 土日祝+9H', hours:''};
       else if (s.id === '半有休') SHIFT_INFO[s.id] = {time:'所定+5H', hours:''};
       else SHIFT_INFO[s.id] = {time:'', hours:''};
     } else {
@@ -1635,11 +1644,15 @@ function refreshHoursCell(staffId) {
   if (!staff) return;
 
   // 累計時間を再計算
+  const holidaysForCalc = getJapaneseHolidays(shiftYear, shiftMonth);
   let totalH = 0;
   for (let d = 1; d <= daysInMonth; d++) {
     const shift = shiftData[`${staffId}|${d}`] || '';
     totalH += SHIFT_HOURS[shift] || 0;
-    if (shift === '有休') totalH += 8.5;
+    if (shift === '有休') {
+      const dt = new Date(shiftYear, shiftMonth - 1, d);
+      totalH += getYukyuHours(dt.getDay(), holidaysForCalc.has(d));
+    }
     if (shift === '半有休') totalH += 5;
   }
 
@@ -2592,7 +2605,10 @@ _logStep('STEP1完了');
           const req = reqMap[key];
           if (req && OFF_SHIFTS.includes(req)) {
             result[key] = req;
-            if (req === '有休') staffHours[staff.id] = (staffHours[staff.id]||0) + 8.5;
+            if (req === '有休') {
+              const dt = new Date(genYear, genMonth - 1, d);
+              staffHours[staff.id] = (staffHours[staff.id]||0) + getYukyuHours(dt.getDay(), holidays.has(d));
+            }
             if (req === '半有休') staffHours[staff.id] = (staffHours[staff.id]||0) + 5;
           }
         }
@@ -5300,10 +5316,14 @@ document.getElementById('exportCsvBtn')?.addEventListener('click', () => {
     const empLabel = staff.emp_type === 'full' ? '常勤' : staff.emp_type === 'short' ? '時短' : 'パート';
     let totalH = 0;
     let row = `${staff.name},${empLabel}`;
+    const csvHolidays = getJapaneseHolidays(shiftYear, shiftMonth);
     for (let d = 1; d <= daysInMonth; d++) {
       const shift = shiftData[`${staff.id}|${d}`] || '';
       totalH += SHIFT_HOURS[shift] || 0;
-      if (shift === '有休') totalH += 8.5;
+      if (shift === '有休') {
+        const dt = new Date(shiftYear, shiftMonth - 1, d);
+        totalH += getYukyuHours(dt.getDay(), csvHolidays.has(d));
+      }
       if (shift === '半有休') totalH += 5;
       row += `,${shift}`;
     }
