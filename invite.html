@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>kingyo-shift アカウント作成</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Hiragino Kaku Gothic ProN',sans-serif;background:linear-gradient(135deg,#dbeafe,#ddd6fe);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .card{background:white;border-radius:20px;padding:32px;width:100%;max-width:440px;box-shadow:0 20px 60px rgba(0,0,0,0.15)}
+  .logo{text-align:center;margin-bottom:20px}
+  .logo svg{width:100px;height:70px}
+  h1{font-size:22px;text-align:center;color:#1f2937;margin-bottom:8px;font-weight:700}
+  .subtitle{font-size:13px;text-align:center;color:#6b7280;margin-bottom:24px}
+  .staff-info{background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:14px;margin-bottom:20px}
+  .staff-info-row{display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px}
+  .staff-info-row:last-child{margin-bottom:0}
+  .staff-info-label{color:#6b7280}
+  .staff-info-value{font-weight:600;color:#0c4a6e}
+  .form-group{margin-bottom:14px}
+  .form-label{display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px}
+  .form-input{width:100%;padding:12px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;transition:border-color 0.15s}
+  .form-input:focus{outline:none;border-color:#3b82f6}
+  .form-help{font-size:11px;color:#9ca3af;margin-top:4px}
+  .btn{width:100%;padding:14px;border-radius:10px;border:none;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.15s}
+  .btn-primary{background:linear-gradient(135deg,#9333ea,#2563eb);color:white;margin-top:8px}
+  .btn-primary:hover{background:linear-gradient(135deg,#7e22ce,#1d4ed8);transform:translateY(-1px);box-shadow:0 6px 18px rgba(147,51,234,0.4)}
+  .btn-primary:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+  .error-box{background:#fee2e2;color:#991b1b;padding:12px;border-radius:10px;font-size:13px;margin-bottom:14px;border:1px solid #fecaca}
+  .success-box{background:#d1fae5;color:#065f46;padding:16px;border-radius:10px;font-size:14px;text-align:center;line-height:1.6}
+  .loading{text-align:center;padding:40px 20px;color:#6b7280}
+  .spinner{display:inline-block;width:40px;height:40px;border:3px solid #e5e7eb;border-top-color:#9333ea;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:12px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .footer{text-align:center;margin-top:20px;font-size:11px;color:#9ca3af}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <svg viewBox="0 0 100 70" xmlns="http://www.w3.org/2000/svg">
+      <g transform="translate(25, 35)">
+        <path d="M 0 -7 Q -25 -28, -50 -25 Q -42 -12, -47 -3 Q -50 20, -28 14 Q -12 10, 0 7 Z" fill="#fbbf24"/>
+        <path d="M 0 -4 Q -18 -20, -38 -17 Q -32 -8, -35 -2 Q -38 14, -22 10 Q -10 6, 0 4 Z" fill="#fde68a"/>
+      </g>
+      <g transform="translate(58, 35)">
+        <ellipse cx="0" cy="0" rx="33" ry="25" fill="#f87171"/>
+        <path d="M -11 -21 Q -8 -37, -2 -30 Q 3 -39, 9 -30 Q 15 -37, 18 -22 L 16 -21 L 9 -24 L 0 -25 L -9 -22 Z" fill="#fbbf24"/>
+        <path d="M -4 21 Q -9 33, 6 33 Q 11 26, 7 21 Z" fill="#fbbf24"/>
+        <path d="M 0 14 Q 9 24, 13 20 Q 15 13, 9 12 Z" fill="#fbbf24"/>
+        <circle cx="22" cy="-3" r="6" fill="white"/>
+        <circle cx="23" cy="-3" r="3.5" fill="#1f2937"/>
+        <circle cx="24" cy="-4" r="1" fill="white"/>
+      </g>
+    </svg>
+  </div>
+
+  <!-- 読み込み中 -->
+  <div id="loadingState" class="loading">
+    <div class="spinner"></div>
+    <div>招待を確認しています...</div>
+  </div>
+
+  <!-- フォーム -->
+  <div id="formState" style="display:none">
+    <h1>アカウント作成</h1>
+    <p class="subtitle">招待された情報を確認し、パスワードを設定してください</p>
+
+    <div class="staff-info" id="staffInfoBox">
+      <div class="staff-info-row">
+        <span class="staff-info-label">お名前</span>
+        <span class="staff-info-value" id="staffName"></span>
+      </div>
+      <div class="staff-info-row">
+        <span class="staff-info-label">部門</span>
+        <span class="staff-info-value" id="staffDept"></span>
+      </div>
+    </div>
+
+    <div id="errorBox" class="error-box" style="display:none"></div>
+
+    <div class="form-group">
+      <label class="form-label">メールアドレス</label>
+      <input type="email" class="form-input" id="emailInput" placeholder="example@example.com" autocomplete="email">
+      <div class="form-help">ログイン時に使用します</div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">パスワード（8文字以上）</label>
+      <input type="password" class="form-input" id="passwordInput" placeholder="安全なパスワードを設定" autocomplete="new-password">
+      <div class="form-help">英数字記号を組み合わせると安全です</div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">パスワード（確認）</label>
+      <input type="password" class="form-input" id="passwordConfirm" placeholder="同じパスワードを再入力" autocomplete="new-password">
+    </div>
+
+    <button class="btn btn-primary" id="createBtn">アカウントを作成</button>
+  </div>
+
+  <!-- エラー -->
+  <div id="errorState" style="display:none">
+    <h1 style="color:#dc2626">⚠️ エラー</h1>
+    <div id="errorMessage" class="error-box" style="margin-top:14px"></div>
+    <div style="text-align:center;margin-top:14px;font-size:13px;color:#6b7280">
+      管理者に連絡して招待リンクを再発行してもらってください
+    </div>
+  </div>
+
+  <!-- 成功 -->
+  <div id="successState" style="display:none">
+    <h1 style="color:#059669">✅ 作成完了</h1>
+    <div class="success-box" style="margin-top:16px">
+      アカウントが作成されました！<br>
+      <strong>ログイン画面</strong>から、設定したメールアドレスとパスワードでログインしてください。
+    </div>
+    <a href="/" class="btn btn-primary" style="display:block;text-align:center;text-decoration:none;margin-top:16px">ログイン画面へ</a>
+  </div>
+
+  <div class="footer">🐟 kingyo-shift</div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+const DEPT_NAMES = { 0: '医療事務', 1: '看護', 2: 'リハビリ', 3: '放射線' };
+
+async function sb(path, options = {}) {
+  const url = `${SUPABASE_URL}/rest/v1/${path}`;
+  const headers = {
+    'apikey': SUPABASE_ANON_KEY,
+    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+    'Content-Type': 'application/json',
+    'Prefer': 'return=representation',
+    ...options.headers
+  };
+  const res = await fetch(url, { ...options, headers });
+  if (!res.ok) throw new Error(`Supabase: ${res.status}`);
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+async function sha256(message) {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function showState(state) {
+  ['loadingState','formState','errorState','successState'].forEach(id => {
+    document.getElementById(id).style.display = (id === state) ? 'block' : 'none';
+  });
+}
+
+function showError(msg) {
+  document.getElementById('errorMessage').textContent = msg;
+  showState('errorState');
+}
+
+// URLからトークンを取得
+const urlParams = new URLSearchParams(window.location.search);
+const token = urlParams.get('token');
+
+let invitation = null;
+let staff = null;
+
+async function initInvitation() {
+  if (!token) {
+    showError('招待リンクが不正です。URLを確認してください。');
+    return;
+  }
+
+  try {
+    // 招待を検索
+    const invitations = await sb(`invitations?token=eq.${encodeURIComponent(token)}&select=*`);
+    if (!invitations || invitations.length === 0) {
+      showError('招待リンクが見つかりません。リンクが正しいか確認してください。');
+      return;
+    }
+    invitation = invitations[0];
+
+    // 期限チェック
+    if (new Date(invitation.expires_at) < new Date()) {
+      showError('この招待リンクは期限切れです。管理者に再発行を依頼してください。');
+      return;
+    }
+
+    // 使用済みチェック
+    if (invitation.used_at) {
+      showError('この招待リンクは既に使用されています。');
+      return;
+    }
+
+    // スタッフ情報を取得
+    const staffs = await sb(`staff?id=eq.${invitation.staff_id}&select=id,name,dept_id`);
+    if (!staffs || staffs.length === 0) {
+      showError('スタッフ情報が見つかりません。管理者にお問い合わせください。');
+      return;
+    }
+    staff = staffs[0];
+
+    // フォーム表示
+    document.getElementById('staffName').textContent = staff.name;
+    document.getElementById('staffDept').textContent = DEPT_NAMES[staff.dept_id] || '不明';
+    showState('formState');
+  } catch (e) {
+    console.error(e);
+    showError('読み込みエラー：' + (e.message || '') + '\n通信状況を確認して再読み込みしてください。');
+  }
+}
+
+document.getElementById('createBtn').addEventListener('click', async () => {
+  const email = document.getElementById('emailInput').value.trim().toLowerCase();
+  const password = document.getElementById('passwordInput').value;
+  const confirm = document.getElementById('passwordConfirm').value;
+  const errBox = document.getElementById('errorBox');
+  errBox.style.display = 'none';
+
+  // バリデーション
+  if (!email) { errBox.textContent = 'メールアドレスを入力してください'; errBox.style.display = 'block'; return; }
+  if (!email.includes('@')) { errBox.textContent = '有効なメールアドレスを入力してください'; errBox.style.display = 'block'; return; }
+  if (!password) { errBox.textContent = 'パスワードを入力してください'; errBox.style.display = 'block'; return; }
+  if (password.length < 8) { errBox.textContent = 'パスワードは8文字以上にしてください'; errBox.style.display = 'block'; return; }
+  if (password !== confirm) { errBox.textContent = 'パスワードが一致しません'; errBox.style.display = 'block'; return; }
+
+  const btn = document.getElementById('createBtn');
+  btn.disabled = true;
+  btn.textContent = '作成中...';
+
+  try {
+    // メール重複チェック
+    const existing = await sb(`accounts?email=eq.${encodeURIComponent(email)}&select=id`);
+    if (existing && existing.length > 0) {
+      errBox.textContent = 'このメールアドレスは既に登録されています';
+      errBox.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'アカウントを作成';
+      return;
+    }
+
+    // アカウント作成
+    const hash = await sha256(password);
+    await sb('accounts', {
+      method: 'POST',
+      body: JSON.stringify([{
+        name: staff.name,
+        email,
+        password_hash: hash,
+        role: 'staff',
+        dept_id: staff.dept_id
+      }])
+    });
+
+    // 招待を使用済みにする
+    await sb(`invitations?id=eq.${invitation.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ used_at: new Date().toISOString() })
+    });
+
+    showState('successState');
+  } catch (e) {
+    console.error(e);
+    errBox.textContent = 'アカウント作成に失敗しました：' + (e.message || '');
+    errBox.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'アカウントを作成';
+  }
+});
+
+// 初期化
+initInvitation();
+</script>
+</body>
+</html>
