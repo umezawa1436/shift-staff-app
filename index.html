@@ -470,6 +470,8 @@
 
   <div class="submit-bar" id="submitBar">
     <div class="submit-info"><div class="submit-count">入力済み <span id="inputCount">0</span> 日</div></div>
+    <!-- 提出期限表示 -->
+    <div id="deadlineInfo" style="display:none;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px"></div>
     <!-- 月の上限表示 -->
     <div id="reqLimitInfo" style="display:none;background:#f8fafc;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px">
       <div style="font-weight:600;color:#475569;margin-bottom:6px;display:flex;align-items:center;gap:6px">
@@ -538,7 +540,6 @@
 // ===== CONFIG =====
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 async function sha256(message) {
   const msgBuffer = new TextEncoder().encode(message);
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
@@ -934,7 +935,13 @@ async function showApp() {
   await loadShiftTypesFromDB();
   await loadRequests();
   await loadReqLimitsForStaff();
+  await loadDeadlineForStaff();
+  renderDeadlineInfo();
   renderCalendar();
+  // 期限前日のリマインダーをトーストで
+  if (deadlineWarning) {
+    setTimeout(() => showToast('⚠️ 希望提出の期限が24時間以内です', 'error'), 800);
+  }
 }
 
 async function loadRequests() {
@@ -980,7 +987,8 @@ function renderCalendar() {
 
     cell.innerHTML = `<div class="day-num">${d}</div>${shift ? `<div class="day-shift">${shift}</div>` : ''}`;
 
-    if (!isPast) cell.addEventListener('click', () => openDaySheet(d, shift));
+    if (!isPast && !deadlinePassed) cell.addEventListener('click', () => openDaySheet(d, shift));
+    else if (deadlinePassed && !isPast) cell.style.opacity = '0.7';
 
     grid.appendChild(cell);
   }
@@ -1032,6 +1040,84 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   closeSheet();
   renderCalendar();
 });
+
+// 提出期限のキャッシュ
+let deadlineCache = null;  // Date型 or null
+let deadlinePassed = false;
+let deadlineWarning = false; // 期限の前日
+
+async function loadDeadlineForStaff() {
+  if (!currentUser) return;
+  deadlineCache = null;
+  deadlinePassed = false;
+  deadlineWarning = false;
+  try {
+    // 個別調整を最優先
+    const customs = await supabaseRequest(
+      `shift_request_deadlines?dept_id=eq.${currentUser.deptId}&year=eq.${currentYear}&month=eq.${currentMonth}&select=deadline_at`
+    );
+    if (customs && customs.length > 0) {
+      deadlineCache = new Date(customs[0].deadline_at);
+    } else {
+      // デフォルトルール
+      const rules = await supabaseRequest(
+        `shift_request_deadline_rules?dept_id=eq.${currentUser.deptId}&select=*`
+      );
+      if (rules && rules.length > 0) {
+        const r = rules[0];
+        const d = new Date(currentYear, currentMonth - 1, 1);
+        d.setDate(d.getDate() - (r.days_before || 0));
+        d.setHours(r.hour || 23, r.minute || 59, 59, 0);
+        deadlineCache = d;
+      }
+    }
+    // 判定
+    if (deadlineCache) {
+      const now = new Date();
+      deadlinePassed = now > deadlineCache;
+      // 残り24時間以内かチェック（前日警告）
+      const remaining = deadlineCache - now;
+      deadlineWarning = !deadlinePassed && remaining > 0 && remaining <= 24 * 60 * 60 * 1000;
+    }
+  } catch(e) {
+    console.error('期限取得エラー', e);
+  }
+}
+
+function renderDeadlineInfo() {
+  const el = document.getElementById('deadlineInfo');
+  if (!deadlineCache) {
+    el.style.display = 'none';
+    return;
+  }
+  const fmt = (d) => {
+    const yy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    const hh = String(d.getHours()).padStart(2,'0');
+    const mi = String(d.getMinutes()).padStart(2,'0');
+    return `${yy}/${mm}/${dd} ${hh}:${mi}`;
+  };
+  el.style.display = 'block';
+  if (deadlinePassed) {
+    el.style.background = '#fef2f2';
+    el.style.color = '#dc2626';
+    el.style.border = '1.5px solid #fecaca';
+    el.innerHTML = `<div style="font-weight:700">⏰ 提出期限を過ぎました</div>
+      <div style="font-size:11px;margin-top:4px;font-weight:500">${fmt(deadlineCache)} までが期限でした<br>変更したい場合は管理者にご連絡ください</div>`;
+  } else if (deadlineWarning) {
+    el.style.background = '#fef3c7';
+    el.style.color = '#92400e';
+    el.style.border = '1.5px solid #fcd34d';
+    el.innerHTML = `<div style="font-weight:700">⚠️ 提出期限が迫っています</div>
+      <div style="font-size:11px;margin-top:4px;font-weight:500">${fmt(deadlineCache)} まで（24時間以内）</div>`;
+  } else {
+    el.style.background = '#f0f9ff';
+    el.style.color = '#075985';
+    el.style.border = '1.5px solid #bae6fd';
+    el.innerHTML = `<div style="font-weight:600">📅 提出期限：${fmt(deadlineCache)}</div>`;
+  }
+}
 
 // 希望シフト上限のキャッシュ
 let reqLimitCache = null; // {limit_kibou_kyu, limit_yukyu, limit_other}
@@ -1104,13 +1190,19 @@ function updateCount() {
     warnEl.style.display = 'none';
   }
 
+  // 期限切れの場合は提出不可
   // 提出ボタンの有効/無効
-  document.getElementById('submitBtn').disabled = counts.total === 0 || isOver;
+  document.getElementById('submitBtn').disabled = counts.total === 0 || isOver || deadlinePassed;
 }
 
 document.getElementById('submitBtn').addEventListener('click', async () => {
   if (!currentUser?.id) {
     showToast('ログインし直してください', 'error');
+    return;
+  }
+  // 期限チェック
+  if (deadlinePassed) {
+    showToast('提出期限を過ぎています。管理者にご連絡ください', 'error');
     return;
   }
   // 念のための最終チェック
@@ -1166,6 +1258,8 @@ document.getElementById('prevMonthBtn').addEventListener('click', async () => {
   if (currentMonth < 1) { currentMonth = 12; currentYear--; }
   await loadRequests();
   await loadReqLimitsForStaff();
+  await loadDeadlineForStaff();
+  renderDeadlineInfo();
   renderCalendar();
 });
 
@@ -1174,6 +1268,8 @@ document.getElementById('nextMonthBtn').addEventListener('click', async () => {
   if (currentMonth > 12) { currentMonth = 1; currentYear++; }
   await loadRequests();
   await loadReqLimitsForStaff();
+  await loadDeadlineForStaff();
+  renderDeadlineInfo();
   renderCalendar();
 });
 
