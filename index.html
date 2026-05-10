@@ -626,10 +626,8 @@ async function loadShiftTypesFromDB() {
           time: (s.start_time && s.end_time) ? `${s.start_time}-${s.end_time} (${parseFloat(s.work_hours)||0}H)` : ''
         }))
       };
-      // カスタムは「休み・有給」の後（=リストの2番目）に挿入し、休み・有給を最上に保つ
-      const offIdx = SHIFTS.findIndex(c => c.category === '休み・有給');
-      if (offIdx >= 0) SHIFTS.splice(offIdx + 1, 0, customCategory);
-      else SHIFTS.push(customCategory);
+      // カスタムは末尾に追加（最下部に表示）
+      SHIFTS.push(customCategory);
     }
     console.log('[shift_types] ロード完了', { 総数: types.length, カスタム: customs.length });
   } catch(e) {
