@@ -556,6 +556,12 @@ let shiftTypesAll = [];
 let shiftTypesMap = {};
 
 let SHIFTS = [
+  { category: '休み・有給', items: [
+    { id: '希望休', color: '#fdba74', time: '' },
+    { id: '有休', color: '#e879f9', time: '平日+8.5H / 土日祝+9H' },
+    { id: '半有休', color: '#d946ef', time: '所定+5H' },
+    { id: '休み', color: '#d1d5db', time: '' },
+  ]},
   { category: '日勤系', items: [
     { id: '日勤', color: '#3b82f6', time: '08:30-18:00 (8.5H)' },
     { id: '日勤+', color: '#2563eb', time: '08:30-18:30 (9H)' },
@@ -577,12 +583,6 @@ let SHIFTS = [
     { id: 'CC', color: '#60a5fa', time: '08:30-17:00 (8H)' },
     { id: 'CHO', color: '#93c5fd', time: '08:30-16:30 (7H)' },
     { id: 'CCのみ', color: '#7dd3fc', time: '14:00-17:00 (3H)' },
-  ]},
-  { category: '休み・有給', items: [
-    { id: '希望休', color: '#fdba74', time: '' },
-    { id: '有休', color: '#e879f9', time: '平日+8.5H / 土日祝+9H' },
-    { id: '半有休', color: '#d946ef', time: '所定+5H' },
-    { id: '休み', color: '#d1d5db', time: '' },
   ]},
 ];
 
@@ -626,8 +626,9 @@ async function loadShiftTypesFromDB() {
           time: (s.start_time && s.end_time) ? `${s.start_time}-${s.end_time} (${parseFloat(s.work_hours)||0}H)` : ''
         }))
       };
+      // カスタムは「休み・有給」の後（=リストの2番目）に挿入し、休み・有給を最上に保つ
       const offIdx = SHIFTS.findIndex(c => c.category === '休み・有給');
-      if (offIdx >= 0) SHIFTS.splice(offIdx, 0, customCategory);
+      if (offIdx >= 0) SHIFTS.splice(offIdx + 1, 0, customCategory);
       else SHIFTS.push(customCategory);
     }
     console.log('[shift_types] ロード完了', { 総数: types.length, カスタム: customs.length });
