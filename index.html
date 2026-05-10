@@ -540,7 +540,6 @@
 // ===== CONFIG =====
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 async function sha256(message) {
   const msgBuffer = new TextEncoder().encode(message);
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
@@ -580,10 +579,10 @@ let SHIFTS = [
     { id: 'CCのみ', color: '#7dd3fc', time: '14:00-17:00 (3H)' },
   ]},
   { category: '休み・有給', items: [
-    { id: '休み', color: '#d1d5db', time: '' },
-    { id: '有休', color: '#e879f9', time: '所定+8.5H' },
-    { id: '半有休', color: '#d946ef', time: '所定+5H' },
     { id: '希望休', color: '#fdba74', time: '' },
+    { id: '有休', color: '#e879f9', time: '平日+8.5H / 土日祝+9H' },
+    { id: '半有休', color: '#d946ef', time: '所定+5H' },
+    { id: '休み', color: '#d1d5db', time: '' },
   ]},
 ];
 
