@@ -632,23 +632,25 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               希望提出期限
             </div>
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">スタッフが希望シフトを提出できる期限を設定します。期限を過ぎるとスタッフは編集できなくなります（管理者は変更可）。</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">部門ごとに「毎月X日まで」のルールを設定します。一度設定すれば毎月自動的に適用されます。期限を過ぎるとスタッフは編集できなくなります。</div>
             <div class="dept-tabs" id="deadlineDeptTabs"></div>
             
-            <!-- 期限設定（部門×月） -->
             <div style="margin-top:16px;padding:16px;background:#fef3c7;border-radius:12px;border:1px solid #fcd34d">
-              <div style="font-size:13px;font-weight:600;color:#92400e;margin-bottom:10px">📅 <span id="deadlineMonthLabel">―</span>の希望提出期限</div>
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px">
-                <input type="datetime-local" class="form-input" id="deadlineCustom" style="font-size:14px;flex:1;min-width:200px">
+              <div style="font-size:13px;font-weight:600;color:#92400e;margin-bottom:12px">📅 提出期限ルール（毎月適用）</div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px">
+                <span style="color:#92400e">前月の</span>
+                <input type="number" class="form-input" id="deadlineDay" min="1" max="31" placeholder="10" style="width:70px;font-size:14px">
+                <span style="color:#92400e">日</span>
+                <input type="time" class="form-input" id="deadlineTime" value="23:59" style="width:130px;font-size:14px">
+                <span style="color:#92400e">まで</span>
               </div>
-              <div style="font-size:11px;color:#92400e;margin-top:6px">何月何日何時何分まで提出可能かを直接指定します。空欄＝期限なし</div>
+              <div style="font-size:11px;color:#92400e;margin-top:8px">例：「10日 23:59」=5月分シフトの提出期限は4/10 23:59</div>
               <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-                <button class="btn btn-primary" id="saveDeadlineCustomBtn" style="font-size:13px;padding:8px 16px">保存</button>
-                <button class="btn btn-outline" id="clearDeadlineCustomBtn" style="font-size:13px;padding:8px 16px;color:#dc2626">期限を解除</button>
+                <button class="btn btn-primary" id="saveDeadlineRuleBtn" style="font-size:13px;padding:8px 16px">保存</button>
+                <button class="btn btn-outline" id="clearDeadlineRuleBtn" style="font-size:13px;padding:8px 16px;color:#dc2626">ルールを解除</button>
               </div>
             </div>
 
-            <!-- 適用される期限の表示 -->
             <div id="deadlineEffective" style="margin-top:16px;padding:12px;background:#f1f5f9;border-radius:10px;font-size:13px"></div>
           </div>
 
@@ -4049,27 +4051,36 @@ async function loadDeadlinePage() {
   await fetchDeadline();
 }
 
+// 「毎月X日 H:M」ルールから対象月の期限を計算
+// 対象月Mのシフト → 前月M-1のX日 H:M が期限
+function calcDeadlineFromRule(year, month, dayOfMonth, hour, minute) {
+  // 前月の日付を計算（month=1なら前年の12月）
+  let py = year, pm = month - 1;
+  if (pm < 1) { pm = 12; py--; }
+  // 前月の最終日を超える場合は前月末日に丸める（例：前月が2月で「31日」なら28/29日）
+  const lastDay = new Date(py, pm, 0).getDate();
+  const d = Math.min(dayOfMonth, lastDay);
+  return new Date(py, pm - 1, d, hour, minute, 59, 0);
+}
+
 async function fetchDeadline() {
   try {
-    // 期限設定を取得
-    const customs = await sb(`shift_request_deadlines?dept_id=eq.${deadlineDept}&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=*`);
-    const custom = customs[0] || null;
-    if (custom) {
-      const d = new Date(custom.deadline_at);
-      const yy = d.getFullYear();
-      const mm = String(d.getMonth()+1).padStart(2,'0');
-      const dd = String(d.getDate()).padStart(2,'0');
-      const hh = String(d.getHours()).padStart(2,'0');
-      const mi = String(d.getMinutes()).padStart(2,'0');
-      document.getElementById('deadlineCustom').value = `${yy}-${mm}-${dd}T${hh}:${mi}`;
+    // 「毎月X日」ルールを取得
+    const rules = await sb(`shift_request_deadline_rules?dept_id=eq.${deadlineDept}&select=*`);
+    const rule = rules[0] || null;
+    if (rule && rule.days_before != null) {
+      // days_before カラムを「日付」として再利用
+      document.getElementById('deadlineDay').value = rule.days_before;
+      document.getElementById('deadlineTime').value = `${String(rule.hour||23).padStart(2,'0')}:${String(rule.minute||59).padStart(2,'0')}`;
     } else {
-      document.getElementById('deadlineCustom').value = '';
+      document.getElementById('deadlineDay').value = '';
+      document.getElementById('deadlineTime').value = '23:59';
     }
 
     // 適用状況の表示
     const effEl = document.getElementById('deadlineEffective');
-    if (custom) {
-      const effective = new Date(custom.deadline_at);
+    if (rule && rule.days_before != null) {
+      const effective = calcDeadlineFromRule(shiftYear, shiftMonth, rule.days_before, rule.hour||23, rule.minute||59);
       const now = new Date();
       const passed = now > effective;
       effEl.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
@@ -4110,27 +4121,25 @@ document.getElementById('saveDeadlineRuleBtn')?.addEventListener('click', async 
   hideLoading();
 });
 
-document.getElementById('saveDeadlineCustomBtn')?.addEventListener('click', async () => {
-  const val = document.getElementById('deadlineCustom').value;
-  if (!val) {
-    showToast('日時を入力してください（クリアしたい場合は「クリア」ボタンを使用）', 'error');
-    return;
-  }
-  const dt = new Date(val);
-  if (isNaN(dt.getTime())) {
-    showToast('日時の形式が正しくありません', 'error');
+document.getElementById('saveDeadlineRuleBtn')?.addEventListener('click', async () => {
+  const dayVal = parseInt(document.getElementById('deadlineDay').value, 10);
+  const time = document.getElementById('deadlineTime').value || '23:59';
+  const [h, m] = time.split(':').map(Number);
+  if (isNaN(dayVal) || dayVal < 1 || dayVal > 31) {
+    showToast('日は1〜31の整数で入力してください', 'error');
     return;
   }
   showLoading();
   try {
-    const existing = await sb(`shift_request_deadlines?dept_id=eq.${deadlineDept}&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=id`);
-    const payload = { dept_id: deadlineDept, year: shiftYear, month: shiftMonth, deadline_at: dt.toISOString() };
+    const existing = await sb(`shift_request_deadline_rules?dept_id=eq.${deadlineDept}&select=dept_id`);
+    // days_before カラムを「日」として使う
+    const payload = { dept_id: deadlineDept, days_before: dayVal, hour: h, minute: m };
     if (existing && existing.length > 0) {
-      await sb(`shift_request_deadlines?id=eq.${existing[0].id}`, {method:'PATCH', body: JSON.stringify(payload)});
+      await sb(`shift_request_deadline_rules?dept_id=eq.${deadlineDept}`, {method:'PATCH', body: JSON.stringify(payload)});
     } else {
-      await sb('shift_request_deadlines', {method:'POST', body: JSON.stringify([payload])});
+      await sb('shift_request_deadline_rules', {method:'POST', body: JSON.stringify([payload])});
     }
-    showToast('個別調整を保存しました ✓', 'success');
+    showToast('提出期限ルールを保存しました ✓', 'success');
     await fetchDeadline();
   } catch(e) {
     console.error(e);
@@ -4139,12 +4148,12 @@ document.getElementById('saveDeadlineCustomBtn')?.addEventListener('click', asyn
   hideLoading();
 });
 
-document.getElementById('clearDeadlineCustomBtn')?.addEventListener('click', async () => {
-  if (!confirm(`${shiftYear}年${shiftMonth}月の個別調整をクリアしますか？\nデフォルトルールに戻ります。`)) return;
+document.getElementById('clearDeadlineRuleBtn')?.addEventListener('click', async () => {
+  if (!confirm(`${DEPT_NAMES[deadlineDept]}の提出期限ルールを解除しますか？\n期限なし（いつでも提出可）になります。`)) return;
   showLoading();
   try {
-    await sb(`shift_request_deadlines?dept_id=eq.${deadlineDept}&year=eq.${shiftYear}&month=eq.${shiftMonth}`, {method:'DELETE'});
-    showToast('個別調整をクリアしました', 'success');
+    await sb(`shift_request_deadline_rules?dept_id=eq.${deadlineDept}`, {method:'DELETE'});
+    showToast('期限ルールを解除しました', 'success');
     await fetchDeadline();
   } catch(e) {
     console.error(e);
