@@ -947,6 +947,26 @@
       <select class="form-select" id="newStaffEmpType"><option value="full">常勤</option><option value="part">パート</option><option value="short">時短</option></select></div>
     <div class="form-group"><label class="form-label">夜勤</label>
       <select class="form-select" id="newStaffNoNight"><option value="false">あり</option><option value="true">なし</option></select></div>
+    <!-- アカウント作成セクション -->
+    <div style="margin:16px 0 12px;padding:12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px">
+        <input type="checkbox" id="newStaffCreateAccount" checked>
+        <span style="font-weight:600;font-size:13px;color:#0c4a6e">🔑 ログインアカウントも作成する</span>
+      </label>
+      <div id="newStaffAccountFields">
+        <div class="form-group" style="margin-bottom:8px">
+          <label class="form-label" style="font-size:12px">メールアドレス</label>
+          <input type="email" class="form-input" id="newStaffEmail" placeholder="staff@example.com">
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" style="font-size:12px">初期パスワード（8文字以上）</label>
+          <input type="text" class="form-input" id="newStaffPassword" placeholder="後で本人が変更可能">
+        </div>
+        <div style="font-size:11px;color:#0369a1;margin-top:6px;line-height:1.5">
+          ※ ロールは「スタッフ」、部門は上で選択した部門が自動設定されます
+        </div>
+      </div>
+    </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal('addStaffModal')">キャンセル</button>
       <button class="btn btn-primary" id="saveNewStaffBtn">追加する</button>
@@ -967,7 +987,8 @@
 
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE'; 
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -1177,7 +1198,11 @@ document.getElementById('adminLoginBtn').addEventListener('click', async () => {
     currentDept = account.dept_id ?? 0;
 
     errEl.style.display='none';
-    document.getElementById('staffNavItem').style.display = account.role === 'master' ? 'flex' : 'none';
+    // 権限制御：マスター = 全権、リーダー = スタッフ管理OK・アカウント管理NG、スタッフ = 両方NG
+    const isMaster = account.role === 'master';
+    const isLeader = account.role === 'leader';
+    document.getElementById('staffNavItem').style.display = (isMaster || isLeader) ? 'flex' : 'none';
+    document.getElementById('accountNavItem').style.display = isMaster ? 'flex' : 'none';
     document.getElementById('sidebarUserName').textContent = account.name;
     document.getElementById('sidebarUserRole').textContent =
       account.role === 'master' ? 'マスター管理者' :
@@ -3578,6 +3603,11 @@ document.getElementById('discardGenerateBtn').addEventListener('click', () => {
 
 // ===== アカウント管理 =====
 async function loadAccountPage() {
+  // マスター権限チェック（直接URL等での不正アクセス防止）
+  if (!adminUser || adminUser.role !== 'master') {
+    document.getElementById('page-account').innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626"><div style="font-size:32px;margin-bottom:12px">🔒</div><div style="font-size:14px;font-weight:600">アクセス権限がありません</div><div style="font-size:12px;color:#6b7280;margin-top:8px">アカウント管理はマスター権限が必要です</div></div>';
+    return;
+  }
   // パスワード変更はすべてのロールで可能
   document.getElementById('changePwBtn').onclick = changePassword;
 
@@ -5509,6 +5539,11 @@ document.getElementById('saveRequirementsBtn').addEventListener('click', async (
 
 // ===== STAFF =====
 async function loadStaffTable() {
+  // 権限チェック：master または leader のみアクセス可
+  if (!adminUser || (adminUser.role !== 'master' && adminUser.role !== 'leader')) {
+    document.getElementById('page-staff').innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626"><div style="font-size:32px;margin-bottom:12px">🔒</div><div style="font-size:14px;font-weight:600">アクセス権限がありません</div></div>';
+    return;
+  }
   showLoading();
   try {
     const deptStaff = allStaff.filter(s => s.dept_id === currentDept);
@@ -5911,22 +5946,74 @@ document.getElementById('addStaffBtn').addEventListener('click', () => {
   document.getElementById('addStaffModal').classList.add('show');
 });
 
+// アカウント作成チェックボックスの切り替えで欄の表示/非表示
+document.getElementById('newStaffCreateAccount')?.addEventListener('change', (e) => {
+  document.getElementById('newStaffAccountFields').style.display = e.target.checked ? 'block' : 'none';
+});
+
 document.getElementById('saveNewStaffBtn').addEventListener('click', async () => {
   const deptId = parseInt(document.getElementById('newStaffDept').value);
   const name = document.getElementById('newStaffName').value.trim();
   const empType = document.getElementById('newStaffEmpType').value;
   const noNight = document.getElementById('newStaffNoNight').value === 'true';
+  const createAccount = document.getElementById('newStaffCreateAccount').checked;
+  const email = document.getElementById('newStaffEmail').value.trim().toLowerCase();
+  const password = document.getElementById('newStaffPassword').value;
+
   if (!name) { showToast('名前を入力してください','error'); return; }
+
+  // アカウント作成ON時はバリデーション
+  if (createAccount) {
+    if (!email) { showToast('メールアドレスを入力してください','error'); return; }
+    if (!email.includes('@')) { showToast('有効なメールアドレスを入力してください','error'); return; }
+    if (!password) { showToast('初期パスワードを入力してください','error'); return; }
+    if (password.length < 8) { showToast('パスワードは8文字以上にしてください','error'); return; }
+  }
+
   showLoading();
   try {
+    // 1. staff テーブルに登録
     const maxCode = allStaff.filter(s => s.dept_id === deptId).reduce((m, s) => Math.max(m, s.staff_code), 0);
     await sb('staff', { method:'POST', body:JSON.stringify([{staff_code:maxCode+1,name,dept_id:deptId,emp_type:empType,no_night:noNight,no_count:false}]) });
+
+    // 2. accounts テーブルにも登録（チェックON時のみ）
+    if (createAccount) {
+      try {
+        const hash = await sha256(password);
+        await sb('accounts', { method:'POST', body:JSON.stringify([{ name, email, password_hash:hash, role:'staff', dept_id:deptId }]) });
+      } catch(accErr) {
+        console.error('アカウント作成エラー:', accErr);
+        // staff は成功してるので警告のみ
+        if (accErr.message && accErr.message.includes('unique')) {
+          showToast(`${name}を追加しましたが、メールアドレスが既に使われていてアカウントは作成できませんでした`, 'error');
+        } else {
+          showToast(`${name}を追加しましたが、アカウント作成に失敗しました`, 'error');
+        }
+        await loadStaff();
+        loadStaffTable();
+        closeModal('addStaffModal');
+        // 入力リセット
+        document.getElementById('newStaffName').value = '';
+        document.getElementById('newStaffEmail').value = '';
+        document.getElementById('newStaffPassword').value = '';
+        hideLoading();
+        return;
+      }
+    }
+
     await loadStaff();
     loadStaffTable();
     closeModal('addStaffModal');
+    // 入力リセット
     document.getElementById('newStaffName').value = '';
-    showToast(`${name} を追加しました ✓`,'success');
-  } catch(e) { console.error(e); showToast('追加エラー','error'); }
+    document.getElementById('newStaffEmail').value = '';
+    document.getElementById('newStaffPassword').value = '';
+    const msg = createAccount ? `${name} を追加しました（アカウントも作成 ✓）` : `${name} を追加しました ✓`;
+    showToast(msg, 'success');
+  } catch(e) {
+    console.error(e);
+    showToast('追加エラー：' + (e.message || ''), 'error');
+  }
   hideLoading();
 });
 
