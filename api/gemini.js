@@ -33,27 +33,53 @@ export default async function handler(req, res) {
     const model = 'gemini-2.5-flash';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-    const geminiRes = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          role: 'user',
-          parts: [{ text: prompt }]
-        }],
-        generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 8192,
-        }
-      })
+    const requestBody = JSON.stringify({
+      contents: [{
+        role: 'user',
+        parts: [{ text: prompt }]
+      }],
+      generationConfig: {
+        temperature: 0.3,
+        maxOutputTokens: 8192,
+      }
     });
 
+    // 503 (UNAVAILABLE) の場合は自動リトライ（最大3回、指数バックオフ）
+    let geminiRes;
+    let lastErrorText = '';
+    const maxRetries = 3;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      geminiRes = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: requestBody
+      });
+
+      if (geminiRes.ok) break;
+
+      lastErrorText = await geminiRes.text();
+      console.error(`Gemini API error (attempt ${attempt + 1}/${maxRetries}):`, geminiRes.status, lastErrorText);
+
+      // 503 / 429（一時エラー）のみリトライ。それ以外は即座にエラー返却
+      if (geminiRes.status !== 503 && geminiRes.status !== 429) {
+        return res.status(geminiRes.status).json({
+          error: `Gemini API エラー (${geminiRes.status})`,
+          detail: lastErrorText.slice(0, 500)
+        });
+      }
+
+      // 最終試行でなければ少し待ってリトライ（1秒、2秒、4秒）
+      if (attempt < maxRetries - 1) {
+        const waitMs = 1000 * Math.pow(2, attempt);
+        await new Promise(r => setTimeout(r, waitMs));
+      }
+    }
+
     if (!geminiRes.ok) {
-      const errText = await geminiRes.text();
-      console.error('Gemini API error:', geminiRes.status, errText);
+      // 全リトライ失敗
       return res.status(geminiRes.status).json({
-        error: `Gemini API エラー (${geminiRes.status})`,
-        detail: errText.slice(0, 500)
+        error: `Gemini APIが一時的に高負荷です (${geminiRes.status})`,
+        detail: 'しばらく時間をおいてから再試行してください。\n（自動的に3回リトライしましたが、全て失敗しました）'
       });
     }
 
