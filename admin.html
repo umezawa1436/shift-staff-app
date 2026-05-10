@@ -323,9 +323,26 @@
       <div style="font-size:13px;color:var(--text-muted);margin-bottom:14px">現在表示中のシフト表（<span id="aiTargetMonthLabel"></span>・<span id="aiTargetDeptLabel"></span>）について相談します。</div>
 
       <!-- メインボタン -->
-      <button class="ai-choice-btn" data-mode="both" style="width:100%;padding:18px;border-radius:14px;border:none;background:linear-gradient(135deg,#a855f7,#3b82f6);color:white;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:16px;box-shadow:0 4px 12px rgba(168,85,247,0.3)">
-        <div style="font-weight:700;font-size:16px">🌟 問題点と修正案を確認する</div>
-        <div style="font-size:11px;opacity:0.9;margin-top:4px">問題点を見つけて、具体的な修正案を提案します</div>
+      <button class="ai-choice-btn ai-main-btn" data-mode="both" style="width:100%;padding:18px;border-radius:14px;border:none;background:linear-gradient(135deg,#9333ea,#2563eb);color:white;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:16px;box-shadow:0 4px 12px rgba(147,51,234,0.4);display:flex;align-items:center;justify-content:center;gap:10px">
+        <svg width="32" height="22" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+          <g transform="translate(20, 30)">
+            <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
+            <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
+          </g>
+          <g transform="translate(50, 30)">
+            <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
+            <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
+            <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
+            <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
+            <circle cx="20" cy="-3" r="5" fill="white"/>
+            <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
+            <circle cx="22" cy="-4" r="0.8" fill="white"/>
+          </g>
+        </svg>
+        <div style="text-align:left">
+          <div style="font-weight:700;font-size:16px">問題点と修正案を確認する</div>
+          <div style="font-size:11px;opacity:0.9;margin-top:2px">問題点を見つけて、具体的な修正案を提案します</div>
+        </div>
       </button>
 
       <!-- 区切り -->
@@ -388,6 +405,16 @@
 <style>
 @keyframes spin { to { transform: rotate(360deg); } }
 .ai-choice-btn:hover { border-color: #a855f7 !important; background: #faf5ff !important; }
+/* メインボタン（金魚付き）はホバーでも色を保つ */
+.ai-main-btn:hover { 
+  background: linear-gradient(135deg,#7e22ce,#1d4ed8) !important; 
+  box-shadow: 0 6px 18px rgba(147,51,234,0.5) !important;
+  transform: translateY(-1px);
+}
+.ai-main-btn:active {
+  transform: translateY(0);
+  background: linear-gradient(135deg,#6b21a8,#1e40af) !important;
+}
 </style>
 
 <div class="toast" id="toast"></div>
@@ -551,7 +578,24 @@
             <button class="btn-nav" id="shiftNextMonth">▶</button>
             <button class="btn btn-success" id="saveShiftBtn">💾 保存</button>
             <button class="btn btn-primary" id="confirmShiftBtn">✅ 確定する</button>
-            <button class="btn btn-outline" id="aiAdviceBtn" style="background:linear-gradient(135deg,#a855f7,#3b82f6);color:white;border:none">🤖 AIに相談</button>
+            <button class="btn btn-outline" id="aiAdviceBtn" style="background:linear-gradient(135deg,#a855f7,#3b82f6);color:white;border:none;display:inline-flex;align-items:center;gap:6px">
+              <svg width="20" height="14" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+                <g transform="translate(20, 30)">
+                  <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
+                  <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
+                </g>
+                <g transform="translate(50, 30)">
+                  <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
+                  <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
+                  <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
+                  <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
+                  <circle cx="20" cy="-3" r="5" fill="white"/>
+                  <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
+                  <circle cx="22" cy="-4" r="0.8" fill="white"/>
+                </g>
+              </svg>
+              AIに相談
+            </button>
             <button class="btn btn-outline" id="exportCsvBtn">📊 CSV出力</button>
             <button class="btn btn-outline" id="printShiftBtn">🖨️ 印刷</button>
             <div id="confirmStatusBadge" style="display:none;padding:6px 12px;border-radius:100px;font-size:12px;font-weight:600"></div>
@@ -924,6 +968,7 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE'; 
+// STATE
 let adminUser = null;
 let currentDept = 0;
 let currentYear = new Date().getFullYear();
