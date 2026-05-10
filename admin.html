@@ -843,7 +843,6 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -4096,32 +4095,6 @@ async function fetchDeadline() {
 }
 
 document.getElementById('saveDeadlineRuleBtn')?.addEventListener('click', async () => {
-  const days = parseInt(document.getElementById('deadlineDaysBefore').value, 10);
-  const time = document.getElementById('deadlineRuleTime').value || '23:59';
-  const [h, m] = time.split(':').map(Number);
-  if (isNaN(days) || days < 0 || days > 60) {
-    showToast('「何日前」は0〜60の整数で入力してください', 'error');
-    return;
-  }
-  showLoading();
-  try {
-    const existing = await sb(`shift_request_deadline_rules?dept_id=eq.${deadlineDept}&select=dept_id`);
-    const payload = { dept_id: deadlineDept, days_before: days, hour: h, minute: m };
-    if (existing && existing.length > 0) {
-      await sb(`shift_request_deadline_rules?dept_id=eq.${deadlineDept}`, {method:'PATCH', body: JSON.stringify(payload)});
-    } else {
-      await sb('shift_request_deadline_rules', {method:'POST', body: JSON.stringify([payload])});
-    }
-    showToast('デフォルトルールを保存しました ✓', 'success');
-    await fetchDeadline();
-  } catch(e) {
-    console.error(e);
-    showToast('保存エラー：' + (e.message||''), 'error');
-  }
-  hideLoading();
-});
-
-document.getElementById('saveDeadlineRuleBtn')?.addEventListener('click', async () => {
   const dayVal = parseInt(document.getElementById('deadlineDay').value, 10);
   const time = document.getElementById('deadlineTime').value || '23:59';
   const [h, m] = time.split(':').map(Number);
@@ -4750,30 +4723,20 @@ document.getElementById('saveCustomShiftBtn')?.addEventListener('click', async (
 
 async function loadSettings() {
   showLoading();
-  try {
-    // 祝日・木曜管理の初期化
-    document.getElementById('specialMonthTitle').textContent = `${specialYear}年${specialMonth}月`;
-    await renderSpecialDaysGrid();
+  // 各処理は個別 try で包み、1つが失敗しても他の処理が止まらないようにする
+  const safe = async (label, fn) => {
+    try { await fn(); }
+    catch(e) { console.error(`[loadSettings] ${label} エラー:`, e); }
+  };
 
-    // 初心者上限設定の初期化
-    beginnerLimitsDept = currentDept;
-    await loadBeginnerLimits();
+  // 必要人数設定（最重要：最初に実行）
+  await safe('loadRequirementsGrid', loadRequirementsGrid);
 
-    // シフトパターン管理の初期化
-    await loadShiftPatterns();
-
-    // 希望シフト上限の初期化
-    reqLimitDept = currentDept;
-    await loadReqLimits();
-
-    // 希望提出期限の初期化
-    deadlineDept = currentDept;
-    await loadDeadlinePage();
-
+  // 月の所定時間
+  await safe('monthlyHours', async () => {
     const hours = await sb(`monthly_hours?year=eq.${currentYear}&dept_id=is.null&order=month&select=month,hours`);
     const hoursMap = {};
     hours.forEach(h => { hoursMap[h.month] = h.hours; });
-
     let html = '<table class="req-table"><thead><tr>';
     for (let m = 1; m <= 12; m++) html += `<th>${m}月</th>`;
     html += '</tr></thead><tbody><tr>';
@@ -4782,9 +4745,35 @@ async function loadSettings() {
     }
     html += '</tr></tbody></table>';
     document.getElementById('monthlyHoursGrid').innerHTML = html;
+  });
 
-    await loadRequirementsGrid();
-  } catch(e) { console.error(e); }
+  // 祝日・木曜
+  await safe('specialDays', async () => {
+    document.getElementById('specialMonthTitle').textContent = `${specialYear}年${specialMonth}月`;
+    await renderSpecialDaysGrid();
+  });
+
+  // 初心者上限設定
+  await safe('beginnerLimits', async () => {
+    beginnerLimitsDept = currentDept;
+    await loadBeginnerLimits();
+  });
+
+  // シフトパターン管理
+  await safe('shiftPatterns', loadShiftPatterns);
+
+  // 希望シフト上限
+  await safe('reqLimits', async () => {
+    reqLimitDept = currentDept;
+    await loadReqLimits();
+  });
+
+  // 希望提出期限
+  await safe('deadline', async () => {
+    deadlineDept = currentDept;
+    await loadDeadlinePage();
+  });
+
   hideLoading();
 }
 
