@@ -110,12 +110,12 @@
     }
     /* 尾びれの揺れ */
     .kingyo-tail {
-      transform-origin: center right;
+      transform-origin: 0 0;
       animation: tailWag 0.6s ease-in-out infinite;
     }
     @keyframes tailWag {
-      0%, 100% { transform: rotate(-8deg); }
-      50% { transform: rotate(8deg); }
+      0%, 100% { transform: translate(20px,30px) rotate(-6deg); }
+      50% { transform: translate(20px,30px) rotate(6deg); }
     }
     /* 泡 */
     .bubble {
@@ -353,38 +353,40 @@
     <div class="bubble bubble-4"></div>
     <!-- 金魚 -->
     <svg class="kingyo" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg">
-      <!-- 尾びれ：パターン2の流線形（揺れる） -->
-      <g class="kingyo-tail">
-        <path d="M 20 25 Q 0 5, -25 8 Q -18 20, -22 28 Q -25 48, -5 42 Q 10 38, 20 35 Z" fill="#ea580c"/>
-        <path d="M 20 27 Q 5 12, -15 15 Q -10 22, -12 28 Q -15 42, 0 38 Q 12 35, 20 33 Z" fill="#fb923c"/>
-        <path d="M 15 27 Q -2 12, -18 18" stroke="#dc2626" stroke-width="1" fill="none" opacity="0.6"/>
-        <path d="M 15 35 Q -2 45, -18 38" stroke="#dc2626" stroke-width="1" fill="none" opacity="0.6"/>
+      <!-- 尾びれ（パターン2の流線形・揺れる） -->
+      <g class="kingyo-tail" transform="translate(20, 30)">
+        <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#ea580c"/>
+        <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fb923c"/>
+        <path d="M -5 -3 Q -22 -18, -38 -12" stroke="#dc2626" stroke-width="1" fill="none" opacity="0.6"/>
+        <path d="M -5 5 Q -22 15, -38 8" stroke="#dc2626" stroke-width="1" fill="none" opacity="0.6"/>
       </g>
-      <!-- 体：卵型（中央線なし） -->
-      <ellipse cx="50" cy="30" rx="30" ry="23" fill="#dc2626"/>
-      <ellipse cx="50" cy="30" rx="30" ry="23" fill="url(#bodyGradKingyo)"/>
-      <!-- エラ線 -->
-      <path d="M 63 22 Q 68 30, 63 39" stroke="#ea580c" stroke-width="1.3" fill="none" stroke-linecap="round"/>
-      <!-- 背びれ（二段波打ち） -->
-      <path d="M 40 11 Q 42 -4, 48 2 Q 53 -6, 58 2 Q 64 -4, 66 10 L 64 11 L 58 8 L 50 7 L 42 10 Z" fill="#ea580c"/>
-      <path d="M 43 8 Q 47 0, 50 3" stroke="#dc2626" stroke-width="1" fill="none" stroke-linecap="round"/>
-      <path d="M 52 3 Q 55 -3, 58 5" stroke="#dc2626" stroke-width="1" fill="none" stroke-linecap="round"/>
-      <path d="M 60 5 Q 62 0, 63 8" stroke="#dc2626" stroke-width="1" fill="none" stroke-linecap="round"/>
-      <!-- 腹びれ -->
-      <path d="M 47 49 Q 42 60, 55 60 Q 60 54, 56 49 Z" fill="#ea580c"/>
-      <path d="M 49 50 Q 48 57, 54 58" stroke="#dc2626" stroke-width="0.9" fill="none"/>
-      <!-- 胸びれ -->
-      <path d="M 50 43 Q 58 52, 62 48 Q 64 42, 58 41 Z" fill="#ea580c"/>
-      <path d="M 54 44 Q 58 48, 61 46" stroke="#dc2626" stroke-width="0.8" fill="none"/>
-      <!-- 目 -->
-      <circle cx="70" cy="27" r="5" fill="white"/>
-      <circle cx="71" cy="27" r="3.2" fill="#1f2937"/>
-      <circle cx="72" cy="26" r="1" fill="white"/>
-      <!-- 口 -->
-      <path d="M 79 35 Q 81 36, 79 38" stroke="#7f1d1d" stroke-width="1.3" fill="none" stroke-linecap="round"/>
-      <!-- グラデーション定義 -->
+      <!-- 体（卵型・中央線なし） -->
+      <g transform="translate(50, 30)">
+        <ellipse cx="0" cy="0" rx="30" ry="23" fill="#dc2626"/>
+        <ellipse cx="0" cy="0" rx="30" ry="23" fill="url(#bodyGradHybrid)"/>
+        <!-- エラ -->
+        <path d="M 13 -8 Q 18 0, 13 9" stroke="#ea580c" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+        <!-- 背びれ（二段波打ち） -->
+        <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#ea580c"/>
+        <path d="M -7 -22 Q -3 -30, 0 -27" stroke="#dc2626" stroke-width="1" fill="none" stroke-linecap="round"/>
+        <path d="M 2 -27 Q 5 -33, 8 -25" stroke="#dc2626" stroke-width="1" fill="none" stroke-linecap="round"/>
+        <path d="M 10 -25 Q 12 -30, 13 -22" stroke="#dc2626" stroke-width="1" fill="none" stroke-linecap="round"/>
+        <!-- 腹びれ -->
+        <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#ea580c"/>
+        <path d="M -1 20 Q -2 27, 4 28" stroke="#dc2626" stroke-width="0.9" fill="none"/>
+        <!-- 胸びれ -->
+        <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#ea580c"/>
+        <path d="M 4 14 Q 8 18, 11 16" stroke="#dc2626" stroke-width="0.8" fill="none"/>
+        <!-- 中央線なし -->
+        <!-- 目 -->
+        <circle cx="20" cy="-3" r="5" fill="white"/>
+        <circle cx="21" cy="-3" r="3.2" fill="#1f2937"/>
+        <circle cx="22" cy="-4" r="1" fill="white"/>
+        <!-- 口 -->
+        <path d="M 29 5 Q 31 6, 29 8" stroke="#7f1d1d" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+      </g>
       <defs>
-        <radialGradient id="bodyGradKingyo" cx="0.35" cy="0.3" r="0.7">
+        <radialGradient id="bodyGradHybrid" cx="0.35" cy="0.3" r="0.7">
           <stop offset="0%" stop-color="#fecaca" stop-opacity="0.7"/>
           <stop offset="40%" stop-color="#dc2626" stop-opacity="0"/>
           <stop offset="100%" stop-color="#991b1b" stop-opacity="0.4"/>
@@ -468,6 +470,14 @@
 
   <div class="submit-bar" id="submitBar">
     <div class="submit-info"><div class="submit-count">入力済み <span id="inputCount">0</span> 日</div></div>
+    <!-- 月の上限表示 -->
+    <div id="reqLimitInfo" style="display:none;background:#f8fafc;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px">
+      <div style="font-weight:600;color:#475569;margin-bottom:6px;display:flex;align-items:center;gap:6px">
+        <span style="font-size:13px">📊</span> 月の上限
+      </div>
+      <div id="reqLimitDetails" style="display:flex;flex-wrap:wrap;gap:10px;font-size:12px"></div>
+    </div>
+    <div id="reqLimitWarning" style="display:none;background:#fef2f2;color:#dc2626;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;font-weight:500"></div>
     <button class="btn-submit" id="submitBtn">希望を提出する</button>
   </div>
 </div>
@@ -923,6 +933,7 @@ async function showApp() {
   document.getElementById('headerDept').textContent = currentUser.deptName;
   await loadShiftTypesFromDB();
   await loadRequests();
+  await loadReqLimitsForStaff();
   renderCalendar();
 }
 
@@ -1022,16 +1033,97 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   renderCalendar();
 });
 
+// 希望シフト上限のキャッシュ
+let reqLimitCache = null; // {limit_kibou_kyu, limit_yukyu, limit_other}
+
+async function loadReqLimitsForStaff() {
+  if (!currentUser) return;
+  try {
+    const data = await supabaseRequest(
+      `shift_request_limits?dept_id=eq.${currentUser.deptId}&year=eq.${currentYear}&month=eq.${currentMonth}&select=*`
+    );
+    reqLimitCache = data[0] || null;
+  } catch(e) {
+    console.error('上限取得エラー', e);
+    reqLimitCache = null;
+  }
+}
+
+// 希望シフトを3カテゴリにカウント
+function countRequests() {
+  const monthKeys = Object.keys(requests).filter(k => k.startsWith(`${currentYear}-${currentMonth}-`));
+  let kibouKyu = 0, yukyu = 0, other = 0, off = 0;
+  monthKeys.forEach(k => {
+    const sh = requests[k];
+    if (sh === '希望休') kibouKyu++;
+    else if (sh === '有休' || sh === '半有休') yukyu++;
+    else if (sh === '休み') off++;
+    else other++;
+  });
+  return { kibouKyu, yukyu, other, off, total: monthKeys.length };
+}
+
 function updateCount() {
-  const count = Object.keys(requests).filter(k => k.startsWith(`${currentYear}-${currentMonth}-`)).length;
-  document.getElementById('inputCount').textContent = count;
-  document.getElementById('submitBtn').disabled = count === 0;
+  const counts = countRequests();
+  document.getElementById('inputCount').textContent = counts.total;
+
+  // 上限表示
+  const infoEl = document.getElementById('reqLimitInfo');
+  const detailsEl = document.getElementById('reqLimitDetails');
+  const warnEl = document.getElementById('reqLimitWarning');
+
+  let isOver = false;
+  let warnings = [];
+
+  if (reqLimitCache) {
+    const items = [];
+    const renderItem = (label, used, limit, color) => {
+      if (limit == null) {
+        return `<div><span style="color:${color};font-weight:600">${label}</span> <span style="color:#94a3b8">${used}日（制限なし）</span></div>`;
+      }
+      const over = used > limit;
+      if (over) { isOver = true; warnings.push(`${label}が上限を超えています（${used}/${limit}日）`); }
+      const color2 = over ? '#dc2626' : (used === limit ? '#d97706' : color);
+      const fontWeight = over ? '700' : '500';
+      return `<div><span style="color:${color};font-weight:600">${label}</span> <span style="color:${color2};font-weight:${fontWeight}">${used}/${limit}日</span></div>`;
+    };
+    items.push(renderItem('希望休', counts.kibouKyu, reqLimitCache.limit_kibou_kyu, '#9a3412'));
+    items.push(renderItem('有休', counts.yukyu, reqLimitCache.limit_yukyu, '#86198f'));
+    items.push(renderItem('その他', counts.other, reqLimitCache.limit_other, '#075985'));
+    detailsEl.innerHTML = items.join('');
+    infoEl.style.display = 'block';
+  } else {
+    infoEl.style.display = 'none';
+  }
+
+  // 警告表示
+  if (warnings.length > 0) {
+    warnEl.style.display = 'block';
+    warnEl.innerHTML = '⚠️ ' + warnings.join('<br>⚠️ ') + '<div style="margin-top:4px;font-weight:400">該当する日のシフトを変更してください</div>';
+  } else {
+    warnEl.style.display = 'none';
+  }
+
+  // 提出ボタンの有効/無効
+  document.getElementById('submitBtn').disabled = counts.total === 0 || isOver;
 }
 
 document.getElementById('submitBtn').addEventListener('click', async () => {
   if (!currentUser?.id) {
     showToast('ログインし直してください', 'error');
     return;
+  }
+  // 念のための最終チェック
+  const counts = countRequests();
+  if (reqLimitCache) {
+    const violations = [];
+    if (reqLimitCache.limit_kibou_kyu != null && counts.kibouKyu > reqLimitCache.limit_kibou_kyu) violations.push(`希望休（${counts.kibouKyu}/${reqLimitCache.limit_kibou_kyu}日）`);
+    if (reqLimitCache.limit_yukyu != null && counts.yukyu > reqLimitCache.limit_yukyu) violations.push(`有休（${counts.yukyu}/${reqLimitCache.limit_yukyu}日）`);
+    if (reqLimitCache.limit_other != null && counts.other > reqLimitCache.limit_other) violations.push(`その他（${counts.other}/${reqLimitCache.limit_other}日）`);
+    if (violations.length > 0) {
+      showToast('上限超過：' + violations.join('、'), 'error');
+      return;
+    }
   }
 
   showLoading();
@@ -1073,6 +1165,7 @@ document.getElementById('prevMonthBtn').addEventListener('click', async () => {
   currentMonth--;
   if (currentMonth < 1) { currentMonth = 12; currentYear--; }
   await loadRequests();
+  await loadReqLimitsForStaff();
   renderCalendar();
 });
 
@@ -1080,6 +1173,7 @@ document.getElementById('nextMonthBtn').addEventListener('click', async () => {
   currentMonth++;
   if (currentMonth > 12) { currentMonth = 1; currentYear++; }
   await loadRequests();
+  await loadReqLimitsForStaff();
   renderCalendar();
 });
 
