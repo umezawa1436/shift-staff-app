@@ -906,7 +906,7 @@
 
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE'; 
 
 // STATE
 let adminUser = null;
@@ -4083,39 +4083,37 @@ let aiCurrentMode = '';
 function buildShiftDataForAI() {
   // 現在のシフト表からAI送信用のデータを構築（匿名化）
   const dept = currentDept;
-  const staffList = (allStaff || []).filter(s => s.dept_id === dept && !s.archived);
-  const holidays = getJapaneseHolidays(shiftYear, shiftMonth);
-  const closed = closedHolidaysByMonth ? (closedHolidaysByMonth[`${shiftYear}-${shiftMonth}`] || new Set()) : new Set();
+  const staffList = (allStaff || []).filter(s => s.dept_id === dept);
+  const holidays = (typeof getJapaneseHolidays === 'function') ? getJapaneseHolidays(shiftYear, shiftMonth) : new Set();
+  const closed = window._shiftClosedHolidays || new Set();
   const daysInMonth = new Date(shiftYear, shiftMonth, 0).getDate();
   const DOW_JP = ['日','月','火','水','木','金','土'];
 
   // スタッフを匿名化
   aiAnonymizeMap = {};
   const staffAnon = staffList.map((s, idx) => {
-    const anon = `スタッフ${String.fromCharCode(65 + idx)}`; // A, B, C...
-    if (idx >= 26) {
-      // 26人以上はAA, AB, ...
+    let anon;
+    if (idx < 26) {
+      anon = `スタッフ${String.fromCharCode(65 + idx)}`;
+    } else {
       const i = idx - 26;
-      const a = `スタッフA${String.fromCharCode(65 + (i % 26))}`;
-      aiAnonymizeMap[a] = s.name;
-      return { anon: a, name: s.name, empType: s.emp_type, isBeginner: !!s.is_beginner };
+      anon = `スタッフA${String.fromCharCode(65 + (i % 26))}`;
     }
     aiAnonymizeMap[anon] = s.name;
-    return { anon, name: s.name, empType: s.emp_type, isBeginner: !!s.is_beginner };
+    return { anon, id: s.id, empType: s.emp_type, skillLevel: s.skill_level };
   });
 
   // シフト表をJSON化
   const shiftRows = staffAnon.map(sa => {
-    const staff = staffList.find(s => s.name === sa.name);
     const days = {};
     for (let d = 1; d <= daysInMonth; d++) {
-      const sh = shiftData[`${staff.id}|${d}`] || '';
+      const sh = shiftData[`${sa.id}|${d}`] || '';
       if (sh) days[d] = sh;
     }
     return {
       id: sa.anon,
-      type: sa.empType === 'full' ? '常勤' : sa.empType === 'short' ? '時短' : 'パート',
-      初心者: sa.isBeginner,
+      雇用形態: sa.empType === 'full' ? '常勤' : sa.empType === 'short' ? '時短' : 'パート',
+      スキル: sa.skillLevel || '',
       シフト: days
     };
   });
@@ -4125,8 +4123,8 @@ function buildShiftDataForAI() {
   for (let d = 1; d <= daysInMonth; d++) {
     const dt = new Date(shiftYear, shiftMonth - 1, d);
     const dow = dt.getDay();
-    const isHol = holidays.has(d);
-    const isClosed = closed.has(d);
+    const isHol = holidays.has ? holidays.has(d) : false;
+    const isClosed = closed.has ? closed.has(d) : false;
     dateInfo[d] = {
       曜日: DOW_JP[dow],
       祝日: isHol,
@@ -4134,28 +4132,10 @@ function buildShiftDataForAI() {
     };
   }
 
-  // 必要人数（部門設定）
-  const reqs = window.staffingReqByDept?.[dept] || {};
-
-  // 希望シフト（参考情報）
-  const reqMap = {};
-  staffList.forEach(s => {
-    const sa = staffAnon.find(x => x.name === s.name);
-    if (!sa) return;
-    const personReqs = {};
-    for (let d = 1; d <= daysInMonth; d++) {
-      const r = (window.requestsByStaff?.[s.id]?.[`${shiftYear}-${shiftMonth}-${d}`]) || '';
-      if (r) personReqs[d] = r;
-    }
-    if (Object.keys(personReqs).length > 0) reqMap[sa.anon] = personReqs;
-  });
-
   return {
     対象月: `${shiftYear}年${shiftMonth}月`,
     部門: DEPT_NAMES[dept],
     日付情報: dateInfo,
-    必要人数: reqs,
-    希望シフト: reqMap,
     シフト表: shiftRows
   };
 }
