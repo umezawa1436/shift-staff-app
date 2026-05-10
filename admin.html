@@ -372,7 +372,7 @@
       <!-- 操作ボタン -->
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb">
         <button class="btn btn-outline" id="aiBackBtn" style="font-size:13px">🔄 別の相談</button>
-        <button class="btn btn-primary" id="aiCloseFinishBtn" style="font-size:13px;margin-left:auto">完了</button>
+        <button class="btn btn-primary" id="aiCloseFinishBtn" style="font-size:13px;margin-left:auto">✓ 閉じてシフト表を確認</button>
       </div>
     </div>
 
@@ -922,7 +922,7 @@
 </div>
 
 <script>
-const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
+onst SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE'; 
 // STATE
 let adminUser = null;
@@ -1374,6 +1374,9 @@ async function loadShiftGrid() {
     // shiftClosedHolidaysとshiftOpenThursdaysをグローバルに設定
     window._shiftClosedHolidays = shiftClosedHolidays;
     window._shiftOpenThursdays = shiftOpenThursdays;
+    // AI適用時の再描画用に保持
+    window._shiftReqMap = reqMap;
+    window._shiftWedTypes = shiftWedTypes;
     renderShiftGrid('shiftGrid', deptStaff, daysInMonth, shiftYear, shiftMonth, shiftData, reqMap, lockedCells, true, shiftWedTypes);
   } catch(e) { console.error(e); showToast('シフト表読み込みエラー','error'); }
   hideLoading();
@@ -4514,11 +4517,60 @@ function applyAiSuggestion(idx) {
     showToast('対象スタッフが見つかりません', 'error');
     return;
   }
+
+  console.log('[AI適用] スタッフ:', realName, 'ID:', staff.id, '日:', sug.day, '→', sug.newShift);
+
   const key = `${staff.id}|${sug.day}`;
+  // データ更新
+  if (typeof saveUndoState === 'function') saveUndoState();
   shiftData[key] = sug.newShift;
-  lockedCells[key] = true;
-  if (typeof refreshHoursCell === 'function') refreshHoursCell(staff.id);
-  if (typeof loadShiftGrid === 'function') loadShiftGrid();
+  lockedCells[key] = true;  // ロック
+
+  // === 確実に反映するための処理 ===
+  // 1. セル表示更新を試みる
+  let displayUpdated = false;
+  if (typeof updateCellDisplay === 'function') {
+    try {
+      updateCellDisplay(key);
+      // 反映確認：セル要素の表示テキストが newShift と一致するか
+      const cellEl = document.querySelector(`[data-staff="${staff.id}"][data-day="${sug.day}"][data-grid="shiftGrid"]`);
+      if (cellEl) {
+        const txtEl = cellEl.querySelector('.shift-text');
+        if (txtEl && txtEl.textContent === sug.newShift) {
+          displayUpdated = true;
+        }
+      }
+    } catch(e) {
+      console.error('[AI適用] updateCellDisplayエラー:', e);
+    }
+  }
+
+  // 2. 累計時間更新
+  if (typeof refreshHoursCell === 'function') {
+    try { refreshHoursCell(staff.id); } catch(e) { console.error('[AI適用] refreshHoursCellエラー:', e); }
+  }
+
+  // 3. サマリー行（必要人数充足など）の更新
+  if (typeof refreshSummaryRows === 'function') {
+    try { refreshSummaryRows(); } catch(e) { console.error('[AI適用] refreshSummaryRowsエラー:', e); }
+  }
+
+  // 4. もし1のセル更新が失敗したら、シフト表全体を再描画（DB再取得なし）
+  if (!displayUpdated) {
+    console.log('[AI適用] セル個別更新が確認できなかったため全体再描画');
+    try {
+      const deptStaff = allStaff.filter(s => s.dept_id === currentDept);
+      const daysInMonth = new Date(shiftYear, shiftMonth, 0).getDate();
+      // 既存の reqMap, shiftWedTypes をなるべく使う
+      if (typeof renderShiftGrid === 'function' && typeof window._shiftReqMap !== 'undefined') {
+        renderShiftGrid('shiftGrid', deptStaff, daysInMonth, shiftYear, shiftMonth, shiftData, window._shiftReqMap, lockedCells, true, window._shiftWedTypes || {});
+      }
+    } catch(e) {
+      console.error('[AI適用] 全体再描画エラー:', e);
+    }
+  }
+
+  // 適用済みバッジ
   const badge = document.querySelector(`.ai-applied-badge[data-idx="${idx}"]`);
   if (badge) badge.style.display = 'inline-block';
   const btn = document.querySelector(`.ai-apply-btn[data-idx="${idx}"]`);
@@ -4528,7 +4580,8 @@ function applyAiSuggestion(idx) {
     btn.style.opacity = '0.6';
     btn.style.cursor = 'default';
   }
-  showToast(`${realName}さんの ${shiftMonth}/${sug.day} を ${sug.newShift} に変更しました`, 'success');
+
+  showToast(`${realName}さんの ${shiftMonth}/${sug.day} を ${sug.newShift} に変更しました（保存ボタンで確定）`, 'success');
 }
 
 document.getElementById('aiBackBtn')?.addEventListener('click', () => {
