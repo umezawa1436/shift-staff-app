@@ -594,7 +594,7 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2zM17 4h-2a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM5 19v.01M11 16v.01M19 16v.01M19 12v.01"/></svg>
               希望シフト上限
             </div>
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">月ごとに「希望休／有休／その他」の3カテゴリで希望提出の上限を設定できます。空欄＝制限なし。</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">部門ごとに「希望休／有休／その他」の月上限を設定できます。一度設定すれば毎月自動的に適用されます。空欄＝制限なし。</div>
             <div class="dept-tabs" id="reqLimitDeptTabs"></div>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:16px">
               <div style="padding:16px;background:#fff7ed;border-radius:12px;border:1px solid #fed7aa">
@@ -623,7 +623,7 @@
               </div>
             </div>
             <button class="btn btn-primary" style="margin-top:16px" id="saveReqLimitsBtn">保存</button>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:8px">※対象月：上部のシフト表月と連動（<span id="reqLimitMonthLabel">―</span>の設定）</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:8px">💡 設定すると、全ての月の希望提出に自動適用されます。値を変更したい場合はここを編集してください。</div>
           </div>
 
           <!-- 希望提出期限 -->
@@ -635,29 +635,17 @@
             <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">スタッフが希望シフトを提出できる期限を設定します。期限を過ぎるとスタッフは編集できなくなります（管理者は変更可）。</div>
             <div class="dept-tabs" id="deadlineDeptTabs"></div>
             
-            <!-- デフォルトルール（マスターのみ） -->
-            <div id="deadlineRuleSection" style="margin-top:16px;padding:14px;background:#f0f9ff;border-radius:12px;border:1px solid #bae6fd">
-              <div style="font-size:13px;font-weight:600;color:#075985;margin-bottom:10px">📌 デフォルトルール（毎月適用）</div>
+            <!-- 期限設定（部門×月） -->
+            <div style="margin-top:16px;padding:16px;background:#fef3c7;border-radius:12px;border:1px solid #fcd34d">
+              <div style="font-size:13px;font-weight:600;color:#92400e;margin-bottom:10px">📅 <span id="deadlineMonthLabel">―</span>の希望提出期限</div>
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px">
-                <span>対象月の開始日の</span>
-                <input type="number" class="form-input" id="deadlineDaysBefore" min="0" max="60" style="width:80px" placeholder="10">
-                <span>日前</span>
-                <input type="time" class="form-input" id="deadlineRuleTime" style="width:120px" value="23:59">
-                <span>まで</span>
+                <input type="datetime-local" class="form-input" id="deadlineCustom" style="font-size:14px;flex:1;min-width:200px">
               </div>
-              <div style="font-size:11px;color:#075985;margin-top:6px">例：「10日前 23:59」=5月分は4月20日23:59が締切。空欄=デフォルト適用なし</div>
-              <button class="btn btn-outline" id="saveDeadlineRuleBtn" style="margin-top:10px;font-size:12px;padding:6px 14px">デフォルトルールを保存</button>
-            </div>
-
-            <!-- 個別調整 -->
-            <div style="margin-top:16px;padding:14px;background:#fef3c7;border-radius:12px;border:1px solid #fcd34d">
-              <div style="font-size:13px;font-weight:600;color:#92400e;margin-bottom:10px">🎯 個別調整（<span id="deadlineMonthLabel">―</span>のみ）</div>
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px">
-                <input type="datetime-local" class="form-input" id="deadlineCustom" style="font-size:14px">
-                <button class="btn btn-outline" id="clearDeadlineCustomBtn" style="font-size:12px;padding:6px 12px;color:#dc2626">クリア</button>
+              <div style="font-size:11px;color:#92400e;margin-top:6px">何月何日何時何分まで提出可能かを直接指定します。空欄＝期限なし</div>
+              <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+                <button class="btn btn-primary" id="saveDeadlineCustomBtn" style="font-size:13px;padding:8px 16px">保存</button>
+                <button class="btn btn-outline" id="clearDeadlineCustomBtn" style="font-size:13px;padding:8px 16px;color:#dc2626">期限を解除</button>
               </div>
-              <div style="font-size:11px;color:#92400e;margin-top:6px">設定するとデフォルトを上書きします。クリアするとデフォルトに戻ります。</div>
-              <button class="btn btn-primary" id="saveDeadlineCustomBtn" style="margin-top:10px;font-size:12px;padding:6px 14px">個別調整を保存</button>
             </div>
 
             <!-- 適用される期限の表示 -->
@@ -3932,10 +3920,6 @@ document.getElementById('saveBeginnerLimitsBtn')?.addEventListener('click', asyn
 let reqLimitDept = 0;
 
 async function loadReqLimits() {
-  // 月ラベル更新
-  const lbl = document.getElementById('reqLimitMonthLabel');
-  if (lbl) lbl.textContent = `${shiftYear}年${shiftMonth}月`;
-
   // 部門タブ生成
   const tabs = document.getElementById('reqLimitDeptTabs');
   if (tabs && !tabs.dataset.built) {
@@ -3959,7 +3943,8 @@ async function loadReqLimits() {
 
 async function fetchReqLimits() {
   try {
-    const data = await sb(`shift_request_limits?dept_id=eq.${reqLimitDept}&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=*`);
+    // デフォルトテーブルから取得
+    const data = await sb(`shift_request_limits_default?dept_id=eq.${reqLimitDept}&select=*`);
     const row = data[0] || {};
     document.getElementById('limitKibouKyu').value = row.limit_kibou_kyu ?? '';
     document.getElementById('limitYukyu').value = row.limit_yukyu ?? '';
@@ -3986,22 +3971,20 @@ document.getElementById('saveReqLimitsBtn')?.addEventListener('click', async () 
   }
   showLoading();
   try {
-    // upsert: 既存があれば更新、なければ挿入
-    const existing = await sb(`shift_request_limits?dept_id=eq.${reqLimitDept}&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=id`);
+    // デフォルトテーブルに upsert
+    const existing = await sb(`shift_request_limits_default?dept_id=eq.${reqLimitDept}&select=dept_id`);
     const payload = {
       dept_id: reqLimitDept,
-      year: shiftYear,
-      month: shiftMonth,
       limit_kibou_kyu: kk,
       limit_yukyu: yk,
       limit_other: ot
     };
     if (existing && existing.length > 0) {
-      await sb(`shift_request_limits?id=eq.${existing[0].id}`, {method:'PATCH', body: JSON.stringify(payload)});
+      await sb(`shift_request_limits_default?dept_id=eq.${reqLimitDept}`, {method:'PATCH', body: JSON.stringify(payload)});
     } else {
-      await sb('shift_request_limits', {method:'POST', body: JSON.stringify([payload])});
+      await sb('shift_request_limits_default', {method:'POST', body: JSON.stringify([payload])});
     }
-    showToast('希望シフト上限を保存しました ✓', 'success');
+    showToast('希望シフト上限を保存しました（毎月適用されます）✓', 'success');
   } catch(e) {
     console.error(e);
     showToast('保存エラー：' + (e.message || ''), 'error');
@@ -4041,10 +4024,6 @@ async function loadDeadlinePage() {
   }
   card.style.display = 'block';
 
-  // ルールセクションはマスターのみ（リーダーは自部門の個別調整のみ）
-  document.getElementById('deadlineRuleSection').style.display =
-    adminUser.role === 'master' ? 'block' : 'none';
-
   // 月ラベル
   document.getElementById('deadlineMonthLabel').textContent = `${shiftYear}年${shiftMonth}月`;
 
@@ -4072,19 +4051,10 @@ async function loadDeadlinePage() {
 
 async function fetchDeadline() {
   try {
-    // デフォルトルール
-    const rules = await sb(`shift_request_deadline_rules?dept_id=eq.${deadlineDept}&select=*`);
-    const rule = rules[0] || null;
-    document.getElementById('deadlineDaysBefore').value = rule?.days_before ?? '';
-    if (rule) {
-      document.getElementById('deadlineRuleTime').value = `${String(rule.hour||23).padStart(2,'0')}:${String(rule.minute||59).padStart(2,'0')}`;
-    }
-
-    // 個別調整
+    // 期限設定を取得
     const customs = await sb(`shift_request_deadlines?dept_id=eq.${deadlineDept}&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=*`);
     const custom = customs[0] || null;
     if (custom) {
-      // datetime-local用形式に変換
       const d = new Date(custom.deadline_at);
       const yy = d.getFullYear();
       const mm = String(d.getMonth()+1).padStart(2,'0');
@@ -4096,22 +4066,14 @@ async function fetchDeadline() {
       document.getElementById('deadlineCustom').value = '';
     }
 
-    // 適用される期限の表示
-    let effective = null;
-    let source = '';
-    if (custom) {
-      effective = new Date(custom.deadline_at);
-      source = '個別調整';
-    } else if (rule && rule.days_before != null) {
-      effective = calcDefaultDeadline(shiftYear, shiftMonth, rule.days_before, rule.hour, rule.minute);
-      source = `デフォルト（${rule.days_before}日前 ${String(rule.hour||23).padStart(2,'0')}:${String(rule.minute||59).padStart(2,'0')}）`;
-    }
+    // 適用状況の表示
     const effEl = document.getElementById('deadlineEffective');
-    if (effective) {
+    if (custom) {
+      const effective = new Date(custom.deadline_at);
       const now = new Date();
       const passed = now > effective;
       effEl.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-        <div><strong>${shiftYear}年${shiftMonth}月の適用期限：</strong>${formatDateTime(effective)} <span style="color:#94a3b8">（${source}）</span></div>
+        <div><strong>${shiftYear}年${shiftMonth}月の期限：</strong>${formatDateTime(effective)}</div>
         <div>${passed ? '<span style="color:#dc2626;font-weight:700">⏰ 期限切れ</span>' : '<span style="color:#16a34a;font-weight:700">✓ 受付中</span>'}</div>
       </div>`;
     } else {
