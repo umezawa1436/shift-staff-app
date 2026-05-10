@@ -4238,8 +4238,10 @@ ${dataJson}
 
   // custom モード：ユーザーの自由記入を反映
   if (mode === 'custom') {
-    const userText = (document.getElementById('aiFreeText')?.value || '').trim();
-    if (!userText) return base + '\n【依頼】\nこのシフト表を分析し、改善のヒントを日本語で簡潔に答えてください。';
+    const rawUserText = (document.getElementById('aiFreeText')?.value || '').trim();
+    if (!rawUserText) return base + '\n【依頼】\nこのシフト表を分析し、改善のヒントを日本語で簡潔に答えてください。';
+    // 実名を匿名IDに変換してAIに送る
+    const userText = anonymizeText(rawUserText);
 
     task = `
 【ユーザーからの依頼】
@@ -4314,6 +4316,25 @@ function deAnonymizeText(text) {
     const real = aiAnonymizeMap[anon];
     // 全置換（gフラグ付き正規表現）
     result = result.replace(new RegExp(anon.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), real);
+  });
+  return result;
+}
+
+// 実名 → 匿名ID（自由記入欄の実名をAIに送る前に変換）
+function anonymizeText(text) {
+  if (!text) return text;
+  let result = text;
+  // 実名→匿名IDの逆引きマップを作る
+  const reverseMap = {};
+  Object.entries(aiAnonymizeMap).forEach(([anon, real]) => { reverseMap[real] = anon; });
+  // 実名は短いものより長いもの優先（例：「水島花子」を「水島」より先に置換）
+  const sortedNames = Object.keys(reverseMap).sort((a, b) => b.length - a.length);
+  sortedNames.forEach(name => {
+    if (!name) return;
+    const anonId = reverseMap[name];
+    // 「さん」「氏」などの敬称も含めて置換
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    result = result.replace(new RegExp(escaped, 'g'), anonId);
   });
   return result;
 }
