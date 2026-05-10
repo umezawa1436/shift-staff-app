@@ -310,6 +310,51 @@
 <body>
 
 <div class="loading" id="loading"><div class="spinner"></div><div style="font-size:14px;color:var(--text-muted)">処理中...</div></div>
+<!-- 招待リンク発行モーダル -->
+<div class="modal-overlay" id="inviteLinkModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
+  <div class="modal-content" style="background:white;border-radius:16px;padding:24px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;margin-top:20px">
+    <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <span style="font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px">🔗 招待リンクを発行</span>
+      <button class="btn btn-outline" id="closeInviteModal" style="padding:6px 12px">✕</button>
+    </div>
+
+    <div id="inviteGenerating" style="text-align:center;padding:30px">
+      <div style="display:inline-block;width:36px;height:36px;border:3px solid #e5e7eb;border-top-color:#a855f7;border-radius:50%;animation:spin 0.8s linear infinite"></div>
+      <div style="margin-top:12px;font-size:14px;color:#6b7280">招待リンクを生成中...</div>
+    </div>
+
+    <div id="inviteResult" style="display:none">
+      <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:14px;margin-bottom:16px">
+        <div style="font-size:12px;color:#0369a1;margin-bottom:4px">招待対象</div>
+        <div style="font-size:15px;font-weight:700;color:#0c4a6e" id="inviteTargetName"></div>
+        <div style="font-size:11px;color:#0369a1;margin-top:6px" id="inviteExpiresAt"></div>
+      </div>
+
+      <div style="margin-bottom:16px">
+        <div style="font-size:13px;font-weight:600;color:#1f2937;margin-bottom:6px">招待リンク（LINEなどで送信してください）</div>
+        <textarea id="inviteUrlText" readonly style="width:100%;min-height:80px;padding:10px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:12px;font-family:monospace;resize:vertical;box-sizing:border-box;background:#f9fafb"></textarea>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="inviteCopyBtn" style="font-size:13px;flex:1">📋 リンクをコピー</button>
+        <button class="btn btn-outline" id="inviteCopyMessageBtn" style="font-size:13px;flex:1">📨 メッセージごとコピー</button>
+      </div>
+
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px;margin-top:14px;font-size:11px;color:#92400e;line-height:1.6">
+        ⚠️ <strong>注意事項</strong><br>
+        ・このリンクは <strong>7日間有効</strong>です（期限切れ後は再発行が必要）<br>
+        ・一度アカウント作成に使われると、リンクは無効になります<br>
+        ・LINEなどの安全な方法で対象スタッフに送ってください
+      </div>
+    </div>
+
+    <div id="inviteError" style="display:none;text-align:center;padding:20px">
+      <div style="font-size:32px;margin-bottom:12px">⚠️</div>
+      <div id="inviteErrorText" style="font-size:14px;color:#dc2626;margin-bottom:16px"></div>
+    </div>
+  </div>
+</div>
+
 <!-- AI相談モーダル -->
 <div class="modal-overlay" id="aiAdviceModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
   <div class="modal-content" style="background:white;border-radius:16px;padding:24px;width:100%;max-width:720px;max-height:90vh;overflow-y:auto;margin-top:20px">
@@ -5618,9 +5663,15 @@ async function loadStaffTable() {
             ${staff.no_night?'夜勤不可':'夜勤可'}
           </button>
 
+          <!-- 招待リンク発行 -->
+          <button onclick="generateInviteLink('${staff.id}','${staff.name}')"
+            style="padding:4px 10px;border-radius:100px;font-size:12px;cursor:pointer;border:1.5px solid #a855f7;background:white;color:#7c3aed;margin-left:auto;font-weight:600">
+            🔗 招待リンク
+          </button>
+
           <!-- 削除 -->
           <button onclick="deleteStaff('${staff.id}','${staff.name}')"
-            style="padding:4px 10px;border-radius:100px;font-size:12px;cursor:pointer;border:1.5px solid var(--border);background:white;color:var(--danger);margin-left:auto">
+            style="padding:4px 10px;border-radius:100px;font-size:12px;cursor:pointer;border:1.5px solid var(--border);background:white;color:var(--danger)">
             削除
           </button>
         </div>
@@ -5941,6 +5992,97 @@ async function applyFixedShiftsToGrid(staffId, fixedShifts) {
 }
 
 document.getElementById('addAccountBtn')?.addEventListener('click', () => showAddAccountModal());
+
+// =====================================================
+// 招待リンク機能
+// =====================================================
+async function generateInviteLink(staffId, staffName) {
+  // モーダル表示
+  document.getElementById('inviteGenerating').style.display = 'block';
+  document.getElementById('inviteResult').style.display = 'none';
+  document.getElementById('inviteError').style.display = 'none';
+  document.getElementById('inviteLinkModal').style.display = 'flex';
+
+  try {
+    // 既に有効な招待がある場合は無効化（取り消し）
+    await sb(`invitations?staff_id=eq.${staffId}&used_at=is.null`, {
+      method: 'DELETE'
+    }).catch(() => {});  // 失敗してもOK
+
+    // ランダムトークン生成（256bit相当）
+    const tokenBytes = new Uint8Array(32);
+    crypto.getRandomValues(tokenBytes);
+    const token = Array.from(tokenBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    // 7日間有効
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    // DBに登録
+    const result = await sb('invitations', {
+      method: 'POST',
+      body: JSON.stringify([{
+        token,
+        staff_id: staffId,
+        invited_by: adminUser?.id || null,
+        expires_at: expiresAt
+      }])
+    });
+
+    // URL生成
+    const baseUrl = window.location.origin;
+    const inviteUrl = `${baseUrl}/invite.html?token=${token}`;
+
+    // 表示
+    document.getElementById('inviteTargetName').textContent = staffName + ' さん';
+    const expDate = new Date(expiresAt);
+    document.getElementById('inviteExpiresAt').textContent = `有効期限: ${expDate.getMonth()+1}月${expDate.getDate()}日 ${String(expDate.getHours()).padStart(2,'0')}:${String(expDate.getMinutes()).padStart(2,'0')}まで`;
+    document.getElementById('inviteUrlText').value = inviteUrl;
+
+    document.getElementById('inviteGenerating').style.display = 'none';
+    document.getElementById('inviteResult').style.display = 'block';
+
+    // 入力リセット用にデータ保持
+    document.getElementById('inviteResult').dataset.staffName = staffName;
+    document.getElementById('inviteResult').dataset.url = inviteUrl;
+  } catch(e) {
+    console.error('招待リンク生成エラー:', e);
+    document.getElementById('inviteGenerating').style.display = 'none';
+    document.getElementById('inviteError').style.display = 'block';
+    document.getElementById('inviteErrorText').textContent = '招待リンクの生成に失敗しました: ' + (e.message || '');
+  }
+}
+
+document.getElementById('closeInviteModal')?.addEventListener('click', () => {
+  document.getElementById('inviteLinkModal').style.display = 'none';
+});
+
+document.getElementById('inviteCopyBtn')?.addEventListener('click', () => {
+  const url = document.getElementById('inviteUrlText').value;
+  navigator.clipboard.writeText(url).then(() => {
+    showToast('招待リンクをコピーしました ✓', 'success');
+  }).catch(() => {
+    showToast('コピーに失敗しました', 'error');
+  });
+});
+
+document.getElementById('inviteCopyMessageBtn')?.addEventListener('click', () => {
+  const url = document.getElementById('inviteResult').dataset.url;
+  const name = document.getElementById('inviteResult').dataset.staffName;
+  const msg = `${name}さん
+
+kingyo-shift（シフト管理アプリ）のアカウント作成のご案内です。
+以下のリンクから、メールアドレスとパスワードを設定してアカウントを作成してください。
+
+${url}
+
+※リンクは7日間有効です。
+※質問があればお気軽にどうぞ。`;
+  navigator.clipboard.writeText(msg).then(() => {
+    showToast('メッセージをコピーしました ✓', 'success');
+  }).catch(() => {
+    showToast('コピーに失敗しました', 'error');
+  });
+});
 
 document.getElementById('addStaffBtn').addEventListener('click', () => {
   document.getElementById('addStaffModal').classList.add('show');
