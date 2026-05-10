@@ -310,6 +310,69 @@
 <body>
 
 <div class="loading" id="loading"><div class="spinner"></div><div style="font-size:14px;color:var(--text-muted)">処理中...</div></div>
+<!-- AI相談モーダル -->
+<div class="modal-overlay" id="aiAdviceModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
+  <div class="modal-content" style="background:white;border-radius:16px;padding:24px;width:100%;max-width:720px;max-height:90vh;overflow-y:auto;margin-top:20px">
+    <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <span style="font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px">🤖 AIに相談</span>
+      <button class="btn btn-outline" id="closeAiModal" style="padding:6px 12px">✕</button>
+    </div>
+
+    <!-- 用途選択 -->
+    <div id="aiStepSelect">
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px">現在表示中のシフト表（<span id="aiTargetMonthLabel"></span>・<span id="aiTargetDeptLabel"></span>）について、AIに何を相談しますか？</div>
+      <div style="display:grid;gap:10px;margin-bottom:16px">
+        <button class="ai-choice-btn" data-mode="problems" style="padding:14px 16px;border-radius:12px;border:1.5px solid #e5e7eb;background:white;text-align:left;cursor:pointer;transition:all 0.15s">
+          <div style="font-weight:600;font-size:14px;color:#1f2937">🔍 問題点を指摘してほしい</div>
+          <div style="font-size:12px;color:#6b7280;margin-top:4px">希望休の反映漏れ、必要人数不足、連勤などを検出</div>
+        </button>
+        <button class="ai-choice-btn" data-mode="suggest" style="padding:14px 16px;border-radius:12px;border:1.5px solid #e5e7eb;background:white;text-align:left;cursor:pointer;transition:all 0.15s">
+          <div style="font-weight:600;font-size:14px;color:#1f2937">💡 修正案を提案してほしい</div>
+          <div style="font-size:12px;color:#6b7280;margin-top:4px">具体的な修正案を提案（人間が判断して手動反映）</div>
+        </button>
+        <button class="ai-choice-btn" data-mode="both" style="padding:14px 16px;border-radius:12px;border:1.5px solid #a855f7;background:#faf5ff;text-align:left;cursor:pointer;transition:all 0.15s">
+          <div style="font-weight:600;font-size:14px;color:#6b21a8">🌟 両方（問題点 + 修正案）</div>
+          <div style="font-size:12px;color:#7c3aed;margin-top:4px">推奨：問題点を見つけて修正案も提案する</div>
+        </button>
+      </div>
+      <div style="font-size:11px;color:#94a3b8;background:#f9fafb;padding:10px;border-radius:8px;line-height:1.6">
+        ⚠️ 個人情報保護のため、スタッフ名は「スタッフA・B・C…」に匿名化して送信されます。AIの返答は当画面でスタッフ名に戻して表示されます。
+      </div>
+    </div>
+
+    <!-- 処理中 -->
+    <div id="aiStepLoading" style="display:none;text-align:center;padding:40px 20px">
+      <div style="display:inline-block;width:40px;height:40px;border:3px solid #e5e7eb;border-top-color:#a855f7;border-radius:50%;animation:spin 0.8s linear infinite"></div>
+      <div style="margin-top:16px;font-size:14px;color:#6b7280">AIに相談しています...（5〜15秒）</div>
+    </div>
+
+    <!-- 結果 -->
+    <div id="aiStepResult" style="display:none">
+      <div style="background:linear-gradient(135deg,#faf5ff,#eff6ff);border-radius:12px;padding:16px;border:1px solid #e9d5ff;margin-bottom:12px">
+        <div style="font-size:13px;font-weight:600;color:#6b21a8;margin-bottom:8px">🤖 Geminiからの返答</div>
+        <div id="aiResultText" style="font-size:14px;line-height:1.7;color:#1f2937;white-space:pre-wrap"></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-outline" id="aiCopyBtn" style="font-size:13px">📋 コピー</button>
+        <button class="btn btn-outline" id="aiBackBtn" style="font-size:13px">🔄 別の相談</button>
+        <button class="btn btn-primary" id="aiCloseFinishBtn" style="font-size:13px;margin-left:auto">完了</button>
+      </div>
+    </div>
+
+    <!-- エラー -->
+    <div id="aiStepError" style="display:none;text-align:center;padding:20px">
+      <div style="font-size:32px;margin-bottom:12px">⚠️</div>
+      <div id="aiErrorText" style="font-size:14px;color:#dc2626;margin-bottom:16px"></div>
+      <button class="btn btn-outline" id="aiErrorBackBtn" style="font-size:13px">戻る</button>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+.ai-choice-btn:hover { border-color: #a855f7 !important; background: #faf5ff !important; }
+</style>
+
 <div class="toast" id="toast"></div>
 
 <!-- LOGIN -->
@@ -471,6 +534,7 @@
             <button class="btn-nav" id="shiftNextMonth">▶</button>
             <button class="btn btn-success" id="saveShiftBtn">💾 保存</button>
             <button class="btn btn-primary" id="confirmShiftBtn">✅ 確定する</button>
+            <button class="btn btn-outline" id="aiAdviceBtn" style="background:linear-gradient(135deg,#a855f7,#3b82f6);color:white;border:none">🤖 AIに相談</button>
             <button class="btn btn-outline" id="exportCsvBtn">📊 CSV出力</button>
             <button class="btn btn-outline" id="printShiftBtn">🖨️ 印刷</button>
             <div id="confirmStatusBadge" style="display:none;padding:6px 12px;border-radius:100px;font-size:12px;font-weight:600"></div>
@@ -4008,6 +4072,236 @@ document.getElementById('saveReqLimitsBtn')?.addEventListener('click', async () 
     showToast('保存エラー：' + (e.message || ''), 'error');
   }
   hideLoading();
+});
+
+// =====================================================
+// AI相談機能（フェーズ6）：Gemini API連携
+// =====================================================
+let aiAnonymizeMap = {};  // {スタッフA: '水島', スタッフB: '住元', ...}
+let aiCurrentMode = '';
+
+function buildShiftDataForAI() {
+  // 現在のシフト表からAI送信用のデータを構築（匿名化）
+  const dept = currentDept;
+  const staffList = (allStaff || []).filter(s => s.dept_id === dept && !s.archived);
+  const holidays = getJapaneseHolidays(shiftYear, shiftMonth);
+  const closed = closedHolidaysByMonth ? (closedHolidaysByMonth[`${shiftYear}-${shiftMonth}`] || new Set()) : new Set();
+  const daysInMonth = new Date(shiftYear, shiftMonth, 0).getDate();
+  const DOW_JP = ['日','月','火','水','木','金','土'];
+
+  // スタッフを匿名化
+  aiAnonymizeMap = {};
+  const staffAnon = staffList.map((s, idx) => {
+    const anon = `スタッフ${String.fromCharCode(65 + idx)}`; // A, B, C...
+    if (idx >= 26) {
+      // 26人以上はAA, AB, ...
+      const i = idx - 26;
+      const a = `スタッフA${String.fromCharCode(65 + (i % 26))}`;
+      aiAnonymizeMap[a] = s.name;
+      return { anon: a, name: s.name, empType: s.emp_type, isBeginner: !!s.is_beginner };
+    }
+    aiAnonymizeMap[anon] = s.name;
+    return { anon, name: s.name, empType: s.emp_type, isBeginner: !!s.is_beginner };
+  });
+
+  // シフト表をJSON化
+  const shiftRows = staffAnon.map(sa => {
+    const staff = staffList.find(s => s.name === sa.name);
+    const days = {};
+    for (let d = 1; d <= daysInMonth; d++) {
+      const sh = shiftData[`${staff.id}|${d}`] || '';
+      if (sh) days[d] = sh;
+    }
+    return {
+      id: sa.anon,
+      type: sa.empType === 'full' ? '常勤' : sa.empType === 'short' ? '時短' : 'パート',
+      初心者: sa.isBeginner,
+      シフト: days
+    };
+  });
+
+  // 日付情報
+  const dateInfo = {};
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dt = new Date(shiftYear, shiftMonth - 1, d);
+    const dow = dt.getDay();
+    const isHol = holidays.has(d);
+    const isClosed = closed.has(d);
+    dateInfo[d] = {
+      曜日: DOW_JP[dow],
+      祝日: isHol,
+      休診: isClosed
+    };
+  }
+
+  // 必要人数（部門設定）
+  const reqs = window.staffingReqByDept?.[dept] || {};
+
+  // 希望シフト（参考情報）
+  const reqMap = {};
+  staffList.forEach(s => {
+    const sa = staffAnon.find(x => x.name === s.name);
+    if (!sa) return;
+    const personReqs = {};
+    for (let d = 1; d <= daysInMonth; d++) {
+      const r = (window.requestsByStaff?.[s.id]?.[`${shiftYear}-${shiftMonth}-${d}`]) || '';
+      if (r) personReqs[d] = r;
+    }
+    if (Object.keys(personReqs).length > 0) reqMap[sa.anon] = personReqs;
+  });
+
+  return {
+    対象月: `${shiftYear}年${shiftMonth}月`,
+    部門: DEPT_NAMES[dept],
+    日付情報: dateInfo,
+    必要人数: reqs,
+    希望シフト: reqMap,
+    シフト表: shiftRows
+  };
+}
+
+function buildPromptForAI(mode) {
+  const data = buildShiftDataForAI();
+  const dataJson = JSON.stringify(data, null, 2);
+
+  const intro = `あなたは医療クリニックのシフト管理を支援するAIです。以下のシフト表を分析してください。
+【シフト種類の説明】
+- 日勤系：日勤(8.5H)、日勤+(9H)、長日(11H)、中抜け(8H)
+- 半日系：午前(5H)、午後(5H)、時短(6H)
+- 遅番系：遅番(7.5H)、遅L(8.5H)、リハ遅(8H)、夜勤(4H)
+- CC系：CC、CHO、CCのみ
+- 休み系：休み、有休、半有休、希望休
+- 「希望シフト」は、スタッフが希望していたシフト。「シフト表」は実際に組まれているシフト。
+- 必要人数は時間帯（朝/午後/夕）×曜日種別ごとの最低人数。
+
+【シフト表データ】
+~~~json
+${dataJson}
+~~~
+`;
+
+  let task = '';
+  if (mode === 'problems') {
+    task = `
+【依頼】
+このシフト表の問題点を指摘してください。特に：
+1. 希望シフトが反映されていない箇所
+2. 必要人数が満たされていない日
+3. 連勤が長すぎる人（5日以上）
+4. 公平性の問題（特定の人に偏った夜勤・土日出勤など）
+5. その他、運用上気になる点
+
+問題があれば、スタッフID（例：スタッフA）と日付を明記してください。
+問題がない項目は「特に問題なし」と書いてください。`;
+  } else if (mode === 'suggest') {
+    task = `
+【依頼】
+このシフト表に対する具体的な修正案を提案してください。
+- 各修正案には「対象スタッフID（例：スタッフA）」「日付」「現在のシフト → 提案するシフト」「理由」を含めてください
+- 修正案は3〜5個程度に絞り、最も重要なものから書いてください
+- 修正不要なら「修正不要」と書いてください`;
+  } else { // both
+    task = `
+【依頼】
+このシフト表について、以下の2部構成で回答してください：
+
+■ 第1部：問題点の指摘
+- 希望反映漏れ、必要人数不足、連勤、公平性などの観点で問題点をリストアップ
+- 各問題には「スタッフID」と「日付」を明記
+- 問題がない場合は「特に問題なし」
+
+■ 第2部：修正案の提案
+- 第1部で挙げた問題に対する具体的な修正案
+- 形式：「スタッフA・5月15日：休み → 日勤（理由：必要人数不足のため）」
+- 修正案は最も重要な3〜5個に絞ってください`;
+  }
+
+  return intro + task + '\n\n簡潔で実用的な日本語で回答してください。';
+}
+
+function deAnonymizeText(text) {
+  // AIからの返答内のスタッフID（A, B, C...）を実名に戻す
+  let result = text;
+  // 長い順にreplace（スタッフAA -> スタッフA より先）
+  const sortedKeys = Object.keys(aiAnonymizeMap).sort((a, b) => b.length - a.length);
+  sortedKeys.forEach(anon => {
+    const real = aiAnonymizeMap[anon];
+    // 全置換（gフラグ付き正規表現）
+    result = result.replace(new RegExp(anon.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), real);
+  });
+  return result;
+}
+
+function showAiStep(step) {
+  ['aiStepSelect','aiStepLoading','aiStepResult','aiStepError'].forEach(id => {
+    document.getElementById(id).style.display = (id === step) ? 'block' : 'none';
+  });
+}
+
+document.getElementById('aiAdviceBtn')?.addEventListener('click', () => {
+  if (!shiftData || Object.keys(shiftData).length === 0) {
+    showToast('シフト表が空です。先にシフトを生成または入力してください', 'error');
+    return;
+  }
+  document.getElementById('aiTargetMonthLabel').textContent = `${shiftYear}年${shiftMonth}月`;
+  document.getElementById('aiTargetDeptLabel').textContent = DEPT_NAMES[currentDept];
+  showAiStep('aiStepSelect');
+  document.getElementById('aiAdviceModal').style.display = 'flex';
+});
+
+document.getElementById('closeAiModal')?.addEventListener('click', () => {
+  document.getElementById('aiAdviceModal').style.display = 'none';
+});
+
+document.getElementById('aiCloseFinishBtn')?.addEventListener('click', () => {
+  document.getElementById('aiAdviceModal').style.display = 'none';
+});
+
+document.querySelectorAll('.ai-choice-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    aiCurrentMode = btn.dataset.mode;
+    showAiStep('aiStepLoading');
+    try {
+      const prompt = buildPromptForAI(aiCurrentMode);
+      const res = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const msg = data?.error || `エラー (${res.status})`;
+        document.getElementById('aiErrorText').textContent = msg + (data?.detail ? `
+${data.detail}` : '');
+        showAiStep('aiStepError');
+        return;
+      }
+      const txt = deAnonymizeText(data.text || '');
+      document.getElementById('aiResultText').textContent = txt;
+      showAiStep('aiStepResult');
+    } catch(e) {
+      console.error(e);
+      document.getElementById('aiErrorText').textContent = 'ネットワークエラー：' + (e.message || '') + '\n\n/api/gemini が見つからない場合は、Vercel Functions（/api/gemini.js）が正しくデプロイされているか確認してください。';
+      showAiStep('aiStepError');
+    }
+  });
+});
+
+document.getElementById('aiBackBtn')?.addEventListener('click', () => {
+  showAiStep('aiStepSelect');
+});
+
+document.getElementById('aiErrorBackBtn')?.addEventListener('click', () => {
+  showAiStep('aiStepSelect');
+});
+
+document.getElementById('aiCopyBtn')?.addEventListener('click', () => {
+  const txt = document.getElementById('aiResultText').textContent;
+  navigator.clipboard.writeText(txt).then(() => {
+    showToast('コピーしました ✓', 'success');
+  }).catch(() => {
+    showToast('コピーに失敗しました', 'error');
+  });
 });
 
 // =====================================================
