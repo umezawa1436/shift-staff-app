@@ -320,21 +320,30 @@
 
     <!-- 用途選択 -->
     <div id="aiStepSelect">
-      <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px">現在表示中のシフト表（<span id="aiTargetMonthLabel"></span>・<span id="aiTargetDeptLabel"></span>）について、AIに何を相談しますか？</div>
-      <div style="display:grid;gap:10px;margin-bottom:16px">
-        <button class="ai-choice-btn" data-mode="problems" style="padding:14px 16px;border-radius:12px;border:1.5px solid #e5e7eb;background:white;text-align:left;cursor:pointer;transition:all 0.15s">
-          <div style="font-weight:600;font-size:14px;color:#1f2937">🔍 問題点を指摘してほしい</div>
-          <div style="font-size:12px;color:#6b7280;margin-top:4px">希望休の反映漏れ、必要人数不足、連勤などを検出</div>
-        </button>
-        <button class="ai-choice-btn" data-mode="suggest" style="padding:14px 16px;border-radius:12px;border:1.5px solid #e5e7eb;background:white;text-align:left;cursor:pointer;transition:all 0.15s">
-          <div style="font-weight:600;font-size:14px;color:#1f2937">💡 修正案を提案してほしい</div>
-          <div style="font-size:12px;color:#6b7280;margin-top:4px">具体的な修正案を提案（人間が判断して手動反映）</div>
-        </button>
-        <button class="ai-choice-btn" data-mode="both" style="padding:14px 16px;border-radius:12px;border:1.5px solid #a855f7;background:#faf5ff;text-align:left;cursor:pointer;transition:all 0.15s">
-          <div style="font-weight:600;font-size:14px;color:#6b21a8">🌟 両方（問題点 + 修正案）</div>
-          <div style="font-size:12px;color:#7c3aed;margin-top:4px">推奨：問題点を見つけて修正案も提案する</div>
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:14px">現在表示中のシフト表（<span id="aiTargetMonthLabel"></span>・<span id="aiTargetDeptLabel"></span>）について相談します。</div>
+
+      <!-- メインボタン -->
+      <button class="ai-choice-btn" data-mode="both" style="width:100%;padding:18px;border-radius:14px;border:none;background:linear-gradient(135deg,#a855f7,#3b82f6);color:white;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:16px;box-shadow:0 4px 12px rgba(168,85,247,0.3)">
+        <div style="font-weight:700;font-size:16px">🌟 問題点と修正案を確認する</div>
+        <div style="font-size:11px;opacity:0.9;margin-top:4px">問題点を見つけて、具体的な修正案を提案します</div>
+      </button>
+
+      <!-- 区切り -->
+      <div style="display:flex;align-items:center;gap:12px;margin:14px 0">
+        <div style="flex:1;height:1px;background:#e5e7eb"></div>
+        <div style="font-size:11px;color:#94a3b8;font-weight:500">または</div>
+        <div style="flex:1;height:1px;background:#e5e7eb"></div>
+      </div>
+
+      <!-- 自由記入 -->
+      <div style="margin-bottom:14px">
+        <div style="font-size:13px;font-weight:600;color:#1f2937;margin-bottom:6px">📝 自由に質問・相談する</div>
+        <textarea id="aiFreeText" placeholder="例：来月から育休復帰するスタッフがいるので、シフトを軽めに調整した修正案を出してください" style="width:100%;min-height:80px;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
+        <button class="ai-choice-btn" data-mode="custom" style="margin-top:10px;width:100%;padding:12px;border-radius:10px;border:1.5px solid #a855f7;background:white;color:#7c3aed;font-weight:600;font-size:13px;cursor:pointer;transition:all 0.15s">
+          📤 送信
         </button>
       </div>
+
       <div style="font-size:11px;color:#94a3b8;background:#f9fafb;padding:10px;border-radius:8px;line-height:1.6">
         ⚠️ 個人情報保護のため、スタッフ名は「スタッフA・B・C…」に匿名化して送信されます。AIの返答は当画面でスタッフ名に戻して表示されます。
       </div>
@@ -914,8 +923,7 @@
 
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE'; 
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -4180,13 +4188,41 @@ ${dataJson}
 `;
 
   let task = '';
-  if (mode === 'problems') {
+
+  // custom モード：ユーザーの自由記入を反映
+  if (mode === 'custom') {
+    const userText = (document.getElementById('aiFreeText')?.value || '').trim();
+    if (!userText) return base + '\n【依頼】\nこのシフト表を分析し、改善のヒントを日本語で簡潔に答えてください。';
+
     task = `
-【依頼】
-このシフト表の問題点をテキストで簡潔に指摘してください。修正提案は不要です。
-- 連勤が長すぎる、必要人数不足、公平性の問題などの観点で
-- スタッフID（スタッフA等）と日付を明記
-- 問題がなければ「特に問題なし」`;
+【ユーザーからの依頼】
+${userText}
+
+【返答形式】
+上記の依頼に対して、可能であれば JSON形式 で具体的な修正案を提案してください。
+
+JSON形式の場合（修正案がある場合）：
+{
+  "summary": "全体的な所感・回答（1-3文、日本語）",
+  "suggestions": [
+    {
+      "staffId": "スタッフA",
+      "day": 15,
+      "currentShift": "休み",
+      "newShift": "日勤",
+      "reason": "理由を簡潔に（30文字以内）"
+    }
+  ]
+}
+
+JSON以外の場合（一般的な相談・質問の場合）：
+通常のテキストで日本語で回答してください。
+
+【ルール】
+- staffId は必ずシフト表データに登場する識別子を使う（スタッフA等）
+- day は 1〜31 の整数
+- currentShift / newShift は上記「利用可能なシフト名」のみ使用`;
+
     return base + task;
   }
 
@@ -4424,8 +4460,14 @@ document.querySelectorAll('.ai-choice-btn').forEach(btn => {
         const jsonStr = extractJsonFromAiText(rawText);
         parsed = JSON.parse(jsonStr);
       } catch(parseErr) {
+        // custom モードではJSONが来ない普通の質問もありうる→普通に表示
+        // both モードではJSONが期待されているので警告を出す
         document.getElementById('aiSummaryBox').style.display = 'none';
-        document.getElementById('aiSuggestionsList').innerHTML = '<div style="background:#fef3c7;color:#92400e;padding:12px;border-radius:10px;font-size:12px;margin-bottom:10px">⚠️ AIの返答からJSON形式の提案を取り出せませんでした。下記の本文をご確認ください。</div>';
+        if (aiCurrentMode === 'custom') {
+          document.getElementById('aiSuggestionsList').innerHTML = '';
+        } else {
+          document.getElementById('aiSuggestionsList').innerHTML = '<div style="background:#fef3c7;color:#92400e;padding:12px;border-radius:10px;font-size:12px;margin-bottom:10px">⚠️ AIの返答からJSON形式の提案を取り出せませんでした。下記の本文をご確認ください。</div>';
+        }
         document.getElementById('aiResultTextBox').style.display = 'block';
         document.getElementById('aiResultText').textContent = deAnonymizeText(rawText);
         showAiStep('aiStepResult');
