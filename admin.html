@@ -346,14 +346,22 @@
       <div style="margin-top:16px;font-size:14px;color:#6b7280">AIに相談しています...（5〜15秒）</div>
     </div>
 
-    <!-- 結果 -->
+    <!-- 結果（テキスト表示） -->
     <div id="aiStepResult" style="display:none">
-      <div style="background:linear-gradient(135deg,#faf5ff,#eff6ff);border-radius:12px;padding:16px;border:1px solid #e9d5ff;margin-bottom:12px">
-        <div style="font-size:13px;font-weight:600;color:#6b21a8;margin-bottom:8px">🤖 Geminiからの返答</div>
-        <div id="aiResultText" style="font-size:14px;line-height:1.7;color:#1f2937;white-space:pre-wrap"></div>
+      <!-- サマリー -->
+      <div id="aiSummaryBox" style="display:none;background:linear-gradient(135deg,#faf5ff,#eff6ff);border-radius:12px;padding:14px;border:1px solid #e9d5ff;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:600;color:#6b21a8;margin-bottom:4px">🤖 全体所感</div>
+        <div id="aiSummaryText" style="font-size:13px;color:#1f2937;line-height:1.6"></div>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-outline" id="aiCopyBtn" style="font-size:13px">📋 コピー</button>
+      <!-- 提案カードリスト -->
+      <div id="aiSuggestionsList"></div>
+      <!-- テキスト返答（problems モードのみ） -->
+      <div id="aiResultTextBox" style="display:none;background:#f8fafc;border-radius:12px;padding:14px;border:1px solid #e5e7eb;margin-bottom:12px">
+        <div style="font-size:12px;font-weight:600;color:#475569;margin-bottom:6px">🤖 Geminiからの指摘</div>
+        <div id="aiResultText" style="font-size:13px;line-height:1.7;color:#1f2937;white-space:pre-wrap"></div>
+      </div>
+      <!-- 操作ボタン -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb">
         <button class="btn btn-outline" id="aiBackBtn" style="font-size:13px">🔄 別の相談</button>
         <button class="btn btn-primary" id="aiCloseFinishBtn" style="font-size:13px;margin-left:auto">完了</button>
       </div>
@@ -906,7 +914,7 @@
 
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE'; 
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
 
 // STATE
 let adminUser = null;
@@ -4144,15 +4152,20 @@ function buildPromptForAI(mode) {
   const data = buildShiftDataForAI();
   const dataJson = JSON.stringify(data, null, 2);
 
-  const intro = `あなたは医療クリニックのシフト管理を支援するAIです。以下のシフト表を分析してください。
-【シフト種類の説明】
-- 日勤系：日勤(8.5H)、日勤+(9H)、長日(11H)、中抜け(8H)
-- 半日系：午前(5H)、午後(5H)、時短(6H)
-- 遅番系：遅番(7.5H)、遅L(8.5H)、リハ遅(8H)、夜勤(4H)
-- CC系：CC、CHO、CCのみ
-- 休み系：休み、有休、半有休、希望休
-- 「希望シフト」は、スタッフが希望していたシフト。「シフト表」は実際に組まれているシフト。
-- 必要人数は時間帯（朝/午後/夕）×曜日種別ごとの最低人数。
+  // 利用可能なシフト名一覧（正確な提案のため）
+  const availableShifts = Object.keys(SHIFT_HOURS);
+
+  const base = `あなたは医療クリニックのシフト管理を支援するAIです。以下のシフト表を分析してください。
+
+【利用可能なシフト名（これ以外は使わないこと）】
+${availableShifts.join(', ')}
+
+【シフト時間の目安】
+- 日勤(8.5H), 日勤+(9H), 長日(11H), 中抜け(8H)
+- 午前(5H), 午後(5H), 時短(6H)
+- 遅番(7.5H), 遅L(8.5H), リハ遅(8H), 夜勤(4H)
+- CC, CHO, CCのみ
+- 休み(0H), 有休(平日+8.5H/土日祝+9H), 半有休(+5H), 希望休(0H)
 
 【シフト表データ】
 ~~~json
@@ -4164,39 +4177,43 @@ ${dataJson}
   if (mode === 'problems') {
     task = `
 【依頼】
-このシフト表の問題点を指摘してください。特に：
-1. 希望シフトが反映されていない箇所
-2. 必要人数が満たされていない日
-3. 連勤が長すぎる人（5日以上）
-4. 公平性の問題（特定の人に偏った夜勤・土日出勤など）
-5. その他、運用上気になる点
-
-問題があれば、スタッフID（例：スタッフA）と日付を明記してください。
-問題がない項目は「特に問題なし」と書いてください。`;
-  } else if (mode === 'suggest') {
-    task = `
-【依頼】
-このシフト表に対する具体的な修正案を提案してください。
-- 各修正案には「対象スタッフID（例：スタッフA）」「日付」「現在のシフト → 提案するシフト」「理由」を含めてください
-- 修正案は3〜5個程度に絞り、最も重要なものから書いてください
-- 修正不要なら「修正不要」と書いてください`;
-  } else { // both
-    task = `
-【依頼】
-このシフト表について、以下の2部構成で回答してください：
-
-■ 第1部：問題点の指摘
-- 希望反映漏れ、必要人数不足、連勤、公平性などの観点で問題点をリストアップ
-- 各問題には「スタッフID」と「日付」を明記
-- 問題がない場合は「特に問題なし」
-
-■ 第2部：修正案の提案
-- 第1部で挙げた問題に対する具体的な修正案
-- 形式：「スタッフA・5月15日：休み → 日勤（理由：必要人数不足のため）」
-- 修正案は最も重要な3〜5個に絞ってください`;
+このシフト表の問題点をテキストで簡潔に指摘してください。修正提案は不要です。
+- 連勤が長すぎる、必要人数不足、公平性の問題などの観点で
+- スタッフID（スタッフA等）と日付を明記
+- 問題がなければ「特に問題なし」`;
+    return base + task;
   }
 
-  return intro + task + '\n\n簡潔で実用的な日本語で回答してください。';
+  // suggest または both → JSON形式で提案を要求
+  task = `
+【依頼】
+このシフト表の問題点を見つけ、具体的な修正案を JSON形式 で提案してください。
+
+【返答形式】
+必ず以下のJSON形式のみで返答してください。前後に説明文・マークダウン記法・コードフェンスは一切不要です。
+
+{
+  "summary": "全体的な所感（1-2文、日本語）",
+  "suggestions": [
+    {
+      "staffId": "スタッフA",
+      "day": 15,
+      "currentShift": "休み",
+      "newShift": "日勤",
+      "reason": "理由を簡潔に（30文字以内）"
+    }
+  ]
+}
+
+【ルール】
+- staffId は必ずシフト表データに登場する識別子を使う
+- day は 1〜31 の整数（対象月の日）
+- currentShift / newShift は上記「利用可能なシフト名」のみ使用（他は使わない）
+- 提案は最も重要な 3〜7個に絞る
+- 修正不要な場合は suggestions を空配列 [] にする
+- JSON以外の文字は一切含めないこと（重要）`;
+
+  return base + task;
 }
 
 function deAnonymizeText(text) {
@@ -4237,6 +4254,96 @@ document.getElementById('aiCloseFinishBtn')?.addEventListener('click', () => {
   document.getElementById('aiAdviceModal').style.display = 'none';
 });
 
+// AI返答からJSONを抽出（マークダウン記法も対応）
+function extractJsonFromAiText(text) {
+  let m = text.match(/```json\s*([\s\S]*?)\s*```/);
+  if (m) return m[1];
+  m = text.match(/```\s*([\s\S]*?)\s*```/);
+  if (m) return m[1];
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start >= 0 && end > start) return text.slice(start, end + 1);
+  return text;
+}
+
+function validateSuggestions(suggestions) {
+  const validShifts = new Set(Object.keys(SHIFT_HOURS));
+  validShifts.add('');
+  return suggestions.filter(s => {
+    if (!s.staffId || !s.day || !s.newShift) return false;
+    if (!validShifts.has(s.newShift)) return false;
+    if (s.day < 1 || s.day > 31) return false;
+    if (!aiAnonymizeMap[s.staffId]) return false;
+    return true;
+  });
+}
+
+function calcShiftHours(shift, year, month, day) {
+  if (!shift) return 0;
+  const base = SHIFT_HOURS[shift] || 0;
+  if (shift === '有休') {
+    const dt = new Date(year, month - 1, day);
+    const hol = (typeof getJapaneseHolidays === 'function') ? getJapaneseHolidays(year, month) : new Set();
+    return base + getYukyuHours(dt.getDay(), hol.has ? hol.has(day) : false);
+  }
+  if (shift === '半有休') return base + 5;
+  return base;
+}
+
+function calcStaffTotalH(staffId) {
+  const daysInMonth = new Date(shiftYear, shiftMonth, 0).getDate();
+  let total = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const sh = shiftData[`${staffId}|${d}`] || '';
+    total += calcShiftHours(sh, shiftYear, shiftMonth, d);
+  }
+  return Math.round(total * 10) / 10;
+}
+
+function renderSuggestionCard(suggestion, idx) {
+  const realName = aiAnonymizeMap[suggestion.staffId] || suggestion.staffId;
+  const staff = allStaff.find(s => s.name === realName && s.dept_id === currentDept);
+  if (!staff) return '';
+  const day = suggestion.day;
+  const newShift = suggestion.newShift;
+  const reason = suggestion.reason || '';
+  const actualCurrent = shiftData[`${staff.id}|${day}`] || '';
+  const aiCurrent = suggestion.currentShift || '';
+  const mismatch = aiCurrent && aiCurrent !== actualCurrent;
+  const before = calcStaffTotalH(staff.id);
+  const dayHoursBefore = calcShiftHours(actualCurrent, shiftYear, shiftMonth, day);
+  const dayHoursAfter = calcShiftHours(newShift, shiftYear, shiftMonth, day);
+  const diff = Math.round((dayHoursAfter - dayHoursBefore) * 10) / 10;
+  const afterTotal = Math.round((before + diff) * 10) / 10;
+  const diffStr = diff >= 0 ? `+${diff}H` : `${diff}H`;
+  const diffColor = diff > 0 ? '#dc2626' : diff < 0 ? '#2563eb' : '#6b7280';
+  const dt = new Date(shiftYear, shiftMonth - 1, day);
+  const dow = ['日','月','火','水','木','金','土'][dt.getDay()];
+  const dateLabel = `${shiftMonth}/${day}(${dow})`;
+  return `<div class="ai-card" data-idx="${idx}" style="border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:10px;background:white">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <div>
+        <div style="font-size:14px;font-weight:700;color:#1f2937">${realName} <span style="color:#94a3b8;font-weight:500;font-size:12px">${dateLabel}</span></div>
+        <div style="font-size:12px;color:#6b7280;margin-top:2px">#${idx + 1}</div>
+      </div>
+      <span class="ai-applied-badge" data-idx="${idx}" style="display:none;background:#10b981;color:white;font-size:11px;font-weight:600;padding:3px 10px;border-radius:100px">✓ 適用済み</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:13px">
+      <div style="background:#f3f4f6;color:#475569;padding:5px 12px;border-radius:8px;font-weight:600">${actualCurrent || '（空）'}</div>
+      <span style="color:#94a3b8">→</span>
+      <div style="background:#dbeafe;color:#1e40af;padding:5px 12px;border-radius:8px;font-weight:600">${newShift}</div>
+      ${mismatch ? `<span style="font-size:10px;color:#f59e0b;background:#fef3c7;padding:2px 6px;border-radius:6px">⚠️ AI想定: ${aiCurrent}</span>` : ''}
+    </div>
+    <div style="font-size:12px;color:#6b7280;margin-bottom:10px;line-height:1.5">${reason}</div>
+    <div style="background:#f9fafb;border-radius:8px;padding:8px 10px;font-size:11px;color:#475569;margin-bottom:10px">
+      労働時間: <span style="color:${diffColor};font-weight:700">${diffStr}</span> （合計 ${before}H → ${afterTotal}H）
+    </div>
+    <button class="btn btn-primary ai-apply-btn" data-idx="${idx}" style="font-size:12px;padding:6px 14px">この提案を適用</button>
+  </div>`;
+}
+
+let aiCurrentSuggestions = [];
+
 document.querySelectorAll('.ai-choice-btn').forEach(btn => {
   btn.addEventListener('click', async () => {
     aiCurrentMode = btn.dataset.mode;
@@ -4251,13 +4358,57 @@ document.querySelectorAll('.ai-choice-btn').forEach(btn => {
       const data = await res.json();
       if (!res.ok) {
         const msg = data?.error || `エラー (${res.status})`;
-        document.getElementById('aiErrorText').textContent = msg + (data?.detail ? `
-${data.detail}` : '');
+        document.getElementById('aiErrorText').textContent = msg + (data?.detail ? '\n' + data.detail : '');
         showAiStep('aiStepError');
         return;
       }
-      const txt = deAnonymizeText(data.text || '');
-      document.getElementById('aiResultText').textContent = txt;
+
+      const rawText = data.text || '';
+
+      if (aiCurrentMode === 'problems') {
+        document.getElementById('aiSummaryBox').style.display = 'none';
+        document.getElementById('aiSuggestionsList').innerHTML = '';
+        document.getElementById('aiResultTextBox').style.display = 'block';
+        document.getElementById('aiResultText').textContent = deAnonymizeText(rawText);
+        showAiStep('aiStepResult');
+        return;
+      }
+
+      let parsed;
+      try {
+        const jsonStr = extractJsonFromAiText(rawText);
+        parsed = JSON.parse(jsonStr);
+      } catch(parseErr) {
+        document.getElementById('aiSummaryBox').style.display = 'none';
+        document.getElementById('aiSuggestionsList').innerHTML = '<div style="background:#fef3c7;color:#92400e;padding:12px;border-radius:10px;font-size:12px;margin-bottom:10px">⚠️ AIの返答からJSON形式の提案を取り出せませんでした。下記の本文をご確認ください。</div>';
+        document.getElementById('aiResultTextBox').style.display = 'block';
+        document.getElementById('aiResultText').textContent = deAnonymizeText(rawText);
+        showAiStep('aiStepResult');
+        return;
+      }
+
+      const summary = parsed.summary || '';
+      if (summary) {
+        document.getElementById('aiSummaryBox').style.display = 'block';
+        document.getElementById('aiSummaryText').textContent = deAnonymizeText(summary);
+      } else {
+        document.getElementById('aiSummaryBox').style.display = 'none';
+      }
+
+      const rawSuggestions = Array.isArray(parsed.suggestions) ? parsed.suggestions : [];
+      aiCurrentSuggestions = validateSuggestions(rawSuggestions);
+
+      const listEl = document.getElementById('aiSuggestionsList');
+      if (aiCurrentSuggestions.length === 0) {
+        listEl.innerHTML = '<div style="background:#f0fdf4;color:#166534;padding:14px;border-radius:10px;font-size:13px;margin-bottom:10px;text-align:center">✓ 修正の必要はありません</div>';
+      } else {
+        listEl.innerHTML = aiCurrentSuggestions.map((s, idx) => renderSuggestionCard(s, idx)).join('');
+        document.querySelectorAll('.ai-apply-btn').forEach(b => {
+          b.addEventListener('click', () => applyAiSuggestion(parseInt(b.dataset.idx, 10)));
+        });
+      }
+
+      document.getElementById('aiResultTextBox').style.display = 'none';
       showAiStep('aiStepResult');
     } catch(e) {
       console.error(e);
@@ -4267,6 +4418,32 @@ ${data.detail}` : '');
   });
 });
 
+function applyAiSuggestion(idx) {
+  const sug = aiCurrentSuggestions[idx];
+  if (!sug) return;
+  const realName = aiAnonymizeMap[sug.staffId];
+  const staff = allStaff.find(s => s.name === realName && s.dept_id === currentDept);
+  if (!staff) {
+    showToast('対象スタッフが見つかりません', 'error');
+    return;
+  }
+  const key = `${staff.id}|${sug.day}`;
+  shiftData[key] = sug.newShift;
+  lockedCells[key] = true;
+  if (typeof refreshHoursCell === 'function') refreshHoursCell(staff.id);
+  if (typeof loadShiftGrid === 'function') loadShiftGrid();
+  const badge = document.querySelector(`.ai-applied-badge[data-idx="${idx}"]`);
+  if (badge) badge.style.display = 'inline-block';
+  const btn = document.querySelector(`.ai-apply-btn[data-idx="${idx}"]`);
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '✓ 適用済み';
+    btn.style.opacity = '0.6';
+    btn.style.cursor = 'default';
+  }
+  showToast(`${realName}さんの ${shiftMonth}/${sug.day} を ${sug.newShift} に変更しました`, 'success');
+}
+
 document.getElementById('aiBackBtn')?.addEventListener('click', () => {
   showAiStep('aiStepSelect');
 });
@@ -4274,16 +4451,6 @@ document.getElementById('aiBackBtn')?.addEventListener('click', () => {
 document.getElementById('aiErrorBackBtn')?.addEventListener('click', () => {
   showAiStep('aiStepSelect');
 });
-
-document.getElementById('aiCopyBtn')?.addEventListener('click', () => {
-  const txt = document.getElementById('aiResultText').textContent;
-  navigator.clipboard.writeText(txt).then(() => {
-    showToast('コピーしました ✓', 'success');
-  }).catch(() => {
-    showToast('コピーに失敗しました', 'error');
-  });
-});
-
 // =====================================================
 // 希望提出期限管理（フェーズ5）
 // =====================================================
