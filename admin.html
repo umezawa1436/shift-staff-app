@@ -4154,8 +4154,14 @@ function buildPromptForAI(mode) {
 
   // 利用可能なシフト名一覧（正確な提案のため）
   const availableShifts = Object.keys(SHIFT_HOURS);
+  // 匿名化されたスタッフID一覧
+  const validStaffIds = Object.keys(aiAnonymizeMap);
 
   const base = `あなたは医療クリニックのシフト管理を支援するAIです。以下のシフト表を分析してください。
+
+【⚠️ 重要：staffId はデータに登場する識別子のみ使用】
+有効なstaffId: ${validStaffIds.join(', ')}
+これら以外（実名や別の表記）は絶対に使わないこと。実名のように見えても、必ず上記のIDから選んでください。
 
 【利用可能なシフト名（これ以外は使わないこと）】
 ${availableShifts.join(', ')}
@@ -4261,19 +4267,58 @@ function extractJsonFromAiText(text) {
   m = text.match(/```\s*([\s\S]*?)\s*```/);
   if (m) return m[1];
   const start = text.indexOf('{');
+  if (start < 0) return text;
   const end = text.lastIndexOf('}');
-  if (start >= 0 && end > start) return text.slice(start, end + 1);
-  return text;
+  if (end > start) return text.slice(start, end + 1);
+  // 途中で切れたJSON：閉じ括弧を補完してみる
+  let body = text.slice(start);
+  // 最後の "..." の文字列を閉じる
+  const lastQuote = body.lastIndexOf('"');
+  if (lastQuote >= 0 && body.slice(0, lastQuote).split('"').length % 2 === 0) {
+    // 偶数個の " で始まり、最後の " が閉じ忘れの場合は何もしない
+    // 奇数個なら不完全な文字列。途切れた途中で適当に閉じる
+    body = body.slice(0, lastQuote) + '"';
+  }
+  // 最後のオブジェクト/配列を閉じる
+  let depth = 0;
+  for (const ch of body) {
+    if (ch === '{' || ch === '[') depth++;
+    else if (ch === '}' || ch === ']') depth--;
+  }
+  // 最後の不完全な要素を切り詰める
+  // 最後の完全なオブジェクトの } を探す
+  const lastObjEnd = body.lastIndexOf('},');
+  if (lastObjEnd > 0 && depth > 0) {
+    body = body.slice(0, lastObjEnd + 1);
+  }
+  // 残りの開き括弧分を閉じる
+  const openObj = (body.match(/\{/g) || []).length;
+  const closeObj = (body.match(/\}/g) || []).length;
+  const openArr = (body.match(/\[/g) || []).length;
+  const closeArr = (body.match(/\]/g) || []).length;
+  for (let i = 0; i < openArr - closeArr; i++) body += ']';
+  for (let i = 0; i < openObj - closeObj; i++) body += '}';
+  return body;
 }
 
 function validateSuggestions(suggestions) {
   const validShifts = new Set(Object.keys(SHIFT_HOURS));
   validShifts.add('');
+  // 実名→匿名ID の逆引きマップ
+  const reverseMap = {};
+  Object.entries(aiAnonymizeMap).forEach(([anon, real]) => { reverseMap[real] = anon; });
   return suggestions.filter(s => {
     if (!s.staffId || !s.day || !s.newShift) return false;
     if (!validShifts.has(s.newShift)) return false;
     if (s.day < 1 || s.day > 31) return false;
-    if (!aiAnonymizeMap[s.staffId]) return false;
+    // staffId が匿名IDでなくても、実名なら逆引きで匿名IDに変換
+    if (!aiAnonymizeMap[s.staffId]) {
+      if (reverseMap[s.staffId]) {
+        s.staffId = reverseMap[s.staffId];  // 実名 → 匿名ID
+      } else {
+        return false;  // どちらにも該当しない
+      }
+    }
     return true;
   });
 }
