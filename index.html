@@ -540,6 +540,7 @@
 // ===== CONFIG =====
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+
 async function sha256(message) {
   const msgBuffer = new TextEncoder().encode(message);
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
@@ -1052,24 +1053,12 @@ async function loadDeadlineForStaff() {
   deadlinePassed = false;
   deadlineWarning = false;
   try {
-    // 個別調整を最優先
+    // 設定された期限を取得（部門×月）
     const customs = await supabaseRequest(
       `shift_request_deadlines?dept_id=eq.${currentUser.deptId}&year=eq.${currentYear}&month=eq.${currentMonth}&select=deadline_at`
     );
     if (customs && customs.length > 0) {
       deadlineCache = new Date(customs[0].deadline_at);
-    } else {
-      // デフォルトルール
-      const rules = await supabaseRequest(
-        `shift_request_deadline_rules?dept_id=eq.${currentUser.deptId}&select=*`
-      );
-      if (rules && rules.length > 0) {
-        const r = rules[0];
-        const d = new Date(currentYear, currentMonth - 1, 1);
-        d.setDate(d.getDate() - (r.days_before || 0));
-        d.setHours(r.hour || 23, r.minute || 59, 59, 0);
-        deadlineCache = d;
-      }
     }
     // 判定
     if (deadlineCache) {
@@ -1125,8 +1114,9 @@ let reqLimitCache = null; // {limit_kibou_kyu, limit_yukyu, limit_other}
 async function loadReqLimitsForStaff() {
   if (!currentUser) return;
   try {
+    // デフォルトテーブルから取得
     const data = await supabaseRequest(
-      `shift_request_limits?dept_id=eq.${currentUser.deptId}&year=eq.${currentYear}&month=eq.${currentMonth}&select=*`
+      `shift_request_limits_default?dept_id=eq.${currentUser.deptId}&select=*`
     );
     reqLimitCache = data[0] || null;
   } catch(e) {
@@ -1153,7 +1143,7 @@ function updateCount() {
   const counts = countRequests();
   document.getElementById('inputCount').textContent = counts.total;
 
-  // 上限表示
+  // 上限表示（常に表示）
   const infoEl = document.getElementById('reqLimitInfo');
   const detailsEl = document.getElementById('reqLimitDetails');
   const warnEl = document.getElementById('reqLimitWarning');
@@ -1161,26 +1151,22 @@ function updateCount() {
   let isOver = false;
   let warnings = [];
 
-  if (reqLimitCache) {
-    const items = [];
-    const renderItem = (label, used, limit, color) => {
-      if (limit == null) {
-        return `<div><span style="color:${color};font-weight:600">${label}</span> <span style="color:#94a3b8">${used}日（制限なし）</span></div>`;
-      }
-      const over = used > limit;
-      if (over) { isOver = true; warnings.push(`${label}が上限を超えています（${used}/${limit}日）`); }
-      const color2 = over ? '#dc2626' : (used === limit ? '#d97706' : color);
-      const fontWeight = over ? '700' : '500';
-      return `<div><span style="color:${color};font-weight:600">${label}</span> <span style="color:${color2};font-weight:${fontWeight}">${used}/${limit}日</span></div>`;
-    };
-    items.push(renderItem('希望休', counts.kibouKyu, reqLimitCache.limit_kibou_kyu, '#9a3412'));
-    items.push(renderItem('有休', counts.yukyu, reqLimitCache.limit_yukyu, '#86198f'));
-    items.push(renderItem('その他', counts.other, reqLimitCache.limit_other, '#075985'));
-    detailsEl.innerHTML = items.join('');
-    infoEl.style.display = 'block';
-  } else {
-    infoEl.style.display = 'none';
-  }
+  const items = [];
+  const renderItem = (label, used, limit, color) => {
+    if (limit == null) {
+      return `<div><span style="color:${color};font-weight:600">${label}</span> <span style="color:#94a3b8">${used}日（制限なし）</span></div>`;
+    }
+    const over = used > limit;
+    if (over) { isOver = true; warnings.push(`${label}が上限を超えています（${used}/${limit}日）`); }
+    const color2 = over ? '#dc2626' : (used === limit ? '#d97706' : color);
+    const fontWeight = over ? '700' : '500';
+    return `<div><span style="color:${color};font-weight:600">${label}</span> <span style="color:${color2};font-weight:${fontWeight}">${used}/${limit}日</span></div>`;
+  };
+  items.push(renderItem('希望休', counts.kibouKyu, reqLimitCache?.limit_kibou_kyu, '#9a3412'));
+  items.push(renderItem('有休', counts.yukyu, reqLimitCache?.limit_yukyu, '#86198f'));
+  items.push(renderItem('その他', counts.other, reqLimitCache?.limit_other, '#075985'));
+  detailsEl.innerHTML = items.join('');
+  infoEl.style.display = 'block';
 
   // 警告表示
   if (warnings.length > 0) {
