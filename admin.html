@@ -2,6 +2,13 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="管理">
+  <meta name="theme-color" content="#9333ea">
+  <link rel="manifest" href="/manifest-admin.json">
+  <link rel="apple-touch-icon" href="/apple-touch-icon-admin.png">
+  <link rel="icon" type="image/png" href="/icon-favicon.png">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>kingyo-shift 管理画面</title>
   <style>
@@ -1033,7 +1040,6 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -6332,6 +6338,14 @@ document.getElementById('adminLogoutBtn').addEventListener('click', () => {
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
   overlay.addEventListener('click', e => { if(e.target===overlay) overlay.classList.remove('show'); });
 });
+</script>
+<script>
+// PWA Service Worker 登録
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW登録失敗:', err));
+  });
+}
 </script>
 </body>
 </html>
