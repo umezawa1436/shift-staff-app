@@ -1043,9 +1043,8 @@
 </div>
 
 <script>
-const SUPABASE_URL = 'YOUR_SUPABASE_URL';
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
-
+const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE'; 
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -1200,26 +1199,6 @@ async function sb(path, options = {}) {
   return t ? JSON.parse(t) : [];
 }
 
-// 管理者APIヘルパー（accounts 系操作）
-async function adminApi(endpoint, payload) {
-  const token = localStorage.getItem('shift_admin_token') || '';
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = new Error(data.error || `API ${res.status}`);
-    err.status = res.status;
-    throw err;
-  }
-  return data;
-}
-
 // UI
 function showLoading() { document.getElementById('loading').style.display = 'flex'; }
 function hideLoading() { document.getElementById('loading').style.display = 'none'; }
@@ -1253,31 +1232,26 @@ document.getElementById('adminLoginBtn').addEventListener('click', async () => {
 
   showLoading();
   try {
-    const r = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'admin-login', email, password: pw }),
-    });
-    const data = await r.json();
+    const hash = await sha256(pw);
+    const result = await sb(`accounts?email=eq.${encodeURIComponent(email)}&password_hash=eq.${hash}&select=*`);
 
-    if (!r.ok) {
+    if (result.length === 0) {
       errEl.style.display='block';
-      errEl.textContent = data.error || 'メールアドレスまたはパスワードが正しくありません';
+      errEl.textContent='メールアドレスまたはパスワードが正しくありません';
       hideLoading();
       return;
     }
 
-    const account = data.user;
-    localStorage.setItem('shift_admin_token', data.token);
+    const account = result[0];
     adminUser = {
       id: account.id,
       role: account.role,
       email: account.email,
       name: account.name,
-      deptId: account.deptId,
-      deptName: account.deptId !== null ? DEPT_NAMES[account.deptId] : '全部門',
+      deptId: account.dept_id,
+      deptName: account.dept_id !== null ? DEPT_NAMES[account.dept_id] : '全部門',
     };
-    currentDept = account.deptId ?? 0;
+    currentDept = account.dept_id ?? 0;
 
     errEl.style.display='none';
     // 権限制御：マスター = 全権、リーダー = スタッフ管理OK・アカウント管理NG、スタッフ = 両方NG
@@ -3752,27 +3726,33 @@ async function changePassword() {
 
   showLoading();
   try {
-    await adminApi('/api/auth', {
-      action: 'change-password',
-      currentPassword: currentPw,
-      newPassword: newPw,
+    const currentHash = await sha256(currentPw);
+    // 現在のパスワードを確認
+    const check = await sb(`accounts?id=eq.${adminUser.id}&password_hash=eq.${currentHash}&select=id`);
+    if (check.length === 0) {
+      showToast('現在のパスワードが正しくありません', 'error');
+      hideLoading(); return;
+    }
+
+    const newHash = await sha256(newPw);
+    await sb(`accounts?id=eq.${adminUser.id}`, {
+      method: 'PATCH',
+      headers: { 'Prefer': 'return=representation' },
+      body: JSON.stringify({ password_hash: newHash })
     });
+
     document.getElementById('currentPw').value = '';
     document.getElementById('newPw').value = '';
     document.getElementById('newPwConfirm').value = '';
     showToast('パスワードを変更しました ✓', 'success');
-  } catch(e) {
-    console.error(e);
-    showToast(e.message || '変更エラー', 'error');
-  }
+  } catch(e) { console.error(e); showToast('変更エラー', 'error'); }
   hideLoading();
 }
 
 async function loadAccountList() {
   showLoading();
   try {
-    const data = await adminApi('/api/admin-accounts', { action: 'list' });
-    const accounts = data.accounts || [];
+    const accounts = await sb(`accounts?order=role,name&select=id,email,name,role,dept_id`);
     const ROLE_LABELS = { master:'マスター', leader:'リーダー', staff:'スタッフ' };
     document.getElementById('accountBody').innerHTML = accounts.map(a => `
       <tr>
@@ -3836,16 +3816,14 @@ async function addAccount() {
 
   showLoading();
   try {
-    await adminApi('/api/admin-accounts', {
-      action: 'create',
-      name, email, password: pw, role, deptId,
-    });
+    const hash = await sha256(pw);
+    await sb('accounts', { method:'POST', body:JSON.stringify([{ name, email, password_hash:hash, role, dept_id:deptId }]) });
     document.getElementById('addAccountModalEl')?.remove();
     await loadAccountList();
     showToast(`${name}のアカウントを追加しました ✓`, 'success');
   } catch(e) {
     console.error(e);
-    showToast(e.message || '追加エラー', 'error');
+    showToast(e.message.includes('unique') ? 'このメールアドレスは既に登録されています' : '追加エラー', 'error');
   }
   hideLoading();
 }
@@ -3901,13 +3879,13 @@ async function updateAccount(id) {
 
   showLoading();
   try {
-    const payload = { action: 'update', id, name, email };
-    if (pw) payload.password = pw;
+    const update = { name, email };
+    if (pw) update.password_hash = await sha256(pw);
     if (!isSelf) {
-      payload.role = role;
-      payload.deptId = deptId;
+      update.role = role;
+      update.dept_id = deptId;  // masterの場合はnull、それ以外は部門ID
     }
-    await adminApi('/api/admin-accounts', payload);
+    await sb(`accounts?id=eq.${id}`, { method:'PATCH', headers:{'Prefer':'return=representation'}, body:JSON.stringify(update) });
     document.getElementById('editAccountModalEl')?.remove();
     await loadAccountList();
     showToast('アカウントを更新しました ✓', 'success');
@@ -3922,7 +3900,7 @@ async function deleteAccount(id, name) {
   if (!confirm(`${name}のアカウントを削除しますか？`)) return;
   showLoading();
   try {
-    await adminApi('/api/admin-accounts', { action: 'delete', id });
+    await sb(`accounts?id=eq.${id}`, { method:'DELETE' });
     await loadAccountList();
     showToast(`${name}のアカウントを削除しました`, 'success');
   } catch(e) { showToast('削除エラー', 'error'); }
@@ -6348,21 +6326,19 @@ document.getElementById('saveNewStaffBtn').addEventListener('click', async () =>
       throw new Error('スタッフ登録のレスポンスからIDを取得できませんでした');
     }
 
-    // 2. accounts テーブルにも登録（チェックON時のみ） - API経由
+    // 2. accounts テーブルにも登録（チェックON時のみ）
     if (createAccount) {
       try {
-        await adminApi('/api/admin-accounts', {
-          action: 'create-for-new-staff',
-          name, email, password,
-          deptId, staffId: newStaff.id, staffCode: newStaffCode,
-        });
+        const hash = await sha256(password);
+        await sb('accounts', { method:'POST', body:JSON.stringify([{ name, email, password_hash:hash, role:'staff', dept_id:deptId, staff_id:newStaff.id, staff_code:newStaffCode }]) });
       } catch(accErr) {
         console.error('アカウント作成エラー:', accErr);
         // staff は成功してるので警告のみ
-        const msg = (accErr.message && accErr.message.includes('使用')) ?
-          `${name}を追加しましたが、メールアドレスが既に使われていてアカウントは作成できませんでした` :
-          `${name}を追加しましたが、アカウント作成に失敗しました（${accErr.message || ''}）`;
-        showToast(msg, 'error');
+        if (accErr.message && accErr.message.includes('unique')) {
+          showToast(`${name}を追加しましたが、メールアドレスが既に使われていてアカウントは作成できませんでした`, 'error');
+        } else {
+          showToast(`${name}を追加しましたが、アカウント作成に失敗しました`, 'error');
+        }
         await loadStaff();
         loadStaffTable();
         closeModal('addStaffModal');
