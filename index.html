@@ -41,27 +41,13 @@
       min-height: 100dvh;
       overscroll-behavior: none;
       -webkit-overflow-scrolling: touch;
-      /* PWA起動時の不要な余白を防ぐ */
-      padding-top: env(safe-area-inset-top);
-      padding-bottom: env(safe-area-inset-bottom);
     }
 
     /* PWAスタンドアロンモード時の専用調整 */
     @media (display-mode: standalone) {
-      html, body {
-        position: fixed;
-        overflow: hidden;
-        width: 100%;
-        height: 100%;
-      }
-      #loginScreen, #appScreen {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
+      body {
+        /* セーフエリア下部対応のみ */
+        padding-bottom: env(safe-area-inset-bottom);
       }
     }
 
@@ -74,7 +60,7 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 24px;
+      padding: calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
       background: linear-gradient(145deg, #0f4c81 0%, #1a6bb5 50%, #00b4d8 100%);
       box-sizing: border-box;
     }
@@ -188,7 +174,15 @@
     /* ===== MAIN APP ===== */
     #appScreen { display: none; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
 
-    .app-header { background: white; padding: 16px 20px 12px; position: sticky; top: 0; z-index: 100; border-bottom: 1px solid var(--border); box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+    .app-header { 
+      background: white; 
+      padding: calc(16px + env(safe-area-inset-top)) 20px 12px; 
+      position: sticky; 
+      top: 0; 
+      z-index: 100; 
+      border-bottom: 1px solid var(--border); 
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06); 
+    }
     .header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
     .header-name { font-size: 15px; font-weight: 600; color: var(--text); }
     .header-dept { font-size: 12px; color: var(--text-muted); }
@@ -570,6 +564,7 @@
 // ===== CONFIG =====
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+
 async function sha256(message) {
   const msgBuffer = new TextEncoder().encode(message);
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
