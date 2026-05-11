@@ -1043,9 +1043,8 @@
 </div>
 
 <script>
-const SUPABASE_URL = 'YOUR_SUPABASE_URL';
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
-
+const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE'; 
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -6358,7 +6357,6 @@ document.getElementById('saveNewStaffBtn').addEventListener('click', async () =>
         });
       } catch(accErr) {
         console.error('アカウント作成エラー:', accErr);
-        // staff は成功してるので警告のみ
         const msg = (accErr.message && accErr.message.includes('使用')) ?
           `${name}を追加しましたが、メールアドレスが既に使われていてアカウントは作成できませんでした` :
           `${name}を追加しましたが、アカウント作成に失敗しました（${accErr.message || ''}）`;
@@ -6366,7 +6364,6 @@ document.getElementById('saveNewStaffBtn').addEventListener('click', async () =>
         await loadStaff();
         loadStaffTable();
         closeModal('addStaffModal');
-        // 入力リセット
         document.getElementById('newStaffName').value = '';
         document.getElementById('newStaffEmail').value = '';
         document.getElementById('newStaffPassword').value = '';
