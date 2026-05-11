@@ -909,30 +909,32 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
 
   showLoading();
   try {
-    const hash = await sha256(password);
-    const result = await supabaseRequest(
-      `accounts?staff_code=eq.${staffCode}&dept_id=eq.${deptId}&password_hash=eq.${hash}&role=eq.staff&select=id,name,dept_id,staff_id,staff_code`
-    );
+    const r = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'staff-login', deptId, staffCode, password }),
+    });
+    const data = await r.json();
 
-    if (result.length === 0) {
+    if (!r.ok) {
       errEl.style.display = 'block';
-      errEl.textContent = 'パスワードが正しくありません';
+      errEl.textContent = data.error || 'ログインに失敗しました';
       hideLoading();
       return;
     }
 
-    const account = result[0];
     currentUser = {
-      id: account.staff_id,
-      accountId: account.id,
-      staffCode: account.staff_code,
-      name: account.name,
-      deptId: account.dept_id,
-      deptName: DEPT_NAMES[account.dept_id] || '不明',
+      id: data.user.id,
+      accountId: data.user.accountId,
+      staffCode: data.user.staffCode,
+      name: data.user.name,
+      deptId: data.user.deptId,
+      deptName: DEPT_NAMES[data.user.deptId] || '不明',
     };
 
     errEl.style.display = 'none';
     localStorage.setItem('shift_user', JSON.stringify(currentUser));
+    localStorage.setItem('shift_token', data.token);
     await showApp();
   } catch(e) {
     console.error(e);
@@ -1286,6 +1288,7 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
   currentUser = null;
   requests = {};
   localStorage.removeItem('shift_user');
+  localStorage.removeItem('shift_token');
   document.getElementById('appScreen').style.display = 'none';
   document.getElementById('loginScreen').style.display = 'flex';
   document.getElementById('passwordInput').value = '';
@@ -1323,20 +1326,17 @@ document.getElementById('staffChangePwBtn').addEventListener('click', async () =
 
   showLoading();
   try {
-    const currentHash = await sha256(currentPw);
-    const check = await supabaseRequest(
-      `accounts?id=eq.${currentUser.accountId}&password_hash=eq.${currentHash}&select=id`
-    );
-    if (check.length === 0) {
-      errEl.style.display = 'block'; errEl.textContent = '現在のパスワードが正しくありません';
+    const token = localStorage.getItem('shift_token') || '';
+    const r = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ action: 'change-password', currentPassword: currentPw, newPassword: newPw }),
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      errEl.style.display = 'block'; errEl.textContent = data.error || 'エラーが発生しました';
       hideLoading(); return;
     }
-    const newHash = await sha256(newPw);
-    await supabaseRequest(`accounts?id=eq.${currentUser.accountId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
-      body: JSON.stringify({ password_hash: newHash })
-    });
     document.getElementById('staffCurrentPw').value = '';
     document.getElementById('staffNewPw').value = '';
     document.getElementById('staffNewPwConfirm').value = '';
