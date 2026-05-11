@@ -570,7 +570,6 @@
 // ===== CONFIG =====
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 async function sha256(message) {
   const msgBuffer = new TextEncoder().encode(message);
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
@@ -743,7 +742,7 @@ async function openVerticalView(year, month, day) {
       `shifts?year=eq.${year}&month=eq.${month}&day=eq.${day}&is_confirmed=eq.true&select=staff_id,shift_type_id`
     );
     const allDeptStaff = await supabaseRequest(
-      `staff?dept_id=eq.${currentUser.deptId}&select=id,name,emp_type&order=staff_code`
+      `staff?dept_id=eq.${currentUser.deptId}&select=id,name,emp_type&order=display_order.asc.nullslast,staff_code`
     );
     const breaksData = await supabaseRequest(
       `shift_breaks?year=eq.${year}&month=eq.${month}&day=eq.${day}&order=staff_id,display_order&select=staff_id,break_start,break_end`
