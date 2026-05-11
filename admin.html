@@ -23,7 +23,7 @@
     body { font-family: 'Noto Sans JP', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
 
     /* LOGIN */
-    #loginScreen { min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(145deg,#0f4c81,#1a6bb5,#00b4d8);padding:24px; }
+    #loginScreen { min-height:100vh;min-height:100svh;display:flex;align-items:center;justify-content:center;background:linear-gradient(145deg,#0f4c81,#1a6bb5,#00b4d8);padding:calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));box-sizing:border-box; }
     .login-box { background:white;border-radius:20px;padding:40px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,0.2);text-align:center; }
     /* ===== 金魚マスコット ===== */
     .kingyo-tank { width:200px;height:140px;position:relative;margin:0 auto 20px;background:linear-gradient(180deg,rgba(0,180,216,0.15) 0%,rgba(0,180,216,0.35) 100%);border-radius:50%;overflow:hidden;border:2px solid rgba(15,76,129,0.15);box-shadow:0 4px 16px rgba(0,0,0,0.08),inset 0 0 30px rgba(255,255,255,0.3); }
@@ -66,7 +66,7 @@
     /* LAYOUT */
     #appScreen { display:none; }
     .layout { display:flex;min-height:100vh; }
-    .sidebar { width:var(--sidebar-w);background:var(--primary);color:white;display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:100; }
+    .sidebar { width:var(--sidebar-w);background:var(--primary);color:white;display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:100;padding-top:env(safe-area-inset-top); }
     .sidebar-logo { padding:24px 20px 20px;border-bottom:1px solid rgba(255,255,255,0.1); }
     .sidebar-logo-title { font-size:14px;font-weight:700;line-height:1.4; }
     .sidebar-logo-sub { font-size:11px;opacity:0.6;margin-top:2px; }
@@ -80,7 +80,7 @@
     .user-role { font-size:11px;opacity:0.6; }
     .btn-logout { width:100%;padding:8px;background:rgba(255,255,255,0.1);color:white;border:none;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer;margin-top:8px; }
     .main { margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column; }
-    .topbar { background:white;padding:16px 28px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50; }
+    .topbar { background:white;padding:calc(16px + env(safe-area-inset-top)) 28px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50; }
     .page-title { font-size:20px;font-weight:700; }
     .page-sub { font-size:13px;color:var(--text-muted);margin-top:2px; }
     .content { padding:24px 28px;flex:1; }
@@ -1045,7 +1045,6 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 // STATE
 let adminUser = null;
 let currentDept = 0;
