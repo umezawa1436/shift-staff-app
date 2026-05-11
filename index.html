@@ -1088,10 +1088,11 @@ async function loadDeadlineForStaff() {
     if (rules && rules.length > 0) {
       const r = rules[0];
       if (r.days_before != null) {
-        // days_before カラムを「日」として使う
-        // 対象月Mのシフト → 前月M-1のX日が期限
-        let py = currentYear, pm = currentMonth - 1;
-        if (pm < 1) { pm = 12; py--; }
+        // days_before カラムを「日」、months_before カラムを「何ヶ月前」として使う
+        const mb = r.months_before || 1;
+        // 対象月から mb ヶ月前を計算
+        let py = currentYear, pm = currentMonth - mb;
+        while (pm < 1) { pm += 12; py--; }
         const lastDay = new Date(py, pm, 0).getDate();
         const d = Math.min(r.days_before, lastDay);
         deadlineCache = new Date(py, pm - 1, d, r.hour || 23, r.minute || 59, 59, 0);

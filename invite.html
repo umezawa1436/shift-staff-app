@@ -122,7 +122,7 @@
 
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE'; 
 const DEPT_NAMES = { 0: '医療事務', 1: '看護', 2: 'リハビリ', 3: '放射線' };
 
 async function sb(path, options = {}) {
@@ -228,28 +228,50 @@ document.getElementById('createBtn').addEventListener('click', async () => {
   btn.textContent = '作成中...';
 
   try {
-    // メール重複チェック
-    const existing = await sb(`accounts?email=eq.${encodeURIComponent(email)}&select=id`);
-    if (existing && existing.length > 0) {
-      errBox.textContent = 'このメールアドレスは既に登録されています';
-      errBox.style.display = 'block';
-      btn.disabled = false;
-      btn.textContent = 'アカウントを作成';
-      return;
+    const hash = await sha256(password);
+
+    // 既存アカウント検索（このスタッフ名 + 同一部門で）
+    const sameStaffAccounts = await sb(`accounts?name=eq.${encodeURIComponent(staff.name)}&dept_id=eq.${staff.dept_id}&select=id,email`);
+
+    // 別のスタッフが既に使っているメールでないかチェック
+    const otherEmailUse = await sb(`accounts?email=eq.${encodeURIComponent(email)}&select=id,name,dept_id`);
+    if (otherEmailUse && otherEmailUse.length > 0) {
+      // 同一スタッフ自身のメールならOK、他人のメールならNG
+      const isMyAccount = sameStaffAccounts.some(a => a.id === otherEmailUse[0].id);
+      if (!isMyAccount) {
+        errBox.textContent = 'このメールアドレスは既に他のアカウントで使われています。別のメールアドレスをご利用ください。';
+        errBox.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'アカウントを作成';
+        return;
+      }
     }
 
-    // アカウント作成
-    const hash = await sha256(password);
-    await sb('accounts', {
-      method: 'POST',
-      body: JSON.stringify([{
-        name: staff.name,
-        email,
-        password_hash: hash,
-        role: 'staff',
-        dept_id: staff.dept_id
-      }])
-    });
+    if (sameStaffAccounts && sameStaffAccounts.length > 0) {
+      // 既存アカウントを更新（パスワード・メール）
+      const accountId = sameStaffAccounts[0].id;
+      await sb(`accounts?id=eq.${accountId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          email,
+          password_hash: hash
+        })
+      });
+      console.log('既存アカウントのパスワード・メールを更新しました');
+    } else {
+      // 新規アカウント作成
+      await sb('accounts', {
+        method: 'POST',
+        body: JSON.stringify([{
+          name: staff.name,
+          email,
+          password_hash: hash,
+          role: 'staff',
+          dept_id: staff.dept_id
+        }])
+      });
+      console.log('新規アカウントを作成しました');
+    }
 
     // 招待を使用済みにする
     await sb(`invitations?id=eq.${invitation.id}`, {
