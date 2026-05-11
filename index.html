@@ -564,6 +564,7 @@
 // ===== CONFIG =====
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+
 async function sha256(message) {
   const msgBuffer = new TextEncoder().encode(message);
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
@@ -659,36 +660,26 @@ async function loadShiftTypesFromDB() {
   }
 }
 
-const STAFF_DATA = {
-  0: [
-    {code:1,name:'水島'},{code:2,name:'住元'},{code:3,name:'内山'},
-    {code:4,name:'関'},{code:5,name:'小川'},{code:6,name:'泉'},
-    {code:7,name:'山形'},{code:8,name:'岡田'},{code:9,name:'都築'},
-    {code:10,name:'真凜'},{code:11,name:'山本'},{code:12,name:'井口'},
-    {code:13,name:'中村'},{code:14,name:'イ'},{code:15,name:'レ'},
-    {code:16,name:'中尾'},{code:17,name:'洋子'},{code:18,name:'原田'},
-    {code:19,name:'桒原'},{code:20,name:'飯岡'},{code:21,name:'末廣'},
-    {code:22,name:'坂本'},{code:23,name:'森部'},{code:24,name:'安藤'},
-    {code:25,name:'川田'},
-  ],
-  1: [
-    {code:1,name:'吉家'},{code:2,name:'岡本'},{code:3,name:'雅子'},
-    {code:4,name:'飛田'},{code:5,name:'上村'},{code:6,name:'高田'},
-    {code:7,name:'石黒'},{code:8,name:'青柳'},{code:9,name:'横山'},
-    {code:10,name:'加藤'},
-  ],
-  2: [
-    {code:14,name:'徳本'},{code:15,name:'完倉'},{code:16,name:'河島'},
-    {code:17,name:'長永'},{code:18,name:'葛西'},{code:19,name:'永田'},
-    {code:20,name:'中島'},{code:21,name:'齊藤'},{code:22,name:'矢嶋'},
-    {code:23,name:'土田'},{code:24,name:'小野田'},{code:25,name:'畔上'},
-    {code:26,name:'藤田'},
-  ],
-  3: [
-    {code:5,name:'馬場'},{code:6,name:'矢﨑'},
-    {code:7,name:'梅澤'},{code:8,name:'林'},
-  ],
-};
+// スタッフ一覧はDBから動的に取得する（admin側で追加した新スタッフを反映するため）
+let STAFF_DATA = {};
+
+async function loadStaffData() {
+  try {
+    const staffList = await supabaseRequest(
+      `staff?select=id,staff_code,name,dept_id&order=dept_id,display_order.asc.nullslast,staff_code`
+    );
+    const grouped = {};
+    (staffList || []).forEach(s => {
+      if (s.dept_id == null || s.staff_code == null) return;
+      if (!grouped[s.dept_id]) grouped[s.dept_id] = [];
+      grouped[s.dept_id].push({ code: s.staff_code, name: s.name });
+    });
+    STAFF_DATA = grouped;
+  } catch (e) {
+    console.error('スタッフ一覧の取得に失敗:', e);
+    STAFF_DATA = {};
+  }
+}
 
 const DEPT_NAMES = { 0: '医療事務', 1: '看護', 2: 'リハビリ', 3: '放射線' };
 
@@ -1504,6 +1495,9 @@ document.getElementById('confNextMonth')?.addEventListener('click', () => {
 });
 
 window.addEventListener('load', async () => {
+  // スタッフ一覧をDBから取得（ログイン画面のドロップダウン用）
+  await loadStaffData();
+
   const saved = localStorage.getItem('shift_user');
   if (saved) {
     try {
