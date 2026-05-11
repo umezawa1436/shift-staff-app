@@ -1,0 +1,26 @@
+{
+  "name": "kingyo-shift ADMIN",
+  "short_name": "管理",
+  "description": "kingyo-shift シフト管理（管理者向け）",
+  "start_url": "/admin.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#9333ea",
+  "theme_color": "#9333ea",
+  "lang": "ja",
+  "icons": [
+    {
+      "src": "/icon-admin-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-admin-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
