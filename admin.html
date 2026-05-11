@@ -1044,7 +1044,7 @@
 
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE'; 
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -6546,13 +6546,18 @@ if ('serviceWorker' in navigator) {
 
 // PWA起動時の不要なスクロール・キーボード起動を防止
 (function() {
+  // 初回起動時のみスクロールリセット
   window.addEventListener('DOMContentLoaded', () => {
     window.scrollTo(0, 0);
     if (document.activeElement && document.activeElement !== document.body) {
       document.activeElement.blur();
     }
   });
+  // load時も初回のみ
+  let _initialScrollDone = false;
   window.addEventListener('load', () => {
+    if (_initialScrollDone) return;
+    _initialScrollDone = true;
     setTimeout(() => {
       window.scrollTo(0, 0);
       if (document.activeElement && document.activeElement !== document.body) {
@@ -6560,8 +6565,19 @@ if ('serviceWorker' in navigator) {
       }
     }, 100);
   });
-  window.addEventListener('focusout', () => {
-    setTimeout(() => window.scrollTo(0, 0), 100);
+  // 入力欄から外れた時のみ：ボタンクリック時の暴走を防ぐ
+  document.addEventListener('focusout', (e) => {
+    const target = e.target;
+    if (!target || !target.tagName) return;
+    const tag = target.tagName.toUpperCase();
+    if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') return;
+    setTimeout(() => {
+      const newFocus = document.activeElement;
+      if (newFocus && (newFocus.tagName === 'INPUT' || newFocus.tagName === 'TEXTAREA' || newFocus.tagName === 'SELECT')) {
+        return;
+      }
+      // ボタンクリック等でフォーカスが外れたケース：スクロールはそのまま
+    }, 100);
   });
 })();
 </script>
