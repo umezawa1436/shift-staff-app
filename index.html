@@ -564,7 +564,6 @@
 // ===== CONFIG =====
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
 async function sha256(message) {
   const msgBuffer = new TextEncoder().encode(message);
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
@@ -1540,8 +1539,11 @@ if ('serviceWorker' in navigator) {
     }
   });
 
-  // PWAモード時、表示完了後にも再度スクロールリセット
+  // PWAモード時、最初の表示完了時のみスクロールリセット（以降は不要）
+  let _initialScrollDone = false;
   window.addEventListener('load', () => {
+    if (_initialScrollDone) return;
+    _initialScrollDone = true;
     setTimeout(() => {
       window.scrollTo(0, 0);
       if (document.activeElement && document.activeElement !== document.body) {
@@ -1550,9 +1552,21 @@ if ('serviceWorker' in navigator) {
     }, 100);
   });
 
-  // iOSキーボード閉じた後のレイアウト崩れ防止
-  window.addEventListener('focusout', () => {
-    setTimeout(() => window.scrollTo(0, 0), 100);
+  // iOSキーボード閉じた後のレイアウト崩れ防止（入力欄から外れた時のみ）
+  document.addEventListener('focusout', (e) => {
+    // 入力欄（input, textarea, select）からフォーカスが外れた時のみ処理
+    const target = e.target;
+    if (!target || !target.tagName) return;
+    const tag = target.tagName.toUpperCase();
+    if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') return;
+    // フォーカスが他の入力欄に移っただけなら何もしない
+    setTimeout(() => {
+      const newFocus = document.activeElement;
+      if (newFocus && (newFocus.tagName === 'INPUT' || newFocus.tagName === 'TEXTAREA' || newFocus.tagName === 'SELECT')) {
+        return;
+      }
+      // 入力欄からボタンや他の要素に移ったケース：スクロール位置はそのまま、何もしない
+    }, 100);
   });
 })();
 </script>
