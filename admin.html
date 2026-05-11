@@ -815,13 +815,18 @@
             <div style="margin-top:16px;padding:16px;background:#fef3c7;border-radius:12px;border:1px solid #fcd34d">
               <div style="font-size:13px;font-weight:600;color:#92400e;margin-bottom:12px">📅 提出期限ルール（毎月適用）</div>
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px">
-                <span style="color:#92400e">前月の</span>
+                <select class="form-select" id="deadlineMonthsBefore" style="width:auto;font-size:14px;background:white">
+                  <option value="1">1ヶ月前（前月）</option>
+                  <option value="2">2ヶ月前</option>
+                  <option value="3">3ヶ月前</option>
+                </select>
+                <span style="color:#92400e">の</span>
                 <input type="number" class="form-input" id="deadlineDay" min="1" max="31" placeholder="10" style="width:70px;font-size:14px">
                 <span style="color:#92400e">日</span>
                 <input type="time" class="form-input" id="deadlineTime" value="23:59" style="width:130px;font-size:14px">
                 <span style="color:#92400e">まで</span>
               </div>
-              <div style="font-size:11px;color:#92400e;margin-top:8px">例：「10日 23:59」=5月分シフトの提出期限は4/10 23:59</div>
+              <div style="font-size:11px;color:#92400e;margin-top:8px" id="deadlineExampleText">例：「1ヶ月前の10日 23:59」=5月分シフトの提出期限は4/10 23:59</div>
               <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
                 <button class="btn btn-primary" id="saveDeadlineRuleBtn" style="font-size:13px;padding:8px 16px">保存</button>
                 <button class="btn btn-outline" id="clearDeadlineRuleBtn" style="font-size:13px;padding:8px 16px;color:#dc2626">ルールを解除</button>
@@ -1040,7 +1045,6 @@
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE'; 
-
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -4820,13 +4824,15 @@ async function loadDeadlinePage() {
   await fetchDeadline();
 }
 
-// 「毎月X日 H:M」ルールから対象月の期限を計算
-// 対象月Mのシフト → 前月M-1のX日 H:M が期限
-function calcDeadlineFromRule(year, month, dayOfMonth, hour, minute) {
-  // 前月の日付を計算（month=1なら前年の12月）
-  let py = year, pm = month - 1;
-  if (pm < 1) { pm = 12; py--; }
-  // 前月の最終日を超える場合は前月末日に丸める（例：前月が2月で「31日」なら28/29日）
+// 「Nヶ月前のX日 H:M」ルールから対象月の期限を計算
+// 対象月Mのシフト → N ヶ月前のX日 H:M が期限
+// monthsBefore: 1=前月, 2=2ヶ月前, 3=3ヶ月前
+function calcDeadlineFromRule(year, month, dayOfMonth, hour, minute, monthsBefore) {
+  const mb = monthsBefore || 1;
+  // 対象月から mb ヶ月引いた年月を計算
+  let py = year, pm = month - mb;
+  while (pm < 1) { pm += 12; py--; }
+  // 対象月の最終日を超える場合は末日に丸める（例：「31日」で2月なら28/29日）
   const lastDay = new Date(py, pm, 0).getDate();
   const d = Math.min(dayOfMonth, lastDay);
   return new Date(py, pm - 1, d, hour, minute, 59, 0);
@@ -4841,15 +4847,20 @@ async function fetchDeadline() {
       // days_before カラムを「日付」として再利用
       document.getElementById('deadlineDay').value = rule.days_before;
       document.getElementById('deadlineTime').value = `${String(rule.hour||23).padStart(2,'0')}:${String(rule.minute||59).padStart(2,'0')}`;
+      document.getElementById('deadlineMonthsBefore').value = String(rule.months_before || 1);
     } else {
       document.getElementById('deadlineDay').value = '';
       document.getElementById('deadlineTime').value = '23:59';
+      document.getElementById('deadlineMonthsBefore').value = '1';
     }
+
+    // 例文の更新
+    updateDeadlineExample();
 
     // 適用状況の表示
     const effEl = document.getElementById('deadlineEffective');
     if (rule && rule.days_before != null) {
-      const effective = calcDeadlineFromRule(shiftYear, shiftMonth, rule.days_before, rule.hour||23, rule.minute||59);
+      const effective = calcDeadlineFromRule(shiftYear, shiftMonth, rule.days_before, rule.hour||23, rule.minute||59, rule.months_before||1);
       const now = new Date();
       const passed = now > effective;
       effEl.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
@@ -4864,10 +4875,32 @@ async function fetchDeadline() {
   }
 }
 
+// 例文の更新（月数や日付変更時）
+function updateDeadlineExample() {
+  const mb = parseInt(document.getElementById('deadlineMonthsBefore')?.value || '1', 10);
+  const d = document.getElementById('deadlineDay')?.value || '10';
+  const t = document.getElementById('deadlineTime')?.value || '23:59';
+  const mbLabel = mb === 1 ? '前月' : `${mb}ヶ月前`;
+  // 例として5月シフトの場合を計算
+  const exampleMonth = 5;
+  let pm = exampleMonth - mb;
+  while (pm < 1) pm += 12;
+  const exampleEl = document.getElementById('deadlineExampleText');
+  if (exampleEl) {
+    exampleEl.textContent = `例：「${mbLabel}の${d}日 ${t}」=5月分シフトの提出期限は${pm}/${d} ${t}`;
+  }
+}
+
+// 月数・日付・時刻の変更時に例文を更新
+document.getElementById('deadlineMonthsBefore')?.addEventListener('change', updateDeadlineExample);
+document.getElementById('deadlineDay')?.addEventListener('input', updateDeadlineExample);
+document.getElementById('deadlineTime')?.addEventListener('change', updateDeadlineExample);
+
 document.getElementById('saveDeadlineRuleBtn')?.addEventListener('click', async () => {
   const dayVal = parseInt(document.getElementById('deadlineDay').value, 10);
   const time = document.getElementById('deadlineTime').value || '23:59';
   const [h, m] = time.split(':').map(Number);
+  const monthsBefore = parseInt(document.getElementById('deadlineMonthsBefore').value, 10) || 1;
   if (isNaN(dayVal) || dayVal < 1 || dayVal > 31) {
     showToast('日は1〜31の整数で入力してください', 'error');
     return;
@@ -4876,7 +4909,7 @@ document.getElementById('saveDeadlineRuleBtn')?.addEventListener('click', async 
   try {
     const existing = await sb(`shift_request_deadline_rules?dept_id=eq.${deadlineDept}&select=dept_id`);
     // days_before カラムを「日」として使う
-    const payload = { dept_id: deadlineDept, days_before: dayVal, hour: h, minute: m };
+    const payload = { dept_id: deadlineDept, days_before: dayVal, hour: h, minute: m, months_before: monthsBefore };
     if (existing && existing.length > 0) {
       await sb(`shift_request_deadline_rules?dept_id=eq.${deadlineDept}`, {method:'PATCH', body: JSON.stringify(payload)});
     } else {
