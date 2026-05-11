@@ -6317,15 +6317,20 @@ document.getElementById('saveNewStaffBtn').addEventListener('click', async () =>
 
   showLoading();
   try {
-    // 1. staff テーブルに登録
+    // 1. staff テーブルに登録（レスポンスから新規ID取得）
     const maxCode = allStaff.filter(s => s.dept_id === deptId).reduce((m, s) => Math.max(m, s.staff_code), 0);
-    await sb('staff', { method:'POST', body:JSON.stringify([{staff_code:maxCode+1,name,dept_id:deptId,emp_type:empType,no_night:noNight,no_count:false}]) });
+    const newStaffCode = maxCode + 1;
+    const staffResp = await sb('staff', { method:'POST', body:JSON.stringify([{staff_code:newStaffCode,name,dept_id:deptId,emp_type:empType,no_night:noNight,no_count:false}]) });
+    const newStaff = Array.isArray(staffResp) ? staffResp[0] : staffResp;
+    if (!newStaff || newStaff.id == null) {
+      throw new Error('スタッフ登録のレスポンスからIDを取得できませんでした');
+    }
 
     // 2. accounts テーブルにも登録（チェックON時のみ）
     if (createAccount) {
       try {
         const hash = await sha256(password);
-        await sb('accounts', { method:'POST', body:JSON.stringify([{ name, email, password_hash:hash, role:'staff', dept_id:deptId }]) });
+        await sb('accounts', { method:'POST', body:JSON.stringify([{ name, email, password_hash:hash, role:'staff', dept_id:deptId, staff_id:newStaff.id, staff_code:newStaffCode }]) });
       } catch(accErr) {
         console.error('アカウント作成エラー:', accErr);
         // staff は成功してるので警告のみ

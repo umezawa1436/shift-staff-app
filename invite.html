@@ -122,7 +122,7 @@
 
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE'; 
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
 const DEPT_NAMES = { 0: '医療事務', 1: '看護', 2: 'リハビリ', 3: '放射線' };
 
 async function sb(path, options = {}) {
@@ -192,7 +192,7 @@ async function initInvitation() {
     }
 
     // スタッフ情報を取得
-    const staffs = await sb(`staff?id=eq.${invitation.staff_id}&select=id,name,dept_id`);
+    const staffs = await sb(`staff?id=eq.${invitation.staff_id}&select=id,name,dept_id,staff_code`);
     if (!staffs || staffs.length === 0) {
       showError('スタッフ情報が見つかりません。管理者にお問い合わせください。');
       return;
@@ -248,18 +248,20 @@ document.getElementById('createBtn').addEventListener('click', async () => {
     }
 
     if (sameStaffAccounts && sameStaffAccounts.length > 0) {
-      // 既存アカウントを更新（パスワード・メール）
+      // 既存アカウントを更新（パスワード・メール・staff紐付け）
       const accountId = sameStaffAccounts[0].id;
       await sb(`accounts?id=eq.${accountId}`, {
         method: 'PATCH',
         body: JSON.stringify({
           email,
-          password_hash: hash
+          password_hash: hash,
+          staff_id: staff.id,
+          staff_code: staff.staff_code
         })
       });
-      console.log('既存アカウントのパスワード・メールを更新しました');
+      console.log('既存アカウントのパスワード・メール・staff紐付けを更新しました');
     } else {
-      // 新規アカウント作成
+      // 新規アカウント作成（staff_id / staff_code 必須：これがないとログイン不可）
       await sb('accounts', {
         method: 'POST',
         body: JSON.stringify([{
@@ -267,7 +269,9 @@ document.getElementById('createBtn').addEventListener('click', async () => {
           email,
           password_hash: hash,
           role: 'staff',
-          dept_id: staff.dept_id
+          dept_id: staff.dept_id,
+          staff_id: staff.id,
+          staff_code: staff.staff_code
         }])
       });
       console.log('新規アカウントを作成しました');
