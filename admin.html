@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest-admin.json">
   <link rel="apple-touch-icon" href="/apple-touch-icon-admin.png">
   <link rel="icon" type="image/png" href="/icon-favicon.png">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>kingyo-shift 管理画面</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&display=swap');
@@ -1039,7 +1039,8 @@
 
 <script>
 const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE'; 
+
 // STATE
 let adminUser = null;
 let currentDept = 0;
@@ -3793,11 +3794,29 @@ function showEditAccountModal(id, name, email, role, deptId) {
   const modal = document.createElement('div');
   modal.id = 'editAccountModalEl';
   modal.className = 'modal-overlay show';
+  // 自分自身のロール変更は禁止（権限喪失防止）
+  const isSelf = id === adminUser.id;
   modal.innerHTML = `
     <div class="modal">
       <div class="modal-title">${name}のアカウント編集</div>
       <div class="form-group"><label class="form-label">名前</label><input type="text" class="form-input" id="editAccName" value="${name}"></div>
       <div class="form-group"><label class="form-label">メールアドレス</label><input type="email" class="form-input" id="editAccEmail" value="${email}"></div>
+      <div class="form-group"><label class="form-label">権限${isSelf ? '（自分自身の権限は変更できません）' : ''}</label>
+        <select class="form-select" id="editAccRole" ${isSelf ? 'disabled' : ''} onchange="document.getElementById('editAccDeptGroup').style.display=this.value==='master'?'none':'block'">
+          <option value="master" ${role==='master'?'selected':''}>マスター</option>
+          <option value="leader" ${role==='leader'?'selected':''}>リーダー</option>
+          <option value="staff" ${role==='staff'?'selected':''}>スタッフ</option>
+        </select>
+      </div>
+      <div class="form-group" id="editAccDeptGroup" style="display:${role==='master'?'none':'block'}">
+        <label class="form-label">部門</label>
+        <select class="form-select" id="editAccDept" ${isSelf ? 'disabled' : ''}>
+          <option value="0" ${deptId===0?'selected':''}>医療事務</option>
+          <option value="1" ${deptId===1?'selected':''}>看護</option>
+          <option value="2" ${deptId===2?'selected':''}>リハビリ</option>
+          <option value="3" ${deptId===3?'selected':''}>放射線</option>
+        </select>
+      </div>
       <div class="form-group"><label class="form-label">新しいパスワード（変更する場合のみ）</label><input type="password" class="form-input" id="editAccPw" placeholder="空欄で変更なし"></div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="document.getElementById('editAccountModalEl').remove()">キャンセル</button>
@@ -3812,6 +3831,9 @@ async function updateAccount(id) {
   const name = document.getElementById('editAccName').value.trim();
   const email = document.getElementById('editAccEmail').value.trim().toLowerCase();
   const pw = document.getElementById('editAccPw').value;
+  const isSelf = id === adminUser.id;
+  const role = isSelf ? null : document.getElementById('editAccRole').value;
+  const deptId = isSelf ? null : (role === 'master' ? null : parseInt(document.getElementById('editAccDept').value));
 
   if (!name || !email) { showToast('名前とメールは必須です', 'error'); return; }
   if (pw && pw.length < 8) { showToast('パスワードは8文字以上にしてください', 'error'); return; }
@@ -3820,11 +3842,18 @@ async function updateAccount(id) {
   try {
     const update = { name, email };
     if (pw) update.password_hash = await sha256(pw);
+    if (!isSelf) {
+      update.role = role;
+      update.dept_id = deptId;  // masterの場合はnull、それ以外は部門ID
+    }
     await sb(`accounts?id=eq.${id}`, { method:'PATCH', headers:{'Prefer':'return=representation'}, body:JSON.stringify(update) });
     document.getElementById('editAccountModalEl')?.remove();
     await loadAccountList();
     showToast('アカウントを更新しました ✓', 'success');
-  } catch(e) { showToast('更新エラー', 'error'); }
+  } catch(e) {
+    console.error(e);
+    showToast('更新エラー：' + (e.message || ''), 'error');
+  }
   hideLoading();
 }
 
@@ -6346,6 +6375,27 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW登録失敗:', err));
   });
 }
+
+// PWA起動時の不要なスクロール・キーボード起動を防止
+(function() {
+  window.addEventListener('DOMContentLoaded', () => {
+    window.scrollTo(0, 0);
+    if (document.activeElement && document.activeElement !== document.body) {
+      document.activeElement.blur();
+    }
+  });
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      window.scrollTo(0, 0);
+      if (document.activeElement && document.activeElement !== document.body) {
+        document.activeElement.blur();
+      }
+    }, 100);
+  });
+  window.addEventListener('focusout', () => {
+    setTimeout(() => window.scrollTo(0, 0), 100);
+  });
+})();
 </script>
 </body>
 </html>
