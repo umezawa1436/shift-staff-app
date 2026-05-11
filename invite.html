@@ -121,29 +121,21 @@
 </div>
 
 <script>
-const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
 const DEPT_NAMES = { 0: '医療事務', 1: '看護', 2: 'リハビリ', 3: '放射線' };
 
-async function sb(path, options = {}) {
-  const url = `${SUPABASE_URL}/rest/v1/${path}`;
-  const headers = {
-    'apikey': SUPABASE_ANON_KEY,
-    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-    'Content-Type': 'application/json',
-    'Prefer': 'return=representation',
-    ...options.headers
-  };
-  const res = await fetch(url, { ...options, headers });
-  if (!res.ok) throw new Error(`Supabase: ${res.status}`);
-  const text = await res.text();
-  return text ? JSON.parse(text) : null;
-}
-
-async function sha256(message) {
-  const msgBuffer = new TextEncoder().encode(message);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+async function callInviteApi(action, payload) {
+  const res = await fetch('/api/invite-accept', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, ...payload }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || `API ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
 }
 
 function showState(state) {
@@ -157,11 +149,9 @@ function showError(msg) {
   showState('errorState');
 }
 
-// URLからトークンを取得
 const urlParams = new URLSearchParams(window.location.search);
 const token = urlParams.get('token');
 
-let invitation = null;
 let staff = null;
 
 async function initInvitation() {
@@ -169,50 +159,22 @@ async function initInvitation() {
     showError('招待リンクが不正です。URLを確認してください。');
     return;
   }
-
   try {
-    // 招待を検索
-    const invitations = await sb(`invitations?token=eq.${encodeURIComponent(token)}&select=*`);
-    if (!invitations || invitations.length === 0) {
-      showError('招待リンクが見つかりません。リンクが正しいか確認してください。');
-      return;
-    }
-    invitation = invitations[0];
-
-    // 期限チェック
-    if (new Date(invitation.expires_at) < new Date()) {
-      showError('この招待リンクは期限切れです。管理者に再発行を依頼してください。');
-      return;
-    }
-
-    // 使用済みチェック
-    if (invitation.used_at) {
-      showError('この招待リンクは既に使用されています。');
-      return;
-    }
-
-    // スタッフ情報を取得
-    const staffs = await sb(`staff?id=eq.${invitation.staff_id}&select=id,name,dept_id,staff_code`);
-    if (!staffs || staffs.length === 0) {
-      showError('スタッフ情報が見つかりません。管理者にお問い合わせください。');
-      return;
-    }
-    staff = staffs[0];
-
-    // フォーム表示
+    const data = await callInviteApi('lookup', { token });
+    staff = data.staff;
     document.getElementById('staffName').textContent = staff.name;
     document.getElementById('staffDept').textContent = DEPT_NAMES[staff.dept_id] || '不明';
     showState('formState');
   } catch (e) {
     console.error(e);
-    showError('読み込みエラー：' + (e.message || '') + '\n通信状況を確認して再読み込みしてください。');
+    showError(e.message || '読み込みエラー');
   }
 }
 
 document.getElementById('createBtn').addEventListener('click', async () => {
   const email = document.getElementById('emailInput').value.trim().toLowerCase();
   const password = document.getElementById('passwordInput').value;
-  const confirm = document.getElementById('passwordConfirm').value;
+  const confirmPw = document.getElementById('passwordConfirm').value;
   const errBox = document.getElementById('errorBox');
   errBox.style.display = 'none';
 
@@ -221,72 +183,18 @@ document.getElementById('createBtn').addEventListener('click', async () => {
   if (!email.includes('@')) { errBox.textContent = '有効なメールアドレスを入力してください'; errBox.style.display = 'block'; return; }
   if (!password) { errBox.textContent = 'パスワードを入力してください'; errBox.style.display = 'block'; return; }
   if (password.length < 8) { errBox.textContent = 'パスワードは8文字以上にしてください'; errBox.style.display = 'block'; return; }
-  if (password !== confirm) { errBox.textContent = 'パスワードが一致しません'; errBox.style.display = 'block'; return; }
+  if (password !== confirmPw) { errBox.textContent = 'パスワードが一致しません'; errBox.style.display = 'block'; return; }
 
   const btn = document.getElementById('createBtn');
   btn.disabled = true;
   btn.textContent = '作成中...';
 
   try {
-    const hash = await sha256(password);
-
-    // 既存アカウント検索（このスタッフ名 + 同一部門で）
-    const sameStaffAccounts = await sb(`accounts?name=eq.${encodeURIComponent(staff.name)}&dept_id=eq.${staff.dept_id}&select=id,email`);
-
-    // 別のスタッフが既に使っているメールでないかチェック
-    const otherEmailUse = await sb(`accounts?email=eq.${encodeURIComponent(email)}&select=id,name,dept_id`);
-    if (otherEmailUse && otherEmailUse.length > 0) {
-      // 同一スタッフ自身のメールならOK、他人のメールならNG
-      const isMyAccount = sameStaffAccounts.some(a => a.id === otherEmailUse[0].id);
-      if (!isMyAccount) {
-        errBox.textContent = 'このメールアドレスは既に他のアカウントで使われています。別のメールアドレスをご利用ください。';
-        errBox.style.display = 'block';
-        btn.disabled = false;
-        btn.textContent = 'アカウントを作成';
-        return;
-      }
-    }
-
-    if (sameStaffAccounts && sameStaffAccounts.length > 0) {
-      // 既存アカウントを更新（パスワード・メール・staff紐付け）
-      const accountId = sameStaffAccounts[0].id;
-      await sb(`accounts?id=eq.${accountId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          email,
-          password_hash: hash,
-          staff_id: staff.id,
-          staff_code: staff.staff_code
-        })
-      });
-      console.log('既存アカウントのパスワード・メール・staff紐付けを更新しました');
-    } else {
-      // 新規アカウント作成（staff_id / staff_code 必須：これがないとログイン不可）
-      await sb('accounts', {
-        method: 'POST',
-        body: JSON.stringify([{
-          name: staff.name,
-          email,
-          password_hash: hash,
-          role: 'staff',
-          dept_id: staff.dept_id,
-          staff_id: staff.id,
-          staff_code: staff.staff_code
-        }])
-      });
-      console.log('新規アカウントを作成しました');
-    }
-
-    // 招待を使用済みにする
-    await sb(`invitations?id=eq.${invitation.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ used_at: new Date().toISOString() })
-    });
-
+    await callInviteApi('create', { token, email, password });
     showState('successState');
   } catch (e) {
     console.error(e);
-    errBox.textContent = 'アカウント作成に失敗しました：' + (e.message || '');
+    errBox.textContent = e.message || 'アカウント作成に失敗しました';
     errBox.style.display = 'block';
     btn.disabled = false;
     btn.textContent = 'アカウントを作成';
