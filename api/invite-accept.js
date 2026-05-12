@@ -1,4 +1,9 @@
 // /api/invite-accept.js
+// 招待リンクからのアカウント作成API
+// 仕様: メールアドレス収集なし、パスワードのみ入力
+//   - lookup : { token } → スタッフ情報を返す
+//   - create : { token, password } → アカウント作成 or 既存アカウント更新
+
 import crypto from 'crypto';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -64,32 +69,28 @@ async function lookupInvite(req, res, body) {
 }
 
 async function createFromInvite(req, res, body) {
-  const { token, email: rawEmail, password } = body;
-  if (!token || !rawEmail || !password) return bad(res, 400, '入力不足');
-  if (password.length < 8) return bad(res, 400, 'パスワードは8文字以上');
-  const email = String(rawEmail).trim().toLowerCase();
-  if (!email.includes('@')) return bad(res, 400, 'メールアドレスが不正');
+  const { token, password } = body;
+  if (!token || !password) return bad(res, 400, '入力不足');
+  if (password.length < 4) return bad(res, 400, 'パスワードは4文字以上');
   const r = await fetchInviteAndStaff(token);
   if (r.err) return bad(res, 400, r.err);
   const { invitation, staff } = r;
   const hash = await sha256(password);
-  const sameStaffAccounts = await sb(`accounts?name=eq.${encodeURIComponent(staff.name)}&dept_id=eq.${staff.dept_id}&select=id,email`);
-  const otherEmailUse = await sb(`accounts?email=eq.${encodeURIComponent(email)}&select=id`);
-  if (otherEmailUse && otherEmailUse.length > 0) {
-    const isMyAccount = sameStaffAccounts.some(a => a.id === otherEmailUse[0].id);
-    if (!isMyAccount) return bad(res, 409, 'このメールアドレスは他のアカウントで使用中です');
-  }
+
+  // このスタッフの既存アカウントを探す (同部門・同名・role=staff)
+  const sameStaffAccounts = await sb(`accounts?name=eq.${encodeURIComponent(staff.name)}&dept_id=eq.${staff.dept_id}&role=eq.staff&select=id`);
+
   if (sameStaffAccounts && sameStaffAccounts.length > 0) {
     const accountId = sameStaffAccounts[0].id;
     await sb(`accounts?id=eq.${accountId}`, {
       method: 'PATCH',
-      body: JSON.stringify({ email, password_hash: hash, staff_id: staff.id, staff_code: staff.staff_code }),
+      body: JSON.stringify({ password_hash: hash, staff_id: staff.id, staff_code: staff.staff_code }),
     });
   } else {
     await sb('accounts', {
       method: 'POST',
       body: JSON.stringify([{
-        name: staff.name, email, password_hash: hash, role: 'staff',
+        name: staff.name, password_hash: hash, role: 'staff',
         dept_id: staff.dept_id, staff_id: staff.id, staff_code: staff.staff_code,
       }]),
     });
