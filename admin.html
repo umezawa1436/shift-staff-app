@@ -889,7 +889,7 @@
               <button class="btn btn-primary" id="addAccountBtn">＋ アカウント追加</button>
             </div>
             <table class="data-table" id="accountTable">
-              <thead><tr><th>名前</th><th>権限</th><th>部門</th><th>操作</th></tr></thead>
+              <thead><tr><th>名前</th><th>権限</th><th>部門</th><th>状態</th><th>操作</th></tr></thead>
               <tbody id="accountBody"></tbody>
             </table>
           </div>
@@ -3821,18 +3821,48 @@ async function loadAccountList() {
     const data = await adminApi('/api/admin-accounts', { action: 'list' });
     const accounts = data.accounts || [];
     const ROLE_LABELS = { master:'マスター', leader:'リーダー', staff:'スタッフ' };
-    document.getElementById('accountBody').innerHTML = accounts.map(a => `
+    document.getElementById('accountBody').innerHTML = accounts.map(a => {
+      const isLocked = !!a.locked_at;
+      const fails = a.failed_attempts || 0;
+      let statusHtml = '';
+      if (isLocked) {
+        statusHtml = '<span style="color:#dc2626;font-weight:600">🔒 ロック中</span>';
+      } else if (fails > 0) {
+        statusHtml = `<span style="color:#f59e0b">⚠️ 失敗${fails}回</span>`;
+      } else {
+        statusHtml = '<span style="color:#10b981">正常</span>';
+      }
+      const unlockBtn = isLocked
+        ? `<button class="btn btn-outline btn-sm" style="color:#10b981;border-color:#10b981" onclick="unlockAccount('${a.id}','${a.name}')">解除</button>`
+        : '';
+      return `
       <tr>
         <td>${a.name}</td>
         <td><span class="badge ${a.role==='master'?'badge-master':a.role==='leader'?'badge-leader':'badge-part'}">${ROLE_LABELS[a.role]||a.role}</span></td>
         <td>${a.dept_id !== null ? DEPT_NAMES[a.dept_id] : '全部門'}</td>
-        <td style="display:flex;gap:6px">
+        <td>${statusHtml}</td>
+        <td style="display:flex;gap:6px;flex-wrap:wrap">
+          ${unlockBtn}
           <button class="btn btn-outline btn-sm" onclick="showEditAccountModal('${a.id}','${a.name}','${a.role}',${a.dept_id})">編集</button>
           ${a.id !== adminUser.id ? `<button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="deleteAccount('${a.id}','${a.name}')">削除</button>` : ''}
         </td>
-      </tr>
-    `).join('');
+      </tr>`;
+    }).join('');
   } catch(e) { console.error(e); }
+  hideLoading();
+}
+
+async function unlockAccount(id, name) {
+  if (!confirm(`${name}のアカウントロックを解除しますか？`)) return;
+  showLoading();
+  try {
+    await adminApi('/api/admin-accounts', { action: 'unlock', id });
+    await loadAccountList();
+    showToast(`${name}のロックを解除しました ✓`, 'success');
+  } catch(e) {
+    console.error(e);
+    showToast('解除エラー：' + (e.message || ''), 'error');
+  }
   hideLoading();
 }
 

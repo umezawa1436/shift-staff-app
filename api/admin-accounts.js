@@ -89,6 +89,10 @@ export default async function handler(req, res) {
       if (!isMaster) return bad(res, 403, 'masterのみ');
       return await deleteAccount(req, res, body);
     }
+    if (action === 'unlock') {
+      if (!isMaster) return bad(res, 403, 'masterのみ');
+      return await unlockAccount(req, res, body);
+    }
     if (action === 'create-for-new-staff') {
       return await createForNewStaff(req, res, body);
     }
@@ -101,7 +105,7 @@ export default async function handler(req, res) {
 
 async function listAccounts(req, res, payload) {
   if (payload.role !== 'master') return bad(res, 403, 'masterのみ');
-  const accounts = await sb(`accounts?order=role,dept_id.asc.nullslast,name&select=id,name,role,dept_id`);
+  const accounts = await sb(`accounts?order=role,dept_id.asc.nullslast,name&select=id,name,role,dept_id,failed_attempts,locked_at`);
   return res.status(200).json({ accounts });
 }
 
@@ -159,6 +163,16 @@ async function deleteAccount(req, res, body) {
   const { id } = body;
   if (!id) return bad(res, 400, 'idがありません');
   await sb(`accounts?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+  return res.status(200).json({ ok: true });
+}
+
+async function unlockAccount(req, res, body) {
+  const { id } = body;
+  if (!id) return bad(res, 400, 'idがありません');
+  await sb(`accounts?id=eq.${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ failed_attempts: 0, locked_at: null }),
+  });
   return res.status(200).json({ ok: true });
 }
 
