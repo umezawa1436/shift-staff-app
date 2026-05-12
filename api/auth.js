@@ -1,4 +1,10 @@
 // /api/auth.js
+// kingyo-shift 認証API
+// 仕様: 部門 + 名前 + パスワード でログイン (master/leader/staff 共通方式)
+//   - staff-login    : { deptId, staffCode, password }
+//   - admin-login    : { deptId (null=master), name, password }
+//   - change-password: { currentPassword, newPassword } + Authorization header
+
 import crypto from 'crypto';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -46,6 +52,7 @@ function extractBearer(req) {
   const m = auth.match(/^Bearer\s+(.+)$/i);
   return m ? m[1] : null;
 }
+
 async function sb(path, options = {}) {
   const url = `${SUPABASE_URL}/rest/v1/${path}`;
   const res = await fetch(url, {
@@ -62,6 +69,7 @@ async function sb(path, options = {}) {
   const t = await res.text();
   return t ? JSON.parse(t) : [];
 }
+
 function bad(res, status, message) { return res.status(status).json({ error: message }); }
 
 export default async function handler(req, res) {
@@ -80,6 +88,7 @@ export default async function handler(req, res) {
   }
 }
 
+// スタッフログイン: 部門 + staff_code + password
 async function staffLogin(req, res, body) {
   const { deptId, staffCode, password } = body;
   if (deptId === undefined || deptId === null || !staffCode || !password) return bad(res, 400, '入力が不足しています');
@@ -94,16 +103,28 @@ async function staffLogin(req, res, body) {
   return res.status(200).json({ token, user: { id: a.staff_id, accountId: a.id, staffCode: a.staff_code, name: a.name, deptId: a.dept_id, role: a.role } });
 }
 
+// 管理者ログイン: 部門 (nullなら master) + 名前 + password
+// leaderは自部門のdept_idでログイン
 async function adminLogin(req, res, body) {
-  const { email, password } = body;
-  if (!email || !password) return bad(res, 400, '入力が不足しています');
+  const { deptId, name, password } = body;
+  if (name === undefined || name === null || name === '' || !password) return bad(res, 400, '入力が不足しています');
   const hash = await sha256(password);
-  const accounts = await sb(`accounts?email=eq.${encodeURIComponent(email.toLowerCase())}&password_hash=eq.${hash}&select=id,name,email,role,dept_id`);
-  if (!accounts || accounts.length === 0) return bad(res, 401, 'メールアドレスまたはパスワードが正しくありません');
+
+  let query;
+  if (deptId === null || deptId === undefined || deptId === 'null' || deptId === '') {
+    // master 検索: dept_id is null
+    query = `accounts?name=eq.${encodeURIComponent(name)}&dept_id=is.null&password_hash=eq.${hash}&role=eq.master&select=id,name,role,dept_id`;
+  } else {
+    // leader 検索: dept_id = 指定値, role = leader
+    const deptIdNum = parseInt(deptId);
+    query = `accounts?name=eq.${encodeURIComponent(name)}&dept_id=eq.${deptIdNum}&password_hash=eq.${hash}&role=eq.leader&select=id,name,role,dept_id`;
+  }
+  const accounts = await sb(query);
+  if (!accounts || accounts.length === 0) return bad(res, 401, '名前またはパスワードが正しくありません');
   const a = accounts[0];
-  if (a.role !== 'master' && a.role !== 'leader') return bad(res, 403, '管理者権限がありません');
+
   const token = createToken({ accountId: a.id, role: a.role, deptId: a.dept_id });
-  return res.status(200).json({ token, user: { id: a.id, name: a.name, email: a.email, role: a.role, deptId: a.dept_id } });
+  return res.status(200).json({ token, user: { id: a.id, name: a.name, role: a.role, deptId: a.dept_id } });
 }
 
 async function changePassword(req, res, body) {
@@ -112,7 +133,7 @@ async function changePassword(req, res, body) {
   if (!payload) return bad(res, 401, 'セッションが無効です。再ログインしてください');
   const { currentPassword, newPassword } = body;
   if (!currentPassword || !newPassword) return bad(res, 400, '入力が不足しています');
-  if (newPassword.length < 8) return bad(res, 400, 'パスワードは8文字以上にしてください');
+  if (newPassword.length < 4) return bad(res, 400, 'パスワードは4文字以上にしてください');
   const currentHash = await sha256(currentPassword);
   const check = await sb(`accounts?id=eq.${payload.accountId}&password_hash=eq.${currentHash}&select=id`);
   if (!check || check.length === 0) return bad(res, 401, '現在のパスワードが正しくありません');
