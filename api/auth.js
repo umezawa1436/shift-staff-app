@@ -92,13 +92,40 @@ export default async function handler(req, res) {
 async function staffLogin(req, res, body) {
   const { deptId, staffCode, password } = body;
   if (deptId === undefined || deptId === null || !staffCode || !password) return bad(res, 400, '入力が不足しています');
-  const hash = await sha256(password);
   const deptIdNum = parseInt(deptId);
   const codeNum = parseInt(staffCode);
-  const accounts = await sb(`accounts?staff_code=eq.${codeNum}&dept_id=eq.${deptIdNum}&password_hash=eq.${hash}&role=eq.staff&select=id,name,dept_id,staff_id,staff_code,role`);
-  if (!accounts || accounts.length === 0) return bad(res, 401, 'パスワードが正しくありません');
-  const a = accounts[0];
+
+  // 該当アカウント取得（パスワード関係なく、ロック状態を確認するため）
+  const candidates = await sb(`accounts?staff_code=eq.${codeNum}&dept_id=eq.${deptIdNum}&role=eq.staff&select=id,name,dept_id,staff_id,staff_code,role,password_hash,failed_attempts,locked_at`);
+  if (!candidates || candidates.length === 0) return bad(res, 401, 'パスワードが正しくありません');
+  const a = candidates[0];
+
+  // ロックチェック
+  if (a.locked_at) {
+    return bad(res, 423, 'このアカウントはロックされています。管理者に解除を依頼してください。');
+  }
+
+  // パスワード照合
+  const hash = await sha256(password);
+  if (a.password_hash !== hash) {
+    // 失敗カウント増、5回でロック
+    const newCount = (a.failed_attempts || 0) + 1;
+    const updates = { failed_attempts: newCount };
+    if (newCount >= 5) updates.locked_at = new Date().toISOString();
+    await sb(`accounts?id=eq.${a.id}`, { method: 'PATCH', body: JSON.stringify(updates) });
+    if (newCount >= 5) {
+      return bad(res, 423, 'ログイン失敗が5回に達したため、アカウントがロックされました。管理者に解除を依頼してください。');
+    }
+    return bad(res, 401, `パスワードが正しくありません（残り${5 - newCount}回でロックされます）`);
+  }
+
   if (a.staff_id == null || a.staff_code == null) return bad(res, 500, 'アカウント設定が不完全です。管理者に連絡してください');
+
+  // 成功: 失敗カウントをリセット
+  if (a.failed_attempts && a.failed_attempts > 0) {
+    await sb(`accounts?id=eq.${a.id}`, { method: 'PATCH', body: JSON.stringify({ failed_attempts: 0 }) });
+  }
+
   const token = createToken({ accountId: a.id, role: a.role, deptId: a.dept_id });
   return res.status(200).json({ token, user: { id: a.staff_id, accountId: a.id, staffCode: a.staff_code, name: a.name, deptId: a.dept_id, role: a.role } });
 }
@@ -108,20 +135,41 @@ async function staffLogin(req, res, body) {
 async function adminLogin(req, res, body) {
   const { deptId, name, password } = body;
   if (name === undefined || name === null || name === '' || !password) return bad(res, 400, '入力が不足しています');
-  const hash = await sha256(password);
 
   let query;
   if (deptId === null || deptId === undefined || deptId === 'null' || deptId === '') {
-    // master 検索: dept_id is null
-    query = `accounts?name=eq.${encodeURIComponent(name)}&dept_id=is.null&password_hash=eq.${hash}&role=eq.master&select=id,name,role,dept_id`;
+    // master 検索
+    query = `accounts?name=eq.${encodeURIComponent(name)}&dept_id=is.null&role=eq.master&select=id,name,role,dept_id,password_hash,failed_attempts,locked_at`;
   } else {
-    // leader 検索: dept_id = 指定値, role = leader
     const deptIdNum = parseInt(deptId);
-    query = `accounts?name=eq.${encodeURIComponent(name)}&dept_id=eq.${deptIdNum}&password_hash=eq.${hash}&role=eq.leader&select=id,name,role,dept_id`;
+    query = `accounts?name=eq.${encodeURIComponent(name)}&dept_id=eq.${deptIdNum}&role=eq.leader&select=id,name,role,dept_id,password_hash,failed_attempts,locked_at`;
   }
-  const accounts = await sb(query);
-  if (!accounts || accounts.length === 0) return bad(res, 401, '名前またはパスワードが正しくありません');
-  const a = accounts[0];
+  const candidates = await sb(query);
+  if (!candidates || candidates.length === 0) return bad(res, 401, '名前またはパスワードが正しくありません');
+  const a = candidates[0];
+
+  // ロックチェック
+  if (a.locked_at) {
+    return bad(res, 423, 'このアカウントはロックされています。管理者に解除を依頼してください。');
+  }
+
+  // パスワード照合
+  const hash = await sha256(password);
+  if (a.password_hash !== hash) {
+    const newCount = (a.failed_attempts || 0) + 1;
+    const updates = { failed_attempts: newCount };
+    if (newCount >= 5) updates.locked_at = new Date().toISOString();
+    await sb(`accounts?id=eq.${a.id}`, { method: 'PATCH', body: JSON.stringify(updates) });
+    if (newCount >= 5) {
+      return bad(res, 423, 'ログイン失敗が5回に達したため、アカウントがロックされました。管理者に解除を依頼してください。');
+    }
+    return bad(res, 401, `名前またはパスワードが正しくありません（残り${5 - newCount}回でロックされます）`);
+  }
+
+  // 成功: 失敗カウントをリセット
+  if (a.failed_attempts && a.failed_attempts > 0) {
+    await sb(`accounts?id=eq.${a.id}`, { method: 'PATCH', body: JSON.stringify({ failed_attempts: 0 }) });
+  }
 
   const token = createToken({ accountId: a.id, role: a.role, deptId: a.dept_id });
   return res.status(200).json({ token, user: { id: a.id, name: a.name, role: a.role, deptId: a.dept_id } });
