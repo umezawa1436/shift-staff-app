@@ -1,4 +1,12 @@
 // /api/admin-accounts.js
+// kingyo-shift 管理者用 accounts CRUD API
+// 仕様: メールアドレス収集なし
+//   - list                 : アカウント一覧（master/leader）
+//   - create               : 単発アカウント追加（master）
+//   - update               : アカウント編集（master）
+//   - delete               : アカウント削除（master）
+//   - create-for-new-staff : 新規スタッフのアカウント作成（master/leader）
+
 import crypto from 'crypto';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -37,7 +45,6 @@ function extractBearer(req) {
   const m = auth.match(/^Bearer\s+(.+)$/i);
   return m ? m[1] : null;
 }
-
 async function sb(path, options = {}) {
   const url = `${SUPABASE_URL}/rest/v1/${path}`;
   const res = await fetch(url, {
@@ -94,41 +101,53 @@ export default async function handler(req, res) {
 
 async function listAccounts(req, res, payload) {
   if (payload.role !== 'master') return bad(res, 403, 'masterのみ');
-  const accounts = await sb(`accounts?order=role,name&select=id,email,name,role,dept_id`);
+  const accounts = await sb(`accounts?order=role,dept_id.asc.nullslast,name&select=id,name,role,dept_id`);
   return res.status(200).json({ accounts });
 }
 
 async function createAccount(req, res, body) {
-  const { name, email, password, role, deptId } = body;
-  if (!name || !email || !password) return bad(res, 400, '入力不足');
-  if (password.length < 8) return bad(res, 400, 'パスワードは8文字以上');
+  const { name, password, role, deptId } = body;
+  if (!name || !password) return bad(res, 400, '名前とパスワードを入力してください');
+  if (password.length < 4) return bad(res, 400, 'パスワードは4文字以上');
   if (!['master', 'leader', 'staff'].includes(role)) return bad(res, 400, 'roleが不正');
-  const hash = await sha256(password);
-  try {
-    await sb('accounts', {
-      method: 'POST',
-      body: JSON.stringify([{
-        name, email: email.toLowerCase(), password_hash: hash, role,
-        dept_id: ['leader', 'staff'].includes(role) ? (deptId ?? null) : null,
-      }]),
-    });
-  } catch (e) {
-    if (String(e.message).includes('unique')) return bad(res, 409, 'このメールアドレスは既に登録されています');
-    throw e;
+  if (role === 'master' && deptId != null) return bad(res, 400, 'masterは部門を指定できません');
+  if ((role === 'leader' || role === 'staff') && (deptId === null || deptId === undefined)) return bad(res, 400, '部門を指定してください');
+
+  // 重複チェック: 同一 dept_id (or null) + 同一 name + 同一 role はNG
+  const deptCondition = (deptId == null) ? 'dept_id=is.null' : `dept_id=eq.${parseInt(deptId)}`;
+  const existing = await sb(`accounts?name=eq.${encodeURIComponent(name)}&${deptCondition}&role=eq.${role}&select=id`);
+  if (existing && existing.length > 0) {
+    return bad(res, 409, '同じ部門・名前・権限のアカウントが既に存在します');
   }
+
+  const hash = await sha256(password);
+  await sb('accounts', {
+    method: 'POST',
+    body: JSON.stringify([{
+      name,
+      password_hash: hash,
+      role,
+      dept_id: (role === 'master') ? null : parseInt(deptId),
+    }]),
+  });
   return res.status(200).json({ ok: true });
 }
 
 async function updateAccount(req, res, body) {
-  const { id, name, email, password, role, deptId } = body;
+  const { id, name, password, role, deptId } = body;
   if (!id) return bad(res, 400, 'idがありません');
   const update = {};
   if (name !== undefined) update.name = name;
-  if (email !== undefined) update.email = String(email).toLowerCase();
-  if (role !== undefined) update.role = role;
-  if (deptId !== undefined) update.dept_id = deptId;
+  if (role !== undefined) {
+    update.role = role;
+    // role変更時は dept_id も適切に
+    if (role === 'master') update.dept_id = null;
+    else if (deptId !== undefined) update.dept_id = parseInt(deptId);
+  } else if (deptId !== undefined) {
+    update.dept_id = deptId === null ? null : parseInt(deptId);
+  }
   if (password) {
-    if (password.length < 8) return bad(res, 400, 'パスワードは8文字以上');
+    if (password.length < 4) return bad(res, 400, 'パスワードは4文字以上');
     update.password_hash = await sha256(password);
   }
   if (Object.keys(update).length === 0) return bad(res, 400, '更新内容なし');
@@ -144,23 +163,29 @@ async function deleteAccount(req, res, body) {
 }
 
 async function createForNewStaff(req, res, body) {
-  const { name, email, password, deptId, staffId, staffCode } = body;
-  if (!name || !email || !password || deptId == null || !staffId || staffCode == null) {
+  const { name, password, deptId, staffId, staffCode } = body;
+  if (!name || !password || deptId == null || !staffId || staffCode == null) {
     return bad(res, 400, '入力不足（staff_id/staff_code必須）');
   }
-  if (password.length < 8) return bad(res, 400, 'パスワードは8文字以上');
-  const hash = await sha256(password);
-  try {
-    await sb('accounts', {
-      method: 'POST',
-      body: JSON.stringify([{
-        name, email: email.toLowerCase(), password_hash: hash, role: 'staff',
-        dept_id: deptId, staff_id: staffId, staff_code: staffCode,
-      }]),
-    });
-  } catch (e) {
-    if (String(e.message).includes('unique')) return bad(res, 409, 'メールアドレスが既に使用されています');
-    throw e;
+  if (password.length < 4) return bad(res, 400, 'パスワードは4文字以上');
+
+  // 重複チェック: 同一 dept_id + 同一 name + role=staff はNG
+  const existing = await sb(`accounts?name=eq.${encodeURIComponent(name)}&dept_id=eq.${parseInt(deptId)}&role=eq.staff&select=id`);
+  if (existing && existing.length > 0) {
+    return bad(res, 409, '同じ部門・名前のスタッフアカウントが既に存在します');
   }
+
+  const hash = await sha256(password);
+  await sb('accounts', {
+    method: 'POST',
+    body: JSON.stringify([{
+      name,
+      password_hash: hash,
+      role: 'staff',
+      dept_id: parseInt(deptId),
+      staff_id: staffId,
+      staff_code: staffCode,
+    }]),
+  });
   return res.status(200).json({ ok: true });
 }

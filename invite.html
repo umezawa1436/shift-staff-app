@@ -54,18 +54,16 @@
     </svg>
   </div>
 
-  <!-- 読み込み中 -->
   <div id="loadingState" class="loading">
     <div class="spinner"></div>
     <div>招待を確認しています...</div>
   </div>
 
-  <!-- フォーム -->
   <div id="formState" style="display:none">
     <h1>アカウント作成</h1>
     <p class="subtitle">招待された情報を確認し、パスワードを設定してください</p>
 
-    <div class="staff-info" id="staffInfoBox">
+    <div class="staff-info">
       <div class="staff-info-row">
         <span class="staff-info-label">お名前</span>
         <span class="staff-info-value" id="staffName"></span>
@@ -79,15 +77,9 @@
     <div id="errorBox" class="error-box" style="display:none"></div>
 
     <div class="form-group">
-      <label class="form-label">メールアドレス</label>
-      <input type="email" class="form-input" id="emailInput" placeholder="example@example.com" autocomplete="email">
+      <label class="form-label">パスワード（4文字以上）</label>
+      <input type="password" class="form-input" id="passwordInput" placeholder="パスワードを設定" autocomplete="new-password">
       <div class="form-help">ログイン時に使用します</div>
-    </div>
-
-    <div class="form-group">
-      <label class="form-label">パスワード（8文字以上）</label>
-      <input type="password" class="form-input" id="passwordInput" placeholder="安全なパスワードを設定" autocomplete="new-password">
-      <div class="form-help">英数字記号を組み合わせると安全です</div>
     </div>
 
     <div class="form-group">
@@ -98,7 +90,6 @@
     <button class="btn btn-primary" id="createBtn">アカウントを作成</button>
   </div>
 
-  <!-- エラー -->
   <div id="errorState" style="display:none">
     <h1 style="color:#dc2626">⚠️ エラー</h1>
     <div id="errorMessage" class="error-box" style="margin-top:14px"></div>
@@ -107,12 +98,11 @@
     </div>
   </div>
 
-  <!-- 成功 -->
   <div id="successState" style="display:none">
     <h1 style="color:#059669">✅ 作成完了</h1>
     <div class="success-box" style="margin-top:16px">
       アカウントが作成されました！<br>
-      <strong>ログイン画面</strong>から、設定したメールアドレスとパスワードでログインしてください。
+      <strong>ログイン画面</strong>から、部門と名前を選んでパスワードを入力してください。
     </div>
     <a href="/" class="btn btn-primary" style="display:block;text-align:center;text-decoration:none;margin-top:16px">ログイン画面へ</a>
   </div>
@@ -172,17 +162,13 @@ async function initInvitation() {
 }
 
 document.getElementById('createBtn').addEventListener('click', async () => {
-  const email = document.getElementById('emailInput').value.trim().toLowerCase();
   const password = document.getElementById('passwordInput').value;
   const confirmPw = document.getElementById('passwordConfirm').value;
   const errBox = document.getElementById('errorBox');
   errBox.style.display = 'none';
 
-  // バリデーション
-  if (!email) { errBox.textContent = 'メールアドレスを入力してください'; errBox.style.display = 'block'; return; }
-  if (!email.includes('@')) { errBox.textContent = '有効なメールアドレスを入力してください'; errBox.style.display = 'block'; return; }
   if (!password) { errBox.textContent = 'パスワードを入力してください'; errBox.style.display = 'block'; return; }
-  if (password.length < 8) { errBox.textContent = 'パスワードは8文字以上にしてください'; errBox.style.display = 'block'; return; }
+  if (password.length < 4) { errBox.textContent = 'パスワードは4文字以上にしてください'; errBox.style.display = 'block'; return; }
   if (password !== confirmPw) { errBox.textContent = 'パスワードが一致しません'; errBox.style.display = 'block'; return; }
 
   const btn = document.getElementById('createBtn');
@@ -190,7 +176,7 @@ document.getElementById('createBtn').addEventListener('click', async () => {
   btn.textContent = '作成中...';
 
   try {
-    await callInviteApi('create', { token, email, password });
+    await callInviteApi('create', { token, password });
     showState('successState');
   } catch (e) {
     console.error(e);
@@ -201,7 +187,6 @@ document.getElementById('createBtn').addEventListener('click', async () => {
   }
 });
 
-// 初期化
 initInvitation();
 </script>
 </body>

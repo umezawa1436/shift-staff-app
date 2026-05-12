@@ -529,7 +529,7 @@
   <div class="sheet-handle"></div>
   <div class="sheet-header">
     <div class="sheet-date">パスワード変更</div>
-    <div class="sheet-hint">新しいパスワードを設定してください（8文字以上）</div>
+    <div class="sheet-hint">新しいパスワードを設定してください（4文字以上）</div>
   </div>
   <div style="padding:16px">
     <div style="margin-bottom:12px">
@@ -538,7 +538,7 @@
     </div>
     <div style="margin-bottom:12px">
       <label style="font-size:12px;color:#6b7a8d;font-weight:500;display:block;margin-bottom:6px">新しいパスワード</label>
-      <input type="password" id="staffNewPw" class="form-input" placeholder="8文字以上">
+      <input type="password" id="staffNewPw" class="form-input" placeholder="4文字以上">
     </div>
     <div style="margin-bottom:20px">
       <label style="font-size:12px;color:#6b7a8d;font-weight:500;display:block;margin-bottom:6px">新しいパスワード（確認）</label>
@@ -1317,8 +1317,8 @@ document.getElementById('staffChangePwBtn').addEventListener('click', async () =
   if (!currentPw || !newPw || !newPwConfirm) {
     errEl.style.display = 'block'; errEl.textContent = 'すべて入力してください'; return;
   }
-  if (newPw.length < 8) {
-    errEl.style.display = 'block'; errEl.textContent = 'パスワードは8文字以上にしてください'; return;
+  if (newPw.length < 4) {
+    errEl.style.display = 'block'; errEl.textContent = 'パスワードは4文字以上にしてください'; return;
   }
   if (newPw !== newPwConfirm) {
     errEl.style.display = 'block'; errEl.textContent = '新しいパスワードが一致しません'; return;

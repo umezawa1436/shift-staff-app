@@ -525,15 +525,28 @@
     <div class="login-title">kingyo-shift</div>
     <div class="login-sub">管理者ログイン｜やちよ総合診療クリニック</div>
     <div class="form-group">
-      <label class="form-label">メールアドレス</label>
-      <input type="email" class="form-input" id="adminEmail" placeholder="example@clinic.jp" autocomplete="email">
+      <label class="form-label">部門</label>
+      <select class="form-input" id="adminDeptSelect">
+        <option value="">部門を選択</option>
+        <option value="null">マスター</option>
+        <option value="0">医療事務</option>
+        <option value="1">看護</option>
+        <option value="2">リハビリ</option>
+        <option value="3">放射線</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">お名前</label>
+      <select class="form-input" id="adminNameSelect" disabled>
+        <option value="">先に部門を選択してください</option>
+      </select>
     </div>
     <div class="form-group">
       <label class="form-label">パスワード</label>
       <input type="password" class="form-input" id="adminPassword" placeholder="••••••••" autocomplete="current-password">
     </div>
     <button class="btn-login" id="adminLoginBtn">ログイン</button>
-    <div class="error-box" id="adminError">メールアドレスまたはパスワードが正しくありません</div>
+    <div class="error-box" id="adminError">名前またはパスワードが正しくありません</div>
   </div>
 </div>
 
@@ -861,7 +874,7 @@
               </div>
               <div class="form-group" style="margin-bottom:16px">
                 <label class="form-label">新しいパスワード</label>
-                <input type="password" class="form-input" id="newPw" placeholder="8文字以上">
+                <input type="password" class="form-input" id="newPw" placeholder="4文字以上">
               </div>
               <div class="form-group" style="margin-bottom:20px">
                 <label class="form-label">新しいパスワード（確認）</label>
@@ -876,7 +889,7 @@
               <button class="btn btn-primary" id="addAccountBtn">＋ アカウント追加</button>
             </div>
             <table class="data-table" id="accountTable">
-              <thead><tr><th>名前</th><th>メール</th><th>権限</th><th>部門</th><th>操作</th></tr></thead>
+              <thead><tr><th>名前</th><th>権限</th><th>部門</th><th>操作</th></tr></thead>
               <tbody id="accountBody"></tbody>
             </table>
           </div>
@@ -1011,12 +1024,8 @@
         <span style="font-weight:600;font-size:13px;color:#0c4a6e">🔑 ログインアカウントも作成する</span>
       </label>
       <div id="newStaffAccountFields">
-        <div class="form-group" style="margin-bottom:8px">
-          <label class="form-label" style="font-size:12px">メールアドレス</label>
-          <input type="email" class="form-input" id="newStaffEmail" placeholder="staff@example.com">
-        </div>
         <div class="form-group" style="margin-bottom:0">
-          <label class="form-label" style="font-size:12px">初期パスワード（8文字以上）</label>
+          <label class="form-label" style="font-size:12px">初期パスワード（4文字以上）</label>
           <input type="text" class="form-input" id="newStaffPassword" placeholder="後で本人が変更可能">
         </div>
         <div style="font-size:11px;color:#0369a1;margin-top:6px;line-height:1.5">
@@ -1239,29 +1248,69 @@ async function sha256(message) {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+// 部門選択時に名前ドロップダウンを動的に取得
+document.getElementById('adminDeptSelect').addEventListener('change', async (e) => {
+  const deptVal = e.target.value;
+  const nameSelect = document.getElementById('adminNameSelect');
+  nameSelect.innerHTML = '<option value="">読み込み中...</option>';
+  nameSelect.disabled = true;
+
+  if (deptVal === '') {
+    nameSelect.innerHTML = '<option value="">先に部門を選択してください</option>';
+    return;
+  }
+
+  try {
+    const deptIdToSend = (deptVal === 'null') ? null : parseInt(deptVal);
+    const res = await fetch('/api/admin-names', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deptId: deptIdToSend }),
+    });
+    const data = await res.json();
+    const names = data.names || [];
+
+    if (names.length === 0) {
+      nameSelect.innerHTML = '<option value="">該当する管理者がいません</option>';
+      nameSelect.disabled = true;
+    } else {
+      nameSelect.innerHTML = '<option value="">名前を選択</option>' +
+        names.map(n => `<option value="${n}">${n}</option>`).join('');
+      nameSelect.disabled = false;
+    }
+  } catch (err) {
+    console.error('名前取得エラー:', err);
+    nameSelect.innerHTML = '<option value="">読み込みに失敗しました</option>';
+    nameSelect.disabled = true;
+  }
+});
+
 document.getElementById('adminLoginBtn').addEventListener('click', async () => {
-  const email = document.getElementById('adminEmail').value.trim().toLowerCase();
+  const deptVal = document.getElementById('adminDeptSelect').value;
+  const name = document.getElementById('adminNameSelect').value;
   const pw = document.getElementById('adminPassword').value;
   const errEl = document.getElementById('adminError');
 
-  if (!email || !pw) {
+  if (deptVal === '' || !name || !pw) {
     errEl.style.display='block';
-    errEl.textContent='すべて入力してください';
+    errEl.textContent='すべて選択・入力してください';
     return;
   }
+
+  const deptId = (deptVal === 'null') ? null : parseInt(deptVal);
 
   showLoading();
   try {
     const r = await fetch('/api/auth', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'admin-login', email, password: pw }),
+      body: JSON.stringify({ action: 'admin-login', deptId, name, password: pw }),
     });
     const data = await r.json();
 
     if (!r.ok) {
       errEl.style.display='block';
-      errEl.textContent = data.error || 'メールアドレスまたはパスワードが正しくありません';
+      errEl.textContent = data.error || '名前またはパスワードが正しくありません';
       hideLoading();
       return;
     }
@@ -1271,7 +1320,6 @@ document.getElementById('adminLoginBtn').addEventListener('click', async () => {
     adminUser = {
       id: account.id,
       role: account.role,
-      email: account.email,
       name: account.name,
       deptId: account.deptId,
       deptName: account.deptId !== null ? DEPT_NAMES[account.deptId] : '全部門',
@@ -1279,7 +1327,7 @@ document.getElementById('adminLoginBtn').addEventListener('click', async () => {
     currentDept = account.deptId ?? 0;
 
     errEl.style.display='none';
-    // 権限制御：マスター = 全権、リーダー = スタッフ管理OK・アカウント管理NG、スタッフ = 両方NG
+    // 権限制御：マスター = 全権、リーダー = スタッフ管理OK・アカウント管理NG
     const isMaster = account.role === 'master';
     const isLeader = account.role === 'leader';
     document.getElementById('staffNavItem').style.display = (isMaster || isLeader) ? 'flex' : 'none';
@@ -3742,8 +3790,8 @@ async function changePassword() {
   if (!currentPw || !newPw || !newPwConfirm) {
     showToast('すべて入力してください', 'error'); return;
   }
-  if (newPw.length < 8) {
-    showToast('新しいパスワードは8文字以上にしてください', 'error'); return;
+  if (newPw.length < 4) {
+    showToast('新しいパスワードは4文字以上にしてください', 'error'); return;
   }
   if (newPw !== newPwConfirm) {
     showToast('新しいパスワードが一致しません', 'error'); return;
@@ -3776,11 +3824,10 @@ async function loadAccountList() {
     document.getElementById('accountBody').innerHTML = accounts.map(a => `
       <tr>
         <td>${a.name}</td>
-        <td>${a.email}</td>
         <td><span class="badge ${a.role==='master'?'badge-master':a.role==='leader'?'badge-leader':'badge-part'}">${ROLE_LABELS[a.role]||a.role}</span></td>
         <td>${a.dept_id !== null ? DEPT_NAMES[a.dept_id] : '全部門'}</td>
         <td style="display:flex;gap:6px">
-          <button class="btn btn-outline btn-sm" onclick="showEditAccountModal('${a.id}','${a.name}','${a.email}','${a.role}',${a.dept_id})">編集</button>
+          <button class="btn btn-outline btn-sm" onclick="showEditAccountModal('${a.id}','${a.name}','${a.role}',${a.dept_id})">編集</button>
           ${a.id !== adminUser.id ? `<button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="deleteAccount('${a.id}','${a.name}')">削除</button>` : ''}
         </td>
       </tr>
@@ -3797,9 +3844,8 @@ function showAddAccountModal() {
   modal.innerHTML = `
     <div class="modal">
       <div class="modal-title">アカウント追加</div>
-      <div class="form-group"><label class="form-label">名前</label><input type="text" class="form-input" id="newAccName" placeholder="山田 太郎"></div>
-      <div class="form-group"><label class="form-label">メールアドレス</label><input type="email" class="form-input" id="newAccEmail" placeholder="example@clinic.jp"></div>
-      <div class="form-group"><label class="form-label">初期パスワード</label><input type="password" class="form-input" id="newAccPw" placeholder="8文字以上"></div>
+      <div class="form-group"><label class="form-label">名前（苗字）</label><input type="text" class="form-input" id="newAccName" placeholder="山田"></div>
+      <div class="form-group"><label class="form-label">初期パスワード</label><input type="password" class="form-input" id="newAccPw" placeholder="4文字以上"></div>
       <div class="form-group"><label class="form-label">権限</label>
         <select class="form-select" id="newAccRole" onchange="document.getElementById('newAccDeptGroup').style.display=this.value==='leader'||this.value==='staff'?'block':'none'">
           <option value="leader">リーダー</option>
@@ -3825,19 +3871,18 @@ function showAddAccountModal() {
 
 async function addAccount() {
   const name = document.getElementById('newAccName').value.trim();
-  const email = document.getElementById('newAccEmail').value.trim().toLowerCase();
   const pw = document.getElementById('newAccPw').value;
   const role = document.getElementById('newAccRole').value;
   const deptId = ['leader','staff'].includes(role) ? parseInt(document.getElementById('newAccDept').value) : null;
 
-  if (!name || !email || !pw) { showToast('すべて入力してください', 'error'); return; }
-  if (pw.length < 8) { showToast('パスワードは8文字以上にしてください', 'error'); return; }
+  if (!name || !pw) { showToast('すべて入力してください', 'error'); return; }
+  if (pw.length < 4) { showToast('パスワードは4文字以上にしてください', 'error'); return; }
 
   showLoading();
   try {
     await adminApi('/api/admin-accounts', {
       action: 'create',
-      name, email, password: pw, role, deptId,
+      name, password: pw, role, deptId,
     });
     document.getElementById('addAccountModalEl')?.remove();
     await loadAccountList();
@@ -3849,18 +3894,16 @@ async function addAccount() {
   hideLoading();
 }
 
-function showEditAccountModal(id, name, email, role, deptId) {
+function showEditAccountModal(id, name, role, deptId) {
   document.getElementById('editAccountModalEl')?.remove();
   const modal = document.createElement('div');
   modal.id = 'editAccountModalEl';
   modal.className = 'modal-overlay show';
-  // 自分自身のロール変更は禁止（権限喪失防止）
   const isSelf = id === adminUser.id;
   modal.innerHTML = `
     <div class="modal">
       <div class="modal-title">${name}のアカウント編集</div>
-      <div class="form-group"><label class="form-label">名前</label><input type="text" class="form-input" id="editAccName" value="${name}"></div>
-      <div class="form-group"><label class="form-label">メールアドレス</label><input type="email" class="form-input" id="editAccEmail" value="${email}"></div>
+      <div class="form-group"><label class="form-label">名前（苗字）</label><input type="text" class="form-input" id="editAccName" value="${name}"></div>
       <div class="form-group"><label class="form-label">権限${isSelf ? '（自分自身の権限は変更できません）' : ''}</label>
         <select class="form-select" id="editAccRole" ${isSelf ? 'disabled' : ''} onchange="document.getElementById('editAccDeptGroup').style.display=this.value==='master'?'none':'block'">
           <option value="master" ${role==='master'?'selected':''}>マスター</option>
@@ -3889,18 +3932,17 @@ function showEditAccountModal(id, name, email, role, deptId) {
 
 async function updateAccount(id) {
   const name = document.getElementById('editAccName').value.trim();
-  const email = document.getElementById('editAccEmail').value.trim().toLowerCase();
   const pw = document.getElementById('editAccPw').value;
   const isSelf = id === adminUser.id;
   const role = isSelf ? null : document.getElementById('editAccRole').value;
   const deptId = isSelf ? null : (role === 'master' ? null : parseInt(document.getElementById('editAccDept').value));
 
-  if (!name || !email) { showToast('名前とメールは必須です', 'error'); return; }
-  if (pw && pw.length < 8) { showToast('パスワードは8文字以上にしてください', 'error'); return; }
+  if (!name) { showToast('名前は必須です', 'error'); return; }
+  if (pw && pw.length < 4) { showToast('パスワードは4文字以上にしてください', 'error'); return; }
 
   showLoading();
   try {
-    const payload = { action: 'update', id, name, email };
+    const payload = { action: 'update', id, name };
     if (pw) payload.password = pw;
     if (!isSelf) {
       payload.role = role;
@@ -6323,17 +6365,13 @@ document.getElementById('saveNewStaffBtn').addEventListener('click', async () =>
   const empType = document.getElementById('newStaffEmpType').value;
   const noNight = document.getElementById('newStaffNoNight').value === 'true';
   const createAccount = document.getElementById('newStaffCreateAccount').checked;
-  const email = document.getElementById('newStaffEmail').value.trim().toLowerCase();
   const password = document.getElementById('newStaffPassword').value;
 
   if (!name) { showToast('名前を入力してください','error'); return; }
 
-  // アカウント作成ON時はバリデーション
   if (createAccount) {
-    if (!email) { showToast('メールアドレスを入力してください','error'); return; }
-    if (!email.includes('@')) { showToast('有効なメールアドレスを入力してください','error'); return; }
     if (!password) { showToast('初期パスワードを入力してください','error'); return; }
-    if (password.length < 8) { showToast('パスワードは8文字以上にしてください','error'); return; }
+    if (password.length < 4) { showToast('パスワードは4文字以上にしてください','error'); return; }
   }
 
   showLoading();
@@ -6352,20 +6390,17 @@ document.getElementById('saveNewStaffBtn').addEventListener('click', async () =>
       try {
         await adminApi('/api/admin-accounts', {
           action: 'create-for-new-staff',
-          name, email, password,
+          name, password,
           deptId, staffId: newStaff.id, staffCode: newStaffCode,
         });
       } catch(accErr) {
         console.error('アカウント作成エラー:', accErr);
-        const msg = (accErr.message && accErr.message.includes('使用')) ?
-          `${name}を追加しましたが、メールアドレスが既に使われていてアカウントは作成できませんでした` :
-          `${name}を追加しましたが、アカウント作成に失敗しました（${accErr.message || ''}）`;
+        const msg = `${name}を追加しましたが、アカウント作成に失敗しました（${accErr.message || ''}）`;
         showToast(msg, 'error');
         await loadStaff();
         loadStaffTable();
         closeModal('addStaffModal');
         document.getElementById('newStaffName').value = '';
-        document.getElementById('newStaffEmail').value = '';
         document.getElementById('newStaffPassword').value = '';
         hideLoading();
         return;
@@ -6377,7 +6412,6 @@ document.getElementById('saveNewStaffBtn').addEventListener('click', async () =>
     closeModal('addStaffModal');
     // 入力リセット
     document.getElementById('newStaffName').value = '';
-    document.getElementById('newStaffEmail').value = '';
     document.getElementById('newStaffPassword').value = '';
     const msg = createAccount ? `${name} を追加しました（アカウントも作成 ✓）` : `${name} を追加しました ✓`;
     showToast(msg, 'success');
@@ -6551,9 +6585,12 @@ document.getElementById('genNextMonth').addEventListener('click', async () => { 
 // LOGOUT
 document.getElementById('adminLogoutBtn').addEventListener('click', () => {
   adminUser = null;
+  localStorage.removeItem('shift_admin_token');
   document.getElementById('appScreen').style.display = 'none';
   document.getElementById('loginScreen').style.display = 'flex';
-  document.getElementById('adminEmail').value = '';
+  document.getElementById('adminDeptSelect').value = '';
+  document.getElementById('adminNameSelect').innerHTML = '<option value="">先に部門を選択してください</option>';
+  document.getElementById('adminNameSelect').disabled = true;
   document.getElementById('adminPassword').value = '';
 });
 
