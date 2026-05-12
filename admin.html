@@ -6149,15 +6149,30 @@ function showClearFixedShiftsModal(staffId, staffName) {
   const modal = document.createElement('div');
   modal.id = 'clearFixedModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px)';
-  
+
   const months = Array.from({length:12},(_,i)=>i+1);
-  
+
   modal.innerHTML = `
-    <div style="background:white;border-radius:20px;padding:28px;width:100%;max-width:440px;box-shadow:0 20px 60px rgba(0,0,0,0.2)">
+    <div style="background:white;border-radius:20px;padding:28px;width:100%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,0.2)">
       <div style="font-size:18px;font-weight:700;margin-bottom:6px">${staffName}の繰り返しシフトを停止</div>
-      <div style="font-size:13px;color:var(--text-muted);margin-bottom:20px">曜日固定シフトの設定をクリアします。既存のシフトはそのまま残ります。</div>
-      <div style="background:#fef3c7;border-radius:10px;padding:12px;margin-bottom:20px;font-size:13px;color:#92400e">
-        ⚠️ 停止後は自動生成・手動反映でこのスタッフの曜日固定が適用されなくなります
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:20px">指定した月以降の曜日固定シフトを全て削除します（ロックも解除）</div>
+
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;font-weight:600">削除開始月（この月以降を全て削除）</div>
+      <div style="display:flex;gap:12px;margin-bottom:16px">
+        <select id="clearStartYear" style="flex:1;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
+          <option value="${currentYear}">${currentYear}年</option>
+          <option value="${currentYear+1}">${currentYear+1}年</option>
+        </select>
+        <select id="clearStartMonth" style="flex:1;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
+          ${months.map(m => `<option value="${m}" ${m===currentMonth?'selected':''}>${m}月</option>`).join('')}
+        </select>
+      </div>
+
+      <div style="background:#fef3c7;border-radius:10px;padding:12px;margin-bottom:20px;font-size:13px;color:#92400e;line-height:1.6">
+        ⚠️ <strong>削除対象</strong>：選択した月以降のこのスタッフのシフト + ロック<br>
+        ⚠️ ロックされているシフトも削除されます<br>
+        ⚠️ 過去の月（選択した月より前）には影響しません<br>
+        ⚠️ 曜日固定シフトの設定もクリアされます
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <button onclick="document.getElementById('clearFixedModal').remove()"
@@ -6172,25 +6187,57 @@ function showClearFixedShiftsModal(staffId, staffName) {
 }
 
 async function clearFixedShifts(staffId, staffName) {
+  const startYear = parseInt(document.getElementById('clearStartYear').value);
+  const startMonth = parseInt(document.getElementById('clearStartMonth').value);
   document.getElementById('clearFixedModal')?.remove();
+
+  if (!confirm(`${staffName}の${startYear}年${startMonth}月以降のシフトとロックを全て削除します。よろしいですか？`)) {
+    return;
+  }
+
   showLoading();
   try {
-    // fixed_shiftsをクリア（繰り返し設定を停止するだけ）
+    // 1. 指定月以降のシフトを削除（ロックの有無に関係なく）
+    // 安全のため2回に分けて実行:
+    //   (a) year > startYear の全行
+    //   (b) year = startYear かつ month >= startMonth の行
+    await sb(`shifts?staff_id=eq.${staffId}&year=gt.${startYear}`, { method: 'DELETE' });
+    await sb(`shifts?staff_id=eq.${staffId}&year=eq.${startYear}&month=gte.${startMonth}`, { method: 'DELETE' });
+
+    // 2. fixed_shiftsをクリア（繰り返し設定を停止）
     await sb(`staff?id=eq.${staffId}`, {
       method: 'PATCH',
       headers: { 'Prefer': 'return=representation' },
       body: JSON.stringify({ fixed_shifts: {} })
     });
 
-    // ローカルのallStaffも更新
+    // 3. ローカルのallStaffも更新
     const idx = allStaff.findIndex(s => s.id === staffId);
     if (idx !== -1) allStaff[idx].fixed_shifts = {};
 
-    // スタッフ管理画面を再描画
+    // 4. 表示中の月が削除範囲内なら、ローカルのshiftDataとlockedCellsもクリア
+    const shiftMonthKey = shiftYear * 12 + shiftMonth;
+    const startKey = startYear * 12 + startMonth;
+    if (shiftMonthKey >= startKey) {
+      // shiftData と lockedCells からこのスタッフのデータを削除
+      Object.keys(shiftData).forEach(key => {
+        if (key.startsWith(`${staffId}|`)) {
+          delete shiftData[key];
+        }
+      });
+      Object.keys(lockedCells).forEach(key => {
+        if (key.startsWith(`${staffId}|`)) {
+          delete lockedCells[key];
+        }
+      });
+      loadShiftGrid();
+    }
+
+    // 5. スタッフ管理画面を再描画
     await loadStaffTable();
 
-    showToast(`${staffName}の曜日固定シフトを停止しました ✓`, 'success');
-  } catch(e) { console.error(e); showToast('解除エラー','error'); }
+    showToast(`${staffName}の${startYear}年${startMonth}月以降のシフトを削除しました ✓`, 'success');
+  } catch(e) { console.error(e); showToast('解除エラー：' + (e.message||''), 'error'); }
   hideLoading();
 }
 
@@ -6200,29 +6247,42 @@ function showFixedShiftApplyModal(staffId, staffName, fixedShifts) {
   const modal = document.createElement('div');
   modal.id = 'fixedShiftApplyModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px)';
-  
+
   const months = [];
   for (let m = 1; m <= 12; m++) months.push(m);
-  
+
+  // 終了月のデフォルトは開始月+6ヶ月後
+  let defEndYear = currentYear;
+  let defEndMonth = currentMonth + 6;
+  if (defEndMonth > 12) { defEndMonth -= 12; defEndYear++; }
+
   modal.innerHTML = `
-    <div style="background:white;border-radius:20px;padding:28px;width:100%;max-width:440px;box-shadow:0 20px 60px rgba(0,0,0,0.2)">
+    <div style="background:white;border-radius:20px;padding:28px;width:100%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,0.2)">
       <div style="font-size:18px;font-weight:700;margin-bottom:6px">${staffName}の曜日固定を反映</div>
-      <div style="font-size:13px;color:var(--text-muted);margin-bottom:20px">シフト表に反映する月を選択してください</div>
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:20px">シフト表に反映する期間を選択してください</div>
+
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;font-weight:600">開始</div>
       <div style="display:flex;gap:12px;margin-bottom:16px">
-        <div style="flex:1">
-          <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">対象年月</div>
-          <select id="fixedApplyYear" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
-            <option value="${currentYear}">${currentYear}年</option>
-            <option value="${currentYear+1}">${currentYear+1}年</option>
-          </select>
-        </div>
-        <div style="flex:1">
-          <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">月</div>
-          <select id="fixedApplyMonth" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
-            ${months.map(m => `<option value="${m}" ${m===currentMonth?'selected':''}>${m}月</option>`).join('')}
-          </select>
-        </div>
+        <select id="fixedApplyStartYear" style="flex:1;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
+          <option value="${currentYear}">${currentYear}年</option>
+          <option value="${currentYear+1}">${currentYear+1}年</option>
+        </select>
+        <select id="fixedApplyStartMonth" style="flex:1;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
+          ${months.map(m => `<option value="${m}" ${m===currentMonth?'selected':''}>${m}月</option>`).join('')}
+        </select>
       </div>
+
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;font-weight:600">終了</div>
+      <div style="display:flex;gap:12px;margin-bottom:16px">
+        <select id="fixedApplyEndYear" style="flex:1;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
+          <option value="${currentYear}" ${defEndYear===currentYear?'selected':''}>${currentYear}年</option>
+          <option value="${currentYear+1}" ${defEndYear===currentYear+1?'selected':''}>${currentYear+1}年</option>
+        </select>
+        <select id="fixedApplyEndMonth" style="flex:1;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
+          ${months.map(m => `<option value="${m}" ${m===defEndMonth?'selected':''}>${m}月</option>`).join('')}
+        </select>
+      </div>
+
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;padding:12px;background:#fef3c7;border-radius:10px">
         <input type="checkbox" id="fixedApplyLock" checked style="width:16px;height:16px;cursor:pointer">
         <label for="fixedApplyLock" style="font-size:13px;cursor:pointer">反映後にロック（手動変更可）</label>
@@ -6240,50 +6300,72 @@ function showFixedShiftApplyModal(staffId, staffName, fixedShifts) {
 }
 
 async function applyFixedShiftsToGrid(staffId, fixedShifts) {
-  const year = parseInt(document.getElementById('fixedApplyYear').value);
-  const month = parseInt(document.getElementById('fixedApplyMonth').value);
+  const startYear = parseInt(document.getElementById('fixedApplyStartYear').value);
+  const startMonth = parseInt(document.getElementById('fixedApplyStartMonth').value);
+  const endYear = parseInt(document.getElementById('fixedApplyEndYear').value);
+  const endMonth = parseInt(document.getElementById('fixedApplyEndMonth').value);
   const withLock = document.getElementById('fixedApplyLock').checked;
   document.getElementById('fixedShiftApplyModal')?.remove();
 
+  // 期間の妥当性チェック
+  const startKey = startYear * 12 + startMonth;
+  const endKey = endYear * 12 + endMonth;
+  if (endKey < startKey) {
+    showToast('終了月は開始月以降にしてください', 'error');
+    return;
+  }
+
   showLoading();
   try {
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const inserts = [];
+    let totalInserts = 0;
+    let monthCount = 0;
 
-    // 既存シフトを取得
-    const existing = await sb(`shifts?staff_id=eq.${staffId}&year=eq.${year}&month=eq.${month}&select=day,shift_type_id,is_locked`);
-    const existingMap = {};
-    existing.forEach(s => { existingMap[s.day] = s; });
+    // 開始年月から終了年月まで月単位でループ
+    let curYear = startYear;
+    let curMonth = startMonth;
+    while (curYear * 12 + curMonth <= endKey) {
+      const daysInMonth = new Date(curYear, curMonth, 0).getDate();
+      const inserts = [];
 
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dow = new Date(year, month-1, d).getDay();
-      const fixedShift = fixedShifts[dow];
-      if (!fixedShift) continue;
-      // ロック済みはスキップ
-      if (existingMap[d]?.is_locked) continue;
-      inserts.push({ staff_id:staffId, year, month, day:d, shift_type_id:fixedShift, is_locked:withLock });
-    }
+      // 既存シフトを取得
+      const existing = await sb(`shifts?staff_id=eq.${staffId}&year=eq.${curYear}&month=eq.${curMonth}&select=day,shift_type_id,is_locked`);
+      const existingMap = {};
+      existing.forEach(s => { existingMap[s.day] = s; });
 
-    if (inserts.length > 0) {
-      // 対象日を削除してから挿入
-      const days = inserts.map(i => i.day);
-      for (const ins of inserts) {
-        await sb(`shifts?staff_id=eq.${staffId}&year=eq.${year}&month=eq.${month}&day=eq.${ins.day}&is_locked=eq.false`, {method:'DELETE'});
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dow = new Date(curYear, curMonth-1, d).getDay();
+        const fixedShift = fixedShifts[dow];
+        if (!fixedShift) continue;
+        // ロック済みはスキップ
+        if (existingMap[d]?.is_locked) continue;
+        inserts.push({ staff_id:staffId, year:curYear, month:curMonth, day:d, shift_type_id:fixedShift, is_locked:withLock });
       }
-      await sb('shifts', {method:'POST', body:JSON.stringify(inserts)});
+
+      if (inserts.length > 0) {
+        // 対象日のロックされてないシフトを削除してから挿入
+        for (const ins of inserts) {
+          await sb(`shifts?staff_id=eq.${staffId}&year=eq.${curYear}&month=eq.${curMonth}&day=eq.${ins.day}&is_locked=eq.false`, {method:'DELETE'});
+        }
+        await sb('shifts', {method:'POST', body:JSON.stringify(inserts)});
+        totalInserts += inserts.length;
+      }
+
+      // 表示中の月ならローカルにも反映
+      if (curYear === shiftYear && curMonth === shiftMonth) {
+        inserts.forEach(ins => {
+          const key = `${staffId}|${ins.day}`;
+          shiftData[key] = ins.shift_type_id;
+          if (withLock) lockedCells[key] = true;
+        });
+        loadShiftGrid();
+      }
+
+      monthCount++;
+      curMonth++;
+      if (curMonth > 12) { curMonth = 1; curYear++; }
     }
 
-    // シフトデータをローカルに反映
-    if (year === shiftYear && month === shiftMonth) {
-      inserts.forEach(ins => {
-        const key = `${staffId}|${ins.day}`;
-        shiftData[key] = ins.shift_type_id;
-        if (withLock) lockedCells[key] = true;
-      });
-      loadShiftGrid();
-    }
-
-    showToast(`${month}月に${inserts.length}日分の固定シフトを反映しました ✓`, 'success');
+    showToast(`${monthCount}ヶ月分・合計${totalInserts}日の固定シフトを反映しました ✓`, 'success');
   } catch(e) { console.error(e); showToast('反映エラー','error'); }
   hideLoading();
 }
