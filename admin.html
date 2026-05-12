@@ -6151,7 +6151,7 @@ function showClearFixedShiftsModal(staffId, staffName) {
   const fixedEntries = Object.entries(currentFixed);
 
   if (fixedEntries.length === 0) {
-    showToast('曜日固定シフトが設定されていません', 'info');
+    showToast('曜日固定シフトが設定されていません', 'error');
     return;
   }
 
@@ -6160,8 +6160,9 @@ function showClearFixedShiftsModal(staffId, staffName) {
   modal.id = 'clearFixedModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px)';
 
+  const DOW_LABELS_LOCAL = ['日','月','火','水','木','金','土'];
   const months = Array.from({length:12},(_,i)=>i+1);
-  const fixedDesc = fixedEntries.map(([dow, shift]) => `${DOW_LABELS[dow]}曜:${shift}`).join(' / ');
+  const fixedDesc = fixedEntries.map(([dow, shift]) => `${DOW_LABELS_LOCAL[dow]}曜:${shift}`).join(' / ');
 
   modal.innerHTML = `
     <div style="background:white;border-radius:20px;padding:28px;width:100%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,0.2)">
