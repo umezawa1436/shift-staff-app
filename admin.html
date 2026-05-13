@@ -367,24 +367,7 @@
 <div class="modal-overlay" id="aiAdviceModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
   <div class="modal-content" style="background:white;border-radius:16px;padding:24px;width:100%;max-width:720px;max-height:90vh;overflow-y:auto;margin-top:20px">
     <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <span style="font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px">
-        <svg width="28" height="19" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
-          <g transform="translate(20, 30)">
-            <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
-            <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
-          </g>
-          <g transform="translate(50, 30)">
-            <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
-            <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
-            <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
-            <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
-            <circle cx="20" cy="-3" r="5" fill="white"/>
-            <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
-            <circle cx="22" cy="-4" r="0.8" fill="white"/>
-          </g>
-        </svg>
-        AIに相談
-      </span>
+      <span style="font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px">🤖 AIに相談</span>
       <button class="btn btn-outline" id="closeAiModal" style="padding:6px 12px">✕</button>
     </div>
 
@@ -446,48 +429,14 @@
     <div id="aiStepResult" style="display:none">
       <!-- サマリー -->
       <div id="aiSummaryBox" style="display:none;background:linear-gradient(135deg,#faf5ff,#eff6ff);border-radius:12px;padding:14px;border:1px solid #e9d5ff;margin-bottom:14px">
-        <div style="font-size:12px;font-weight:600;color:#6b21a8;margin-bottom:4px;display:flex;align-items:center;gap:6px">
-          <svg width="20" height="14" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
-            <g transform="translate(20, 30)">
-              <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
-              <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
-            </g>
-            <g transform="translate(50, 30)">
-              <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
-              <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
-              <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
-              <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
-              <circle cx="20" cy="-3" r="5" fill="white"/>
-              <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
-              <circle cx="22" cy="-4" r="0.8" fill="white"/>
-            </g>
-          </svg>
-          <span>全体所感</span>
-        </div>
+        <div style="font-size:12px;font-weight:600;color:#6b21a8;margin-bottom:4px">🤖 全体所感</div>
         <div id="aiSummaryText" style="font-size:13px;color:#1f2937;line-height:1.6"></div>
       </div>
       <!-- 提案カードリスト -->
       <div id="aiSuggestionsList"></div>
       <!-- テキスト返答（problems モードのみ） -->
       <div id="aiResultTextBox" style="display:none;background:#f8fafc;border-radius:12px;padding:14px;border:1px solid #e5e7eb;margin-bottom:12px">
-        <div style="font-size:12px;font-weight:600;color:#475569;margin-bottom:6px;display:flex;align-items:center;gap:6px">
-          <svg width="20" height="14" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
-            <g transform="translate(20, 30)">
-              <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
-              <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
-            </g>
-            <g transform="translate(50, 30)">
-              <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
-              <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
-              <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
-              <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
-              <circle cx="20" cy="-3" r="5" fill="white"/>
-              <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
-              <circle cx="22" cy="-4" r="0.8" fill="white"/>
-            </g>
-          </svg>
-          <span>Geminiからの指摘</span>
-        </div>
+        <div style="font-size:12px;font-weight:600;color:#475569;margin-bottom:6px">🤖 Geminiからの指摘</div>
         <div id="aiResultText" style="font-size:13px;line-height:1.7;color:#1f2937;white-space:pre-wrap"></div>
       </div>
       <!-- 操作ボタン -->
@@ -814,6 +763,18 @@
               <button class="btn-nav" id="specialNextMonth">▶</button>
             </div>
             <div id="specialDaysGrid"></div>
+            <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
+              <div style="font-size:14px;font-weight:600;margin-bottom:8px">クリニック休診日（任意）</div>
+              <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
+                祝日・木曜以外でクリニックが休診と定める日を追加します。スタッフのシフト希望提出画面で休診表示されます。
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+                <select id="customClosedDaySelect" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:white;font-family:inherit"></select>
+                <input type="text" id="customClosedLabelInput" placeholder="ラベル（例：お盆休み）" maxlength="20" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;flex:1;min-width:160px;font-family:inherit">
+                <button id="addCustomClosedBtn" class="btn btn-primary" style="padding:8px 16px;font-size:13px">追加</button>
+              </div>
+              <div id="customClosedList"></div>
+            </div>
           </div>
           <div class="card">
             <div class="card-title">
@@ -4057,6 +4018,7 @@ let specialYear = new Date().getFullYear();
 let specialMonth = new Date().getMonth() + 1;
 let holidayData = {}; // {day: 'open'|'closed'} 祝日の診療状況
 let thursdayData = {}; // {day: true|false} 木曜の診療状況
+let customClosedData = {}; // {day: 'お盆休み'} 任意休診日のラベル
 
 // 日本の祝日（2026年）
 const JAPAN_HOLIDAYS_2026 = {
@@ -4097,12 +4059,22 @@ function getDefaultHolidays(year, month) {
 
 async function loadSpecialDays() {
   try {
-    const [holidays, thursdays] = await Promise.all([
+    const [special, thursdays] = await Promise.all([
       sb(`special_days?year=eq.${specialYear}&month=eq.${specialMonth}&select=day,is_holiday,is_closed,label`),
       sb(`thursday_types?year=eq.${specialYear}&month=eq.${specialMonth}&select=day,is_open`)
     ]);
     holidayData = {};
-    holidays.forEach(h => { holidayData[h.day] = h.is_closed ? 'closed' : 'open'; });
+    customClosedData = {};
+    const defaultHolidays = getDefaultHolidays(specialYear, specialMonth);
+    special.forEach(h => {
+      // 祝日（カレンダー上の祝日）: holidayDataで管理
+      // 任意休診日（祝日でない日でis_closed=true）: customClosedDataで管理
+      if (defaultHolidays.has(h.day) || h.is_holiday === true) {
+        holidayData[h.day] = h.is_closed ? 'closed' : 'open';
+      } else if (h.is_closed === true) {
+        customClosedData[h.day] = h.label || '休診';
+      }
+    });
     thursdayData = {};
     thursdays.forEach(t => { thursdayData[t.day] = t.is_open; });
   } catch(e) { console.error(e); }
@@ -4162,6 +4134,103 @@ async function renderSpecialDaysGrid() {
 
   // 木曜グリッド
   renderThursdayGrid(daysInMonth);
+  // 任意休診日セクション
+  renderCustomClosedSection(daysInMonth);
+}
+
+// 任意休診日：DOW略称
+const _CUSTOM_CLOSED_DOW = ['日','月','火','水','木','金','土'];
+
+function renderCustomClosedSection(daysInMonth) {
+  const selectEl = document.getElementById('customClosedDaySelect');
+  const listEl = document.getElementById('customClosedList');
+  if (!selectEl || !listEl) return;
+
+  // 既に祝日として登録されている日 or 任意休診日として登録されている日は除外
+  const defaultHolidays = getDefaultHolidays(specialYear, specialMonth);
+  const alreadyClosedDays = new Set();
+  Object.entries(holidayData).forEach(([d, st]) => {
+    if (st === 'closed') alreadyClosedDays.add(Number(d));
+  });
+  Object.keys(customClosedData).forEach(d => alreadyClosedDays.add(Number(d)));
+
+  // セレクトボックス：休診として追加可能な日のみリスト
+  let options = '<option value="">日付を選択</option>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    if (defaultHolidays.has(d)) continue; // 祝日は上のセクションで管理
+    if (alreadyClosedDays.has(d)) continue; // 既に休診の日は除外
+    const dow = new Date(specialYear, specialMonth-1, d).getDay();
+    options += `<option value="${d}">${specialMonth}/${d}（${_CUSTOM_CLOSED_DOW[dow]}）</option>`;
+  }
+  selectEl.innerHTML = options;
+
+  // 登録済み任意休診日リスト
+  const closedDays = Object.keys(customClosedData).map(Number).sort((a,b)=>a-b);
+  if (closedDays.length === 0) {
+    listEl.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:8px">任意休診日はまだ登録されていません</div>';
+  } else {
+    listEl.innerHTML = closedDays.map(d => {
+      const dow = new Date(specialYear, specialMonth-1, d).getDay();
+      const label = customClosedData[d] || '休診';
+      return `
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+          <div style="min-width:120px;font-size:14px;font-weight:600;color:#6b7280">
+            ${specialMonth}/${d}（${_CUSTOM_CLOSED_DOW[dow]}）
+          </div>
+          <div style="flex:1;font-size:13px;color:#1f2937">${escapeHtml(label)}</div>
+          <button onclick="removeCustomClosedDay(${d})"
+            style="padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid var(--danger);background:white;color:var(--danger);font-family:inherit">
+            削除
+          </button>
+        </div>`;
+    }).join('');
+  }
+}
+
+async function addCustomClosedDay() {
+  const selectEl = document.getElementById('customClosedDaySelect');
+  const labelEl = document.getElementById('customClosedLabelInput');
+  const day = Number(selectEl.value);
+  const label = (labelEl.value || '').trim() || '休診';
+  if (!day) {
+    showToast('日付を選択してください', 'error');
+    return;
+  }
+  showLoading();
+  try {
+    // 既存のレコードがあれば削除してから挿入（UPSERT相当）
+    await sb(`special_days?year=eq.${specialYear}&month=eq.${specialMonth}&day=eq.${day}`, {method:'DELETE'});
+    await sb('special_days', {method:'POST', body:JSON.stringify([{
+      year: specialYear, month: specialMonth, day,
+      day_type: 'clinic_closed',
+      is_holiday: false,
+      is_closed: true,
+      label: label
+    }])});
+    customClosedData[day] = label;
+    labelEl.value = '';
+    await renderSpecialDaysGrid();
+    showToast(`${specialMonth}/${day}を休診日に設定しました ✓`, 'success');
+  } catch(e) {
+    console.error(e);
+    showToast('保存エラー', 'error');
+  }
+  hideLoading();
+}
+
+async function removeCustomClosedDay(day) {
+  if (!confirm(`${specialMonth}/${day}の休診日設定を解除しますか？`)) return;
+  showLoading();
+  try {
+    await sb(`special_days?year=eq.${specialYear}&month=eq.${specialMonth}&day=eq.${day}`, {method:'DELETE'});
+    delete customClosedData[day];
+    await renderSpecialDaysGrid();
+    showToast(`${specialMonth}/${day}の休診を解除しました ✓`, 'success');
+  } catch(e) {
+    console.error(e);
+    showToast('削除エラー', 'error');
+  }
+  hideLoading();
 }
 
 function renderThursdayGrid(daysInMonth) {
@@ -4250,6 +4319,10 @@ document.getElementById('specialNextMonth')?.addEventListener('click', async () 
   specialMonth++; if(specialMonth>12){specialMonth=1;specialYear++;}
   document.getElementById('specialMonthTitle').textContent = `${specialYear}年${specialMonth}月`;
   await renderSpecialDaysGrid();
+});
+document.getElementById('addCustomClosedBtn')?.addEventListener('click', addCustomClosedDay);
+document.getElementById('customClosedLabelInput')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); addCustomClosedDay(); }
 });
 
 
