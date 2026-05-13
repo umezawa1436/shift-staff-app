@@ -1131,6 +1131,32 @@ let allStaff = [], shiftData = {}, lockedCells = {}, wedTypes = {}, generatedShi
 // シフト表の状態管理
 let shiftGridContext = null; // 'dept|year|month' - 現在ロード済みのコンテキスト
 let savedShiftSnapshot = null; // 最後の保存時点（DBロード時 or 保存成功時に更新）
+let shiftMonthCache = {}; // {ctx: {shiftData, lockedCells, savedShiftSnapshot, undoStack, redoStack}} 月・部署切替時の状態保持用
+
+// 現在の状態をキャッシュに保存（コンテキスト切替前に呼ぶ）
+function saveCurrentShiftStateToCache() {
+  if (!shiftGridContext) return;
+  shiftMonthCache[shiftGridContext] = {
+    shiftData: JSON.parse(JSON.stringify(shiftData)),
+    lockedCells: JSON.parse(JSON.stringify(lockedCells)),
+    savedShiftSnapshot: savedShiftSnapshot ? JSON.parse(JSON.stringify(savedShiftSnapshot)) : null,
+    undoStack: undoStack.slice(),
+    redoStack: redoStack.slice()
+  };
+}
+
+// キャッシュから復元（成功時 true）
+function tryRestoreShiftStateFromCache(ctx) {
+  if (!shiftMonthCache[ctx]) return false;
+  const c = shiftMonthCache[ctx];
+  shiftData = JSON.parse(JSON.stringify(c.shiftData));
+  lockedCells = JSON.parse(JSON.stringify(c.lockedCells));
+  savedShiftSnapshot = c.savedShiftSnapshot ? JSON.parse(JSON.stringify(c.savedShiftSnapshot)) : null;
+  undoStack = c.undoStack.slice();
+  redoStack = c.redoStack.slice();
+  shiftGridContext = ctx;
+  return true;
+}
 let editingCell = null;
 
 const DEPT_NAMES = {0:'医療事務',1:'看護',2:'リハビリ',3:'放射線'};
@@ -1458,6 +1484,8 @@ function buildAllDeptTabs() {
       btn.className = `dept-tab${dId === currentDept ? ' active' : ''}`;
       btn.textContent = DEPT_NAMES[dId];
       btn.addEventListener('click', () => {
+        // シフト表を見ている場合、切替前の状態をキャッシュ保存
+        saveCurrentShiftStateToCache();
         currentDept = dId;
         document.querySelectorAll('.dept-tab').forEach(b => {
           const parent = b.closest('[id$="DeptTabs"]');
@@ -1494,11 +1522,17 @@ function refreshCurrentPage() {
   const active = document.querySelector('.page.active')?.id?.replace('page-','');
   if (active === 'requests') loadRequests();
   else if (active === 'shift') {
-    // 同じdept+year+monthでロード済みなら未保存の変更を保持して再描画のみ
     const ctx = `${currentDept}|${shiftYear}|${shiftMonth}`;
+    // 同コンテキストならメモリ状態で再描画のみ（未保存変更を保持）
     if (shiftGridContext === ctx && (Object.keys(shiftData).length > 0 || Object.keys(lockedCells).length > 0)) {
       rerenderShiftGridFromMemory();
-    } else {
+    }
+    // 別コンテキストでも過去にキャッシュがあればそれを使う（月・部署切替時の未保存変更を復元）
+    else if (tryRestoreShiftStateFromCache(ctx)) {
+      rerenderShiftGridFromMemory();
+    }
+    // どちらもなければDBから新規読み込み
+    else {
       loadShiftGrid();
     }
   }
@@ -7065,8 +7099,8 @@ document.getElementById('printShiftBtn')?.addEventListener('click', () => {
 // MONTH NAV
 document.getElementById('reqPrevMonth').addEventListener('click', async () => { reqMonth--; if(reqMonth<1){reqMonth=12;reqYear--;} updateMonthDisplays(); await loadRequests(); });
 document.getElementById('reqNextMonth').addEventListener('click', async () => { reqMonth++; if(reqMonth>12){reqMonth=1;reqYear++;} updateMonthDisplays(); await loadRequests(); });
-document.getElementById('shiftPrevMonth').addEventListener('click', async () => { shiftMonth--; if(shiftMonth<1){shiftMonth=12;shiftYear--;} updateMonthDisplays(); await loadShiftGrid(); });
-document.getElementById('shiftNextMonth').addEventListener('click', async () => { shiftMonth++; if(shiftMonth>12){shiftMonth=1;shiftYear++;} updateMonthDisplays(); await loadShiftGrid(); });
+document.getElementById('shiftPrevMonth').addEventListener('click', async () => { saveCurrentShiftStateToCache(); shiftMonth--; if(shiftMonth<1){shiftMonth=12;shiftYear--;} updateMonthDisplays(); const newCtx = `${currentDept}|${shiftYear}|${shiftMonth}`; if (tryRestoreShiftStateFromCache(newCtx)) rerenderShiftGridFromMemory(); else await loadShiftGrid(); });
+document.getElementById('shiftNextMonth').addEventListener('click', async () => { saveCurrentShiftStateToCache(); shiftMonth++; if(shiftMonth>12){shiftMonth=1;shiftYear++;} updateMonthDisplays(); const newCtx = `${currentDept}|${shiftYear}|${shiftMonth}`; if (tryRestoreShiftStateFromCache(newCtx)) rerenderShiftGridFromMemory(); else await loadShiftGrid(); });
 document.getElementById('genPrevMonth').addEventListener('click', async () => { genMonth--; if(genMonth<1){genMonth=12;genYear--;} updateMonthDisplays(); await loadGenPage(); });
 document.getElementById('genNextMonth').addEventListener('click', async () => { genMonth++; if(genMonth>12){genMonth=1;genYear++;} updateMonthDisplays(); await loadGenPage(); });
 
