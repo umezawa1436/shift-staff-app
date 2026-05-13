@@ -208,6 +208,10 @@
     .cal-day.today { border-color: var(--primary); background: rgba(15,76,129,0.04); }
     .cal-day.past { opacity: 0.4; cursor: default; }
     .cal-day.past:active { transform: none; }
+    .cal-day.clinic-closed { background: #f3f4f6 !important; cursor: not-allowed; border-color: #e5e7eb !important; }
+    .cal-day.clinic-closed:active { transform: none; }
+    .cal-day.clinic-closed .day-num { color: #9ca3af; }
+    .cal-day.clinic-closed .day-closed-label { font-size: 9px; font-weight: 600; color: #6b7280; margin-top: 2px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
     .day-num { font-size: 14px; font-weight: 600; line-height: 1; }
     .cal-day.sun .day-num { color: #ef4444; }
     .cal-day.sat .day-num { color: #3b82f6; }
@@ -576,6 +580,8 @@ async function sha256(message) {
 let currentUser = null;
 let currentYear = new Date().getFullYear();
 let currentMonth = new Date().getMonth() + 1;
+let clinicClosedDays = {}; // {day: label} — special_daysでis_closed=trueの日
+let thursdayOpenDays = new Set(); // 木曜だが診療日として設定された日
 let requests = {};
 let selectedDay = null;
 let shiftTypesAll = [];
@@ -951,6 +957,7 @@ async function showApp() {
   document.getElementById('headerDept').textContent = currentUser.deptName;
   await loadShiftTypesFromDB();
   await loadRequests();
+  await loadClinicSettings();
   await loadReqLimitsForStaff();
   await loadDeadlineForStaff();
   renderDeadlineInfo();
@@ -970,6 +977,38 @@ async function loadRequests() {
     requests = {};
     data.forEach(r => { requests[`${currentYear}-${currentMonth}-${r.day}`] = r.request_type; });
   } catch(e) { console.error(e); }
+}
+
+// クリニック休診日の読み込み（木曜デフォルト休診 + special_daysのis_closed=true）
+async function loadClinicSettings() {
+  try {
+    const [specialData, thursdayData] = await Promise.all([
+      supabaseRequest(`special_days?year=eq.${currentYear}&month=eq.${currentMonth}&select=day,is_closed,label`),
+      supabaseRequest(`thursday_types?year=eq.${currentYear}&month=eq.${currentMonth}&select=day,is_open`)
+    ]);
+    clinicClosedDays = {};
+    specialData.forEach(s => {
+      if (s.is_closed) clinicClosedDays[s.day] = s.label || '休診';
+    });
+    thursdayOpenDays = new Set();
+    thursdayData.forEach(t => {
+      if (t.is_open) thursdayOpenDays.add(t.day);
+    });
+  } catch(e) {
+    console.error('クリニック設定の読み込みエラー:', e);
+    clinicClosedDays = {};
+    thursdayOpenDays = new Set();
+  }
+}
+
+// 指定日が休診かどうか判定
+function isClinicClosed(day) {
+  // special_daysで休診指定された日（祝日・任意休診日問わず）
+  if (clinicClosedDays[day]) return { closed: true, label: clinicClosedDays[day] };
+  // 木曜：診療日として明示的に設定されていない限り休診
+  const dow = new Date(currentYear, currentMonth - 1, day).getDay();
+  if (dow === 4 && !thursdayOpenDays.has(day)) return { closed: true, label: '休診' };
+  return { closed: false };
 }
 
 function renderCalendar() {
@@ -996,16 +1035,21 @@ function renderCalendar() {
 
     const isPast = date < new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const isToday = date.toDateString() === today.toDateString();
+    const closedInfo = isClinicClosed(d);
 
     const cell = document.createElement('div');
-    cell.className = `cal-day${isPast ? ' past' : ''}${isToday ? ' today' : ''}${dow === 0 ? ' sun' : ''}${dow === 6 ? ' sat' : ''}`;
+    cell.className = `cal-day${isPast ? ' past' : ''}${isToday ? ' today' : ''}${dow === 0 ? ' sun' : ''}${dow === 6 ? ' sat' : ''}${closedInfo.closed ? ' clinic-closed' : ''}`;
 
-    if (shift) cell.classList.add('has-shift', `shift-${shift}`);
+    if (shift && !closedInfo.closed) cell.classList.add('has-shift', `shift-${shift}`);
 
-    cell.innerHTML = `<div class="day-num">${d}</div>${shift ? `<div class="day-shift">${shift}</div>` : ''}`;
+    if (closedInfo.closed) {
+      cell.innerHTML = `<div class="day-num">${d}</div><div class="day-closed-label">${closedInfo.label}</div>`;
+    } else {
+      cell.innerHTML = `<div class="day-num">${d}</div>${shift ? `<div class="day-shift">${shift}</div>` : ''}`;
+    }
 
-    if (!isPast && !deadlinePassed) cell.addEventListener('click', () => openDaySheet(d, shift));
-    else if (deadlinePassed && !isPast) cell.style.opacity = '0.7';
+    if (!isPast && !deadlinePassed && !closedInfo.closed) cell.addEventListener('click', () => openDaySheet(d, shift));
+    else if (deadlinePassed && !isPast && !closedInfo.closed) cell.style.opacity = '0.7';
 
     grid.appendChild(cell);
   }
@@ -1269,6 +1313,7 @@ document.getElementById('prevMonthBtn').addEventListener('click', async () => {
   currentMonth--;
   if (currentMonth < 1) { currentMonth = 12; currentYear--; }
   await loadRequests();
+  await loadClinicSettings();
   await loadReqLimitsForStaff();
   await loadDeadlineForStaff();
   renderDeadlineInfo();
@@ -1279,6 +1324,7 @@ document.getElementById('nextMonthBtn').addEventListener('click', async () => {
   currentMonth++;
   if (currentMonth > 12) { currentMonth = 1; currentYear++; }
   await loadRequests();
+  await loadClinicSettings();
   await loadReqLimitsForStaff();
   await loadDeadlineForStaff();
   renderDeadlineInfo();
