@@ -367,7 +367,24 @@
 <div class="modal-overlay" id="aiAdviceModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
   <div class="modal-content" style="background:white;border-radius:16px;padding:24px;width:100%;max-width:720px;max-height:90vh;overflow-y:auto;margin-top:20px">
     <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <span style="font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px">🤖 AIに相談</span>
+      <span style="font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px">
+        <svg width="28" height="19" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+          <g transform="translate(20, 30)">
+            <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
+            <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
+          </g>
+          <g transform="translate(50, 30)">
+            <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
+            <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
+            <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
+            <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
+            <circle cx="20" cy="-3" r="5" fill="white"/>
+            <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
+            <circle cx="22" cy="-4" r="0.8" fill="white"/>
+          </g>
+        </svg>
+        AIに相談
+      </span>
       <button class="btn btn-outline" id="closeAiModal" style="padding:6px 12px">✕</button>
     </div>
 
@@ -429,14 +446,48 @@
     <div id="aiStepResult" style="display:none">
       <!-- サマリー -->
       <div id="aiSummaryBox" style="display:none;background:linear-gradient(135deg,#faf5ff,#eff6ff);border-radius:12px;padding:14px;border:1px solid #e9d5ff;margin-bottom:14px">
-        <div style="font-size:12px;font-weight:600;color:#6b21a8;margin-bottom:4px">🤖 全体所感</div>
+        <div style="font-size:12px;font-weight:600;color:#6b21a8;margin-bottom:4px;display:flex;align-items:center;gap:6px">
+          <svg width="20" height="14" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+            <g transform="translate(20, 30)">
+              <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
+              <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
+            </g>
+            <g transform="translate(50, 30)">
+              <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
+              <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
+              <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
+              <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
+              <circle cx="20" cy="-3" r="5" fill="white"/>
+              <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
+              <circle cx="22" cy="-4" r="0.8" fill="white"/>
+            </g>
+          </svg>
+          <span>全体所感</span>
+        </div>
         <div id="aiSummaryText" style="font-size:13px;color:#1f2937;line-height:1.6"></div>
       </div>
       <!-- 提案カードリスト -->
       <div id="aiSuggestionsList"></div>
       <!-- テキスト返答（problems モードのみ） -->
       <div id="aiResultTextBox" style="display:none;background:#f8fafc;border-radius:12px;padding:14px;border:1px solid #e5e7eb;margin-bottom:12px">
-        <div style="font-size:12px;font-weight:600;color:#475569;margin-bottom:6px">🤖 Geminiからの指摘</div>
+        <div style="font-size:12px;font-weight:600;color:#475569;margin-bottom:6px;display:flex;align-items:center;gap:6px">
+          <svg width="20" height="14" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+            <g transform="translate(20, 30)">
+              <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
+              <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
+            </g>
+            <g transform="translate(50, 30)">
+              <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
+              <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
+              <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
+              <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
+              <circle cx="20" cy="-3" r="5" fill="white"/>
+              <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
+              <circle cx="22" cy="-4" r="0.8" fill="white"/>
+            </g>
+          </svg>
+          <span>Geminiからの指摘</span>
+        </div>
         <div id="aiResultText" style="font-size:13px;line-height:1.7;color:#1f2937;white-space:pre-wrap"></div>
       </div>
       <!-- 操作ボタン -->
@@ -1549,13 +1600,24 @@ async function loadShiftGrid() {
       sb(`monthly_hours?month=eq.${shiftMonth}&year=eq.${shiftYear}&dept_id=is.null&select=hours`),
       sb(`staff_settings?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,planned_hours`),
       sb(`wednesday_types?year=eq.${shiftYear}&month=eq.${shiftMonth}&select=day,wed_type`),
-      sb(`special_days?year=eq.${shiftYear}&month=eq.${shiftMonth}&select=day,is_closed`),
+      sb(`special_days?year=eq.${shiftYear}&month=eq.${shiftMonth}&select=day,is_closed,is_holiday,label`),
       sb(`thursday_types?year=eq.${shiftYear}&month=eq.${shiftMonth}&select=day,is_open`)
     ]);
 
     // 木曜・祝日設定マップ
     const shiftClosedHolidays = new Set();
-    shiftSpecialDays.forEach(s => { if(s.is_closed) shiftClosedHolidays.add(s.day); });
+    const shiftCustomClosed = {}; // day -> label
+    const jpHolidaysForShift = getJapaneseHolidays(shiftYear, shiftMonth);
+    shiftSpecialDays.forEach(s => {
+      if (!s.is_closed) return;
+      // 祝日（カレンダー上の祝日 or is_holiday=true）→ 祝日休診
+      // それ以外（is_holiday=false かつ 祝日でない）→ 任意休診日
+      if (jpHolidaysForShift.has(s.day) || s.is_holiday === true) {
+        shiftClosedHolidays.add(s.day);
+      } else {
+        shiftCustomClosed[s.day] = s.label || '休診';
+      }
+    });
     const shiftOpenThursdays = new Set();
     shiftThursdayData.forEach(t => { if(t.is_open) shiftOpenThursdays.add(t.day); });
 
@@ -1595,6 +1657,7 @@ async function loadShiftGrid() {
     // shiftClosedHolidaysとshiftOpenThursdaysをグローバルに設定
     window._shiftClosedHolidays = shiftClosedHolidays;
     window._shiftOpenThursdays = shiftOpenThursdays;
+    window._shiftCustomClosed = shiftCustomClosed;
     // AI適用時の再描画用に保持
     window._shiftReqMap = reqMap;
     window._shiftWedTypes = shiftWedTypes;
@@ -1613,6 +1676,9 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
     // 休診祝日
     const _closedH = (typeof shiftClosedHolidays !== 'undefined' ? shiftClosedHolidays : null) || window._shiftClosedHolidays || new Set();
     const _openThu = (typeof shiftOpenThursdays !== 'undefined' ? shiftOpenThursdays : null) || window._shiftOpenThursdays || new Set();
+    const _customC = window._shiftCustomClosed || {};
+    // 任意休診日（最優先：管理者が明示的に指定）
+    if (_customC[d]) return 'clinic_closed';
     if (holidays.has(d) && _closedH.has(d)) return 'holiday_closed';
     if (holidays.has(d)) return 'holiday_jp';
     if (dow === 0 || dow === 6) return 'weekend';
@@ -1622,10 +1688,15 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
     return 'weekday';
   }
 
+  // 休診日種別判定ヘルパー
+  function isClosedDayType(dt) {
+    return dt === 'holiday_closed' || dt === 'thu_closed' || dt === 'clinic_closed';
+  }
+
   function getReq(period, d) {
     const dt = getShiftDayType(d);
     // 休診日は必要人数0
-    if (dt === 'holiday_closed' || dt === 'thu_closed') return 0;
+    if (isClosedDayType(dt)) return 0;
     // 日付個別設定を優先
     const dayKey = `day_${year}_${month}_${d}`;
     if (shiftGridRequirements[period]?.[dayKey] !== undefined) {
@@ -1653,17 +1724,23 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
     const wedLabel = dow===3 ? (wt[d]==='cc'?'<div style="font-size:8px;color:#92400e;font-weight:700">CC</div>':wt[d]==='cho'?'<div style="font-size:8px;color:#5b21b6;font-weight:700">CHO</div>':'') : '';
     // 列ロック状態チェック
     const colLocked = editable && deptStaff.every(s => lockedCells[`${s.id}|${d}`]);
-    const colStyle = colLocked ? 'background:#fef3c7;' : '';
+    const isClosedColumn = isClosedDayType(dayType);
+    // 休診列は薄グレー、列ロックがあればそちらを優先
+    let colStyle = '';
+    if (colLocked) colStyle = 'background:#fef3c7;';
+    else if (isClosedColumn) colStyle = 'background:#f3f4f6;';
     const dayType4header = getShiftDayType(d);
     const thuLabel = dow===4 ? (dayType4header==='thu_open'?'<div style="font-size:8px;color:#1d4ed8">診療</div>':'<div style="font-size:8px;color:#ef4444">休診</div>') : '';
     const holidayLabel = (holidays.has(d) && dayType4header==='holiday_closed') ? '<div style="font-size:8px;color:#6b7280">休診</div>' : '';
+    const customClosedLabelText = (window._shiftCustomClosed || {})[d];
+    const clinicClosedLabel = dayType4header === 'clinic_closed' ? `<div style="font-size:8px;color:#6b7280;line-height:1.2;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(customClosedLabelText || '休診')}">${escapeHtml(customClosedLabelText || '休診')}</div>` : '';
     if (editable) {
       html += `<th style="min-width:32px;padding:0;${colStyle}">
         <div class="day-header" style="display:flex;flex-direction:column">
           <div style="padding:4px 2px;cursor:pointer" onclick="openVerticalView(${d})" title="バーチカル表示">
             <div class="day-num ${cls}">${d}</div>
             <div class="day-dow ${cls}">${DOW[dow]}</div>
-            ${wedLabel}${thuLabel}${holidayLabel}
+            ${wedLabel}${thuLabel}${holidayLabel}${clinicClosedLabel}
           </div>
           <div style="border-top:1px solid #cbd5e1;background:#f8fafc;padding:2px 0;cursor:pointer" onclick="toggleColumnLock(${d})" title="${colLocked?'列ロック解除':'列ロック'}">
             <div style="font-size:9px">${colLocked?'🔒':'<span style=\"color:#d1d5db\">🔓</span>'}</div>
@@ -1671,7 +1748,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
         </div>
       </th>`;
     } else {
-      html += `<th style="min-width:32px"><div class="day-header"><div class="day-num ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})" title="バーチカル表示">${d}</div><div class="day-dow ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})">${DOW[dow]}</div>${wedLabel}</div></th>`;
+      html += `<th style="min-width:32px;${colStyle}"><div class="day-header"><div class="day-num ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})" title="バーチカル表示">${d}</div><div class="day-dow ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})">${DOW[dow]}</div>${wedLabel}${thuLabel}${holidayLabel}${clinicClosedLabel}</div></th>`;
     }
   }
   if (editable) html += '<th style="min-width:160px;text-align:center;cursor:pointer" onclick="showMonthlyHoursEditor()">実働/所定 <span style="font-size:10px;opacity:0.6">✏️</span></th>';
@@ -1708,6 +1785,20 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
       const dispShift = confirmedShift || (editable ? '' : requestedShift);
       const isLocked = locked[key];
       const colorClass = SHIFT_COLORS[dispShift] || '';
+
+      // 休診日判定：クリック不可・時間加算なし
+      const cellDayType = getShiftDayType(d);
+      if (isClosedDayType(cellDayType)) {
+        if (editable) {
+          html += `<td style="padding:2px;background:#f3f4f6">
+            <div style="background:#f3f4f6;color:#cbd5e1;font-size:14px;text-align:center;min-height:34px;display:flex;align-items:center;justify-content:center;border-radius:4px">−</div>
+          </td>`;
+        } else {
+          html += `<td style="background:#f3f4f6"><div style="min-height:20px"></div></td>`;
+        }
+        continue;
+      }
+
       const shiftH = SHIFT_HOURS[confirmedShift] || 0;
       totalH += shiftH;
       // 有休/半有休の所定加算（有休は土日祝9H、平日8.5H）
@@ -2718,7 +2809,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       sb(`staffing_requirements?dept_id=eq.${currentDept}&select=period_id,day_type,min_count`),
       sb(`monthly_hours?month=eq.${genMonth}&year=eq.${genYear}&dept_id=is.null&select=hours`),
       sb(`staff_settings?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&select=*`),
-      sb(`special_days?year=eq.${genYear}&month=eq.${genMonth}&select=day,day_type,is_closed`),
+      sb(`special_days?year=eq.${genYear}&month=eq.${genMonth}&select=day,day_type,is_closed,is_holiday,label`),
       sb(`thursday_types?year=eq.${genYear}&month=eq.${genMonth}&select=day,is_open`),
       sb(`beginner_limits?dept_id=eq.${currentDept}&select=period_id,day_type,max_beginners`)
     ]);
@@ -2736,9 +2827,22 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       return beginnerLimitMap[key] ?? null; // nullは制限なし
     }
 
-    // 祝日・木曜の設定マップ
+    // 祝日（カレンダー上）
+    const holidays = getJapaneseHolidays(genYear, genMonth);
+
+    // 祝日・木曜・任意休診日の設定マップ
     const closedHolidays = new Set(); // 休診祝日
-    specialDaysData.forEach(s => { if (s.is_closed) closedHolidays.add(s.day); });
+    const customClosedDays = new Set(); // 任意休診日
+    specialDaysData.forEach(s => {
+      if (!s.is_closed) return;
+      // 祝日 → 祝日休診扱い
+      // 祝日でない → 任意休診日
+      if (holidays.has(s.day) || s.is_holiday === true) {
+        closedHolidays.add(s.day);
+      } else {
+        customClosedDays.add(s.day);
+      }
+    });
     const openThursdays = new Set(); // 診療木曜
     thursdayData2.forEach(t => { if (t.is_open) openThursdays.add(t.day); });
 
@@ -2809,11 +2913,12 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       reqCountMap[r.period_id][r.day_type] = r.min_count;
     });
 
-    // 祝日
-    const holidays = getJapaneseHolidays(genYear, genMonth);
+    // 祝日（上で getJapaneseHolidays 取得済み）
 
     function getDayType(d) {
       const dow = new Date(genYear, genMonth-1, d).getDay();
+      // 任意休診日（最優先）
+      if (customClosedDays.has(d)) return 'clinic_closed';
       // 休診祝日は weekend扱いしない → 必要人数0として処理
       if (holidays.has(d) && closedHolidays.has(d)) return 'holiday_closed';
       if (holidays.has(d)) return 'holiday_jp'; // 診療祝日
@@ -2825,15 +2930,15 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
 
     function getRequired(period, day) {
       const dayType = getDayType(day);
-      // 休診日（休診祝日・休診木曜）は必要人数0
-      if (dayType === 'holiday_closed' || dayType === 'thu_closed') return 0;
+      // 休診日（休診祝日・休診木曜・任意休診日）は必要人数0
+      if (dayType === 'holiday_closed' || dayType === 'thu_closed' || dayType === 'clinic_closed') return 0;
       return reqCountMap[period]?.[dayType] ?? null;
     }
 
     // 休診日かどうか
     function isClosedDay(d) {
       const dayType = getDayType(d);
-      return dayType === 'holiday_closed' || dayType === 'thu_closed';
+      return dayType === 'holiday_closed' || dayType === 'thu_closed' || dayType === 'clinic_closed';
     }
 
     // ===== 生成ロジック =====
@@ -2962,7 +3067,7 @@ _logStep('STEP2完了');
         const key = `${staff.id}|${d}`;
         if (result[key]) continue;
         const dt = getDayType(d);
-        if (dt === 'thu_closed' || dt === 'holiday_closed') continue;
+        if (dt === 'thu_closed' || dt === 'holiday_closed' || dt === 'clinic_closed') continue;
         const dow = new Date(genYear, genMonth-1, d).getDay();
         const fixedShift = fixedShifts[dow] || fixedShifts[String(dow)];
         if (!fixedShift) continue;
@@ -3055,7 +3160,7 @@ _logStep('STEP3完了');
     if (optFillRequired) {
       for (let d = 1; d <= daysInMonth; d++) {
         const dt = getDayType(d);
-        if (dt === 'thu_closed' || dt === 'holiday_closed') continue;
+        if (dt === 'thu_closed' || dt === 'holiday_closed' || dt === 'clinic_closed') continue;
         const dow = new Date(genYear, genMonth-1, d).getDay();
 
         // CC/CHO日は専用ロジック（selectDayShiftに任せる）
@@ -3195,7 +3300,7 @@ _logStep('STEP4完了');
           // 希望が「休み系」ならSTEP2で処理済みなのでここはスキップ
           if (OFF_SHIFTS.includes(req)) continue;
           const dt = getDayType(d);
-          if (dt === 'thu_closed' || dt === 'holiday_closed') continue;
+          if (dt === 'thu_closed' || dt === 'holiday_closed' || dt === 'clinic_closed') continue;
           // CC日はCC・CCのみ以外の勤務不可
           if (dt === 'wed_cc' && !['CC','CCのみ','休み','有休','半有休','希望休'].includes(req)) continue;
           // CHO日はCHO以外の勤務不可
@@ -3232,7 +3337,7 @@ _logStep('STEP5完了');
         const dow = new Date(genYear, genMonth-1, d).getDay();
         const dt2 = getDayType(d);
         // 日曜・休診日は休み（時短スタッフでも）
-        if (dow === 0 || dt2 === 'thu_closed' || dt2 === 'holiday_closed') {
+        if (dow === 0 || dt2 === 'thu_closed' || dt2 === 'holiday_closed' || dt2 === 'clinic_closed') {
           result[key] = '休み';
           continue;
         }
@@ -3336,7 +3441,7 @@ _logStep('STEP6完了');
       changed7 = false;
       for (let d = 1; d <= daysInMonth; d++) {
         const dt7 = getDayType(d);
-        if (dt7 === 'thu_closed' || dt7 === 'holiday_closed') continue;
+        if (dt7 === 'thu_closed' || dt7 === 'holiday_closed' || dt7 === 'clinic_closed') continue;
         for (const period of ['morning','afternoon','evening']) {
           const req = getRequired(period, d);
           if (!req || req <= 0) continue;
@@ -3397,7 +3502,7 @@ _logStep('STEP7完了');
           if (result[key] !== '休み') continue;
           if (lockedCells[key]) continue;
           const dt8 = getDayType(d);
-          if (dt8 === 'thu_closed' || dt8 === 'holiday_closed') continue;
+          if (dt8 === 'thu_closed' || dt8 === 'holiday_closed' || dt8 === 'clinic_closed') continue;
           const dow8 = new Date(genYear, genMonth-1, d).getDay();
           // 日曜は休み、土曜は時短スタッフのみ対象
           if (dow8 === 0) continue;
@@ -3471,7 +3576,7 @@ _logStep('STEP8完了');
           if (result[key] !== '休み') continue;
           if (lockedCells[key]) continue;
           const dt9 = getDayType(d);
-          if (dt9 === 'thu_closed' || dt9 === 'holiday_closed') continue;
+          if (dt9 === 'thu_closed' || dt9 === 'holiday_closed' || dt9 === 'clinic_closed') continue;
           const dow9 = new Date(genYear, genMonth-1, d).getDay();
           if (dow9 === 0 || dow9 === 6) continue;
           if (dt9 === 'wed_normal') continue;
@@ -3507,7 +3612,7 @@ _logStep('STEP8完了');
     let _shortageDays = 0;
     for (let d = 1; d <= daysInMonth; d++) {
       const dt_chk = getDayType(d);
-      if (dt_chk === 'thu_closed' || dt_chk === 'holiday_closed') continue;
+      if (dt_chk === 'thu_closed' || dt_chk === 'holiday_closed' || dt_chk === 'clinic_closed') continue;
       for (const period of ['morning','afternoon','evening']) {
         const req = getRequired(period, d);
         if (!req || req <= 0) continue;
