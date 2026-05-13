@@ -694,6 +694,7 @@
             <div class="month-nav-title" id="shiftMonthTitle"></div>
             <button class="btn-nav" id="shiftNextMonth">▶</button>
             <button class="btn btn-success" id="saveShiftBtn">💾 保存</button>
+            <button class="btn btn-outline" id="revertSavedBtn" title="最後の保存時点まで変更を取り消します" style="background:white;border:1.5px solid #f59e0b;color:#92400e">⤺ 保存時点に戻す</button>
             <button class="btn btn-primary" id="confirmShiftBtn">✅ 確定する</button>
             <button class="btn btn-outline" id="aiAdviceBtn" style="background:linear-gradient(135deg,#a855f7,#3b82f6);color:white;border:none;display:inline-flex;align-items:center;gap:6px">
               <svg width="20" height="14" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
@@ -1127,6 +1128,9 @@ let reqYear = new Date().getFullYear(), reqMonth = new Date().getMonth() + 1;
 let shiftYear = new Date().getFullYear(), shiftMonth = new Date().getMonth() + 1;
 let genYear = new Date().getFullYear(), genMonth = new Date().getMonth() + 1;
 let allStaff = [], shiftData = {}, lockedCells = {}, wedTypes = {}, generatedShifts = {};
+// シフト表の状態管理
+let shiftGridContext = null; // 'dept|year|month' - 現在ロード済みのコンテキスト
+let savedShiftSnapshot = null; // 最後の保存時点（DBロード時 or 保存成功時に更新）
 let editingCell = null;
 
 const DEPT_NAMES = {0:'医療事務',1:'看護',2:'リハビリ',3:'放射線'};
@@ -1489,7 +1493,15 @@ document.querySelectorAll('.nav-item[data-page]').forEach(item => {
 function refreshCurrentPage() {
   const active = document.querySelector('.page.active')?.id?.replace('page-','');
   if (active === 'requests') loadRequests();
-  else if (active === 'shift') loadShiftGrid();
+  else if (active === 'shift') {
+    // 同じdept+year+monthでロード済みなら未保存の変更を保持して再描画のみ
+    const ctx = `${currentDept}|${shiftYear}|${shiftMonth}`;
+    if (shiftGridContext === ctx && (Object.keys(shiftData).length > 0 || Object.keys(lockedCells).length > 0)) {
+      rerenderShiftGridFromMemory();
+    } else {
+      loadShiftGrid();
+    }
+  }
   else if (active === 'generate') loadGenPage();
   else if (active === 'settings') loadSettings();
   else if (active === 'staff') loadStaffTable();
@@ -1662,6 +1674,14 @@ async function loadShiftGrid() {
     window._shiftReqMap = reqMap;
     window._shiftWedTypes = shiftWedTypes;
     renderShiftGrid('shiftGrid', deptStaff, daysInMonth, shiftYear, shiftMonth, shiftData, reqMap, lockedCells, true, shiftWedTypes);
+    // コンテキストと保存スナップショットを更新（タブ切替時の状態保持・保存時点復元用）
+    shiftGridContext = `${currentDept}|${shiftYear}|${shiftMonth}`;
+    savedShiftSnapshot = {
+      shiftData: JSON.parse(JSON.stringify(shiftData)),
+      lockedCells: JSON.parse(JSON.stringify(lockedCells))
+    };
+    undoStack = [];
+    redoStack = [];
   } catch(e) { console.error(e); showToast('シフト表読み込みエラー','error'); }
   hideLoading();
 }
@@ -1989,6 +2009,7 @@ function applyShiftEdit(shiftId) {
 }
 
 function toggleLock(key) {
+  saveUndoState();
   if (lockedCells[key]) {
     delete lockedCells[key];
     showToast('ロックを解除しました');
@@ -2125,6 +2146,7 @@ function escapeJs(str) { return str.replace(/'/g, "\'"); }
 
 // 列ロック（日ごと全スタッフ）
 function toggleColumnLock(day) {
+  saveUndoState();
   const deptStaff = allStaff.filter(s => s.dept_id === currentDept);
   const allLocked = deptStaff.every(s => lockedCells[`${s.id}|${day}`]);
   deptStaff.forEach(s => {
@@ -2139,6 +2161,7 @@ function toggleColumnLock(day) {
 
 // 行ロック（スタッフごと全日）
 function toggleRowLock(staffId, daysInMonth) {
+  saveUndoState();
   const allLocked = Array.from({length:daysInMonth},(_,i)=>i+1).every(d => lockedCells[`${staffId}|${d}`]);
   for (let d = 1; d <= daysInMonth; d++) {
     const key = `${staffId}|${d}`;
@@ -2382,7 +2405,10 @@ function selectCell(staffId, day, mode) {
 }
 
 function saveUndoState() {
-  undoStack.push(JSON.parse(JSON.stringify(shiftData)));
+  undoStack.push({
+    shiftData: JSON.parse(JSON.stringify(shiftData)),
+    lockedCells: JSON.parse(JSON.stringify(lockedCells))
+  });
   if (undoStack.length > MAX_UNDO) undoStack.shift();
   redoStack = [];
 }
@@ -2531,19 +2557,29 @@ document.addEventListener('keydown', (e) => {
   if (ctrl && e.key==='z' && !e.shiftKey) {
     e.preventDefault();
     if (undoStack.length===0) { showToast('これ以上戻れません'); return; }
-    redoStack.push(JSON.parse(JSON.stringify(shiftData)));
-    shiftData = undoStack.pop();
-    // loadShiftGridを呼ばずセルだけ更新
-    rebuildShiftCells();
+    redoStack.push({
+      shiftData: JSON.parse(JSON.stringify(shiftData)),
+      lockedCells: JSON.parse(JSON.stringify(lockedCells))
+    });
+    const prev = undoStack.pop();
+    shiftData = prev.shiftData;
+    lockedCells = prev.lockedCells;
+    // ロック状態も変わる可能性があるためヘッダーごと再描画
+    rerenderShiftGridFromMemory();
     showToast('元に戻しました');
     return;
   }
   if ((ctrl&&e.key==='y')||(ctrl&&e.shiftKey&&e.key==='z')) {
     e.preventDefault();
     if (redoStack.length===0) { showToast('これ以上進めません'); return; }
-    undoStack.push(JSON.parse(JSON.stringify(shiftData)));
-    shiftData = redoStack.pop();
-    rebuildShiftCells();
+    undoStack.push({
+      shiftData: JSON.parse(JSON.stringify(shiftData)),
+      lockedCells: JSON.parse(JSON.stringify(lockedCells))
+    });
+    const next = redoStack.pop();
+    shiftData = next.shiftData;
+    lockedCells = next.lockedCells;
+    rerenderShiftGridFromMemory();
     showToast('やり直しました');
     return;
   }
@@ -2647,9 +2683,38 @@ document.getElementById('saveShiftBtn').addEventListener('click', async () => {
     if (inserts.length > 0) {
       await sb('shifts', { method:'POST', body:JSON.stringify(inserts) });
     }
+    // 保存時点スナップショット更新（保存時点に戻すボタン用）
+    savedShiftSnapshot = {
+      shiftData: JSON.parse(JSON.stringify(shiftData)),
+      lockedCells: JSON.parse(JSON.stringify(lockedCells))
+    };
+    undoStack = [];
+    redoStack = [];
     showToast('シフトを保存しました ✓','success');
   } catch(e) { console.error(e); showToast('保存エラー','error'); }
   hideLoading();
+});
+
+// 保存時点に戻すボタン
+document.getElementById('revertSavedBtn')?.addEventListener('click', () => {
+  if (!savedShiftSnapshot) {
+    showToast('保存時点が記録されていません', 'error');
+    return;
+  }
+  // メモリ状態と保存時点が同じなら何もしない
+  const cur = JSON.stringify({sd: shiftData, lc: lockedCells});
+  const sav = JSON.stringify({sd: savedShiftSnapshot.shiftData, lc: savedShiftSnapshot.lockedCells});
+  if (cur === sav) {
+    showToast('変更はありません');
+    return;
+  }
+  if (!confirm('最後の保存時点まで戻します。それ以降の変更（ロック含む）は失われます。よろしいですか？')) return;
+  shiftData = JSON.parse(JSON.stringify(savedShiftSnapshot.shiftData));
+  lockedCells = JSON.parse(JSON.stringify(savedShiftSnapshot.lockedCells));
+  undoStack = [];
+  redoStack = [];
+  rerenderShiftGridFromMemory();
+  showToast('保存時点に戻しました ✓','success');
 });
 
 // ===== AUTO GENERATE =====
