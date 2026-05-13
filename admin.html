@@ -2987,16 +2987,28 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     });
 
     // ===== STEP0: ロック済みシフトを反映 =====
+    // 現在のメモリ状態を保存（ユーザーが画面で設定したロック・シフト変更）
+    const memoryLockedCellsSnapshot = {...lockedCells};
+    const memoryShiftDataSnapshot = {...shiftData};
+
     // lockedCellsをリセット（前回の値が残っているとSTEP7/8で誤動作）
     lockedCells = {};
     const lockMap = {};
     if (optKeepLocked) {
+      // DBから読み込んだロック
       existingShifts.forEach(s => {
         if (s.is_locked) {
           const key = `${s.staff_id}|${s.day}`;
           lockMap[key] = s.shift_type_id;
           lockedCells[key] = true; // STEP7/STEP8/STEP9で参照
         }
+      });
+      // メモリ上のロック（ユーザーが画面で設定したロック）も反映
+      Object.keys(memoryLockedCellsSnapshot).forEach(key => {
+        if (lockedCells[key]) return; // 既にDBから反映済み
+        lockedCells[key] = true;
+        // メモリ上のシフト値を保存（未設定なら空文字）
+        lockMap[key] = memoryShiftDataSnapshot[key] || '';
       });
     }
     Object.entries(lockMap).forEach(([key, shift]) => {
@@ -3040,7 +3052,7 @@ _logStep('STEP1完了');
       deptStaff.forEach(staff => {
         for (let d = 1; d <= daysInMonth; d++) {
           const key = `${staff.id}|${d}`;
-          if (result[key]) continue;
+          if (result[key] || lockedCells[key]) continue;
           const req = reqMap[key];
           if (req && OFF_SHIFTS.includes(req)) {
             result[key] = req;
@@ -3075,7 +3087,7 @@ _logStep('STEP2完了');
       if (!Object.keys(fixedShifts).length) return;
       for (let d = 1; d <= daysInMonth; d++) {
         const key = `${staff.id}|${d}`;
-        if (result[key]) continue;
+        if (result[key] || lockedCells[key]) continue;
         const dt = getDayType(d);
         if (dt === 'thu_closed' || dt === 'holiday_closed' || dt === 'clinic_closed') continue;
         const dow = new Date(genYear, genMonth-1, d).getDay();
@@ -3304,7 +3316,7 @@ _logStep('STEP4完了');
       deptStaff.forEach(staff => {
         for (let d = 1; d <= daysInMonth; d++) {
           const key = `${staff.id}|${d}`;
-          if (result[key]) continue;
+          if (result[key] || lockedCells[key]) continue;
           const req = reqMap[key];
           if (!req) continue;
           // 希望が「休み系」ならSTEP2で処理済みなのでここはスキップ
@@ -3337,13 +3349,13 @@ _logStep('STEP5完了');
       if (planH <= 0) {
         for (let d = 1; d <= daysInMonth; d++) {
           const key = `${staff.id}|${d}`;
-          if (!result[key]) result[key] = '休み';
+          if (!result[key] && !lockedCells[key]) result[key] = '休み';
         }
         return;
       }
       for (let d = 1; d <= daysInMonth; d++) {
         const key = `${staff.id}|${d}`;
-        if (result[key]) continue;
+        if (result[key] || lockedCells[key]) continue;
         const dow = new Date(genYear, genMonth-1, d).getDay();
         const dt2 = getDayType(d);
         // 日曜・休診日は休み（時短スタッフでも）
@@ -3428,7 +3440,7 @@ _logStep('STEP5完了');
       // 残りは全て休み
       for (let d = 1; d <= daysInMonth; d++) {
         const key = `${staff.id}|${d}`;
-        if (!result[key]) result[key] = '休み';
+        if (!result[key] && !lockedCells[key]) result[key] = '休み';
       }
     });
 
@@ -3607,6 +3619,7 @@ _logStep('STEP8完了');
       if (staff.emp_type !== 'short') return;
       for (let d = 1; d <= daysInMonth; d++) {
         const key = `${staff.id}|${d}`;
+        if (lockedCells[key]) continue;
         const shift = result[key];
         if (!shift) continue;
         if (['時短','CC','CCのみ','CHO','休み','有休','半有休','希望休'].includes(shift)) continue;
