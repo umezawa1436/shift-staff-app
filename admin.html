@@ -2133,11 +2133,8 @@ function toggleColumnLock(day) {
     else lockedCells[key] = true;
   });
   showToast(allLocked ? `${day}日のロックを解除` : `${day}日をロック 🔒`);
-  // DB再読み込みせずセルのみ更新
-  const deptStaff2 = allStaff.filter(s => s.dept_id === currentDept);
-  deptStaff2.forEach(s => updateCellDisplay(`${s.id}|${day}`));
-  // ヘッダーのロックアイコンを更新
-  loadShiftGrid();
+  // メモリ上の現在状態で再描画（DB再取得しない）
+  rerenderShiftGridFromMemory();
 }
 
 // 行ロック（スタッフごと全日）
@@ -2149,10 +2146,23 @@ function toggleRowLock(staffId, daysInMonth) {
     else lockedCells[key] = true;
   }
   showToast(allLocked ? 'ロックを解除しました' : '行全体をロックしました 🔒');
-  // DB再読み込みせずセルのみ更新
-  const daysInMonth2 = new Date(shiftYear, shiftMonth, 0).getDate();
-  for (let d = 1; d <= daysInMonth2; d++) updateCellDisplay(`${staffId}|${d}`);
-  loadShiftGrid();
+  // メモリ上の現在状態で再描画（DB再取得しない）
+  rerenderShiftGridFromMemory();
+}
+
+// 現在のメモリ状態（shiftData, lockedCells）で再描画。DB再取得しない
+function rerenderShiftGridFromMemory() {
+  const deptStaff = allStaff.filter(s => s.dept_id === currentDept).sort((a, b) => {
+    const aOrder = a.display_order ?? 99999;
+    const bOrder = b.display_order ?? 99999;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    return a.staff_code - b.staff_code;
+  });
+  if (!deptStaff.length) return;
+  const daysInMonth = new Date(shiftYear, shiftMonth, 0).getDate();
+  const reqMap = window._shiftReqMap || {};
+  const wedTypesMap = window._shiftWedTypes || {};
+  renderShiftGrid('shiftGrid', deptStaff, daysInMonth, shiftYear, shiftMonth, shiftData, reqMap, lockedCells, true, wedTypesMap);
 }
 
 // 所定労働時間クイック編集
