@@ -1149,7 +1149,13 @@ function saveCurrentShiftStateToCache() {
     lockedCells: JSON.parse(JSON.stringify(lockedCells)),
     savedShiftSnapshot: savedShiftSnapshot ? JSON.parse(JSON.stringify(savedShiftSnapshot)) : null,
     undoStack: undoStack.slice(),
-    redoStack: redoStack.slice()
+    redoStack: redoStack.slice(),
+    // 表示用の参照データ（スタッフ希望・水曜種別・休診情報）もキャッシュ
+    reqMap: window._shiftReqMap ? JSON.parse(JSON.stringify(window._shiftReqMap)) : {},
+    wedTypes: window._shiftWedTypes ? JSON.parse(JSON.stringify(window._shiftWedTypes)) : {},
+    closedHolidays: window._shiftClosedHolidays ? Array.from(window._shiftClosedHolidays) : [],
+    openThursdays: window._shiftOpenThursdays ? Array.from(window._shiftOpenThursdays) : [],
+    customClosed: window._shiftCustomClosed ? JSON.parse(JSON.stringify(window._shiftCustomClosed)) : {}
   };
 }
 
@@ -1162,6 +1168,12 @@ function tryRestoreShiftStateFromCache(ctx) {
   savedShiftSnapshot = c.savedShiftSnapshot ? JSON.parse(JSON.stringify(c.savedShiftSnapshot)) : null;
   undoStack = c.undoStack.slice();
   redoStack = c.redoStack.slice();
+  // 表示用の参照データも復元
+  window._shiftReqMap = c.reqMap ? JSON.parse(JSON.stringify(c.reqMap)) : {};
+  window._shiftWedTypes = c.wedTypes ? JSON.parse(JSON.stringify(c.wedTypes)) : {};
+  window._shiftClosedHolidays = new Set(c.closedHolidays || []);
+  window._shiftOpenThursdays = new Set(c.openThursdays || []);
+  window._shiftCustomClosed = c.customClosed ? JSON.parse(JSON.stringify(c.customClosed)) : {};
   shiftGridContext = ctx;
   return true;
 }
@@ -1543,8 +1555,8 @@ function refreshCurrentPage() {
   if (active === 'requests') loadRequests();
   else if (active === 'shift') {
     const ctx = `${currentDept}|${shiftYear}|${shiftMonth}`;
-    // 同コンテキストならメモリ状態で再描画のみ（未保存変更を保持）
-    if (shiftGridContext === ctx && (Object.keys(shiftData).length > 0 || Object.keys(lockedCells).length > 0)) {
+    // 同コンテキストならメモリ状態で再描画（shiftData空でもreqMapが有効なら反映される）
+    if (shiftGridContext === ctx) {
       rerenderShiftGridFromMemory();
     }
     // 別コンテキストでも過去にキャッシュがあればそれを使う（月・部署切替時の未保存変更を復元）
@@ -3847,6 +3859,10 @@ _logStep('STEP8完了');
     // window変数を設定（getShiftDayType用）
     window._shiftClosedHolidays = closedHolidays;
     window._shiftOpenThursdays = openThursdays;
+    window._shiftCustomClosed = customClosedDays ? Object.fromEntries(Array.from(customClosedDays).map(d => [d, '休診'])) : {};
+    // タブ切替時の状態保持・希望マーク表示用
+    window._shiftReqMap = reqMapForRender;
+    window._shiftWedTypes = wedTypes;
 
     // 水曜タイプを設定（wedTypesは自動生成ページで既に読み込み済み）
     shiftWedTypes = { ...wedTypes };
@@ -3854,6 +3870,19 @@ _logStep('STEP8完了');
     // グリッドを描画
     renderShiftGrid('shiftGrid', deptStaff, daysInMonth, genYear, genMonth, shiftData, reqMapForRender, lockedCells, true, shiftWedTypes);
     refreshSummaryRows();
+
+    // タブ切替時に保持されるようにcontextと保存スナップショットを更新
+    // ※shiftYear/shiftMonthを生成対象月に合わせる（自動生成後にシフト表月をズレないように）
+    shiftYear = genYear;
+    shiftMonth = genMonth;
+    updateMonthDisplays();
+    shiftGridContext = `${currentDept}|${shiftYear}|${shiftMonth}`;
+    savedShiftSnapshot = {
+      shiftData: JSON.parse(JSON.stringify(shiftData)),
+      lockedCells: JSON.parse(JSON.stringify(lockedCells))
+    };
+    undoStack = [];
+    redoStack = [];
 
     document.getElementById('page-shift')?.scrollIntoView({ behavior:'smooth' });
     showToast('自動生成完了 ✓ シフト表で編集できます', 'success');
