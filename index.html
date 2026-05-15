@@ -592,6 +592,7 @@ let SHIFTS = [
     { id: '希望休', color: '#fdba74', time: '' },
     { id: '有休', color: '#e879f9', time: '平日+8.5H / 土日祝+9H' },
     { id: '半有休', color: '#d946ef', time: '所定+5H' },
+    { id: '個人夏休み', color: '#06b6d4', time: '平日+8.5H / 土日祝+9H' },
     { id: '休み', color: '#d1d5db', time: '' },
   ]},
   { category: '日勤系', items: [
@@ -1204,6 +1205,7 @@ function countRequests() {
     if (sh === '希望休') kibouKyu++;
     else if (sh === '有休' || sh === '半有休') yukyu++;
     else if (sh === '休み') off++;
+    else if (sh === '個人夏休み') { /* 月間上限カウント対象外（自由に請求可能） */ }
     else other++;
   });
   return { kibouKyu, yukyu, other, off, total: monthKeys.length };
