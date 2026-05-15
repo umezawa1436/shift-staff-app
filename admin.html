@@ -129,11 +129,12 @@
     .shift-grid { border-collapse:collapse;font-size:11px;min-width:100%; }
     .shift-grid th { padding:6px 4px;text-align:center;font-weight:600;font-size:10px;color:var(--text-muted);border:1px solid var(--border);background:var(--bg);white-space:nowrap;min-width:34px; }
     .shift-grid th.staff-col { min-width:72px;text-align:left;padding-left:10px; }
-    .shift-grid td { padding:2px;border:1px solid var(--border);text-align:center;vertical-align:middle; }
-    .shift-grid td.staff-name { padding:6px 10px;text-align:left;font-weight:500;white-space:nowrap;background:white;font-size:12px; }
-    .shift-cell { min-height:28px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:pointer;transition:all 0.15s;padding:1px; }
-    #shiftEditOptions .shift-cell { display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center; }
-    .shift-cell.has-req { flex-direction:column;justify-content:center;align-items:center;min-height:36px; }
+    .shift-grid td { padding:2px;border:1px solid var(--border);text-align:center;vertical-align:middle;height:42px; }
+    .shift-grid tbody tr { height:42px; }
+    .shift-grid td.staff-name { padding:6px 10px;text-align:left;font-weight:500;white-space:nowrap;background:white;font-size:12px;height:42px; }
+    .shift-cell { height:36px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:pointer;transition:all 0.15s;padding:1px;overflow:hidden; }
+    #shiftEditOptions .shift-cell { height:auto;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center; }
+    .shift-cell.has-req { flex-direction:column;justify-content:center;align-items:center; }
     .shift-cell .shift-text { font-size:10px;font-weight:600;line-height:1.2; }
     .shift-cell .req-text { font-size:8px;color:#f59e0b;line-height:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;text-align:center; }
     .shift-cell:hover { opacity:0.75;transform:scale(1.08); }
@@ -613,21 +614,21 @@
       </div>
       <div class="sidebar-nav">
         <div class="nav-section">メニュー</div>
-        <div class="nav-item active" data-page="dashboard">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-          <span>ダッシュボード</span>
-        </div>
-        <div class="nav-item" data-page="requests">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="m9 12 2 2 4-4"/></svg>
-          <span>希望一覧</span>
-        </div>
-        <div class="nav-item" data-page="shift">
+        <div class="nav-item active" data-page="shift">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
           <span>シフト表</span>
         </div>
         <div class="nav-item" data-page="generate">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
           <span>自動生成</span>
+        </div>
+        <div class="nav-item" data-page="dashboard">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          <span>ダッシュボード</span>
+        </div>
+        <div class="nav-item" data-page="requests">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="m9 12 2 2 4-4"/></svg>
+          <span>希望一覧</span>
         </div>
         <div class="nav-item" data-page="settings">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -652,7 +653,7 @@
     <div class="main">
       <div class="topbar">
         <div>
-          <div class="page-title" id="topbarTitle">ダッシュボード</div>
+          <div class="page-title" id="topbarTitle">シフト表</div>
           <div class="page-sub" id="topbarSub"></div>
         </div>
         <div style="font-size:15px;font-weight:600;color:var(--primary)" id="topbarMonth"></div>
@@ -661,7 +662,12 @@
       <div class="content">
 
         <!-- DASHBOARD -->
-        <div class="page active" id="page-dashboard">
+        <div class="page" id="page-dashboard">
+          <div class="month-nav">
+            <button class="btn-nav" id="dashPrevMonth">◀</button>
+            <div class="month-nav-title" id="dashMonthTitle"></div>
+            <button class="btn-nav" id="dashNextMonth">▶</button>
+          </div>
           <div class="stats-grid" id="statsGrid"></div>
           <div class="card">
             <div class="card-title">今月の提出状況</div>
@@ -688,7 +694,7 @@
         </div>
 
         <!-- SHIFT -->
-        <div class="page" id="page-shift">
+        <div class="page active" id="page-shift">
           <div class="dept-tabs" id="shiftDeptTabs"></div>
           <div class="month-nav">
             <button class="btn-nav" id="shiftPrevMonth">◀</button>
@@ -1127,6 +1133,7 @@ let currentYear = new Date().getFullYear();
 let currentMonth = new Date().getMonth() + 1;
 let reqYear = new Date().getFullYear(), reqMonth = new Date().getMonth() + 1;
 let shiftYear = new Date().getFullYear(), shiftMonth = new Date().getMonth() + 1;
+let dashYear = new Date().getFullYear(), dashMonth = new Date().getMonth() + 1;
 let genYear = new Date().getFullYear(), genMonth = new Date().getMonth() + 1;
 let allStaff = [], shiftData = {}, lockedCells = {}, wedTypes = {}, generatedShifts = {};
 // シフト表の状態管理
@@ -1466,7 +1473,7 @@ async function initApp() {
     await loadStaff();
     updateMonthDisplays();
     buildAllDeptTabs();
-    await loadDashboard();
+    await loadShiftGrid();
   } catch(e) { console.error(e); showToast('初期化エラー','error'); }
   hideLoading();
 }
@@ -1481,6 +1488,8 @@ function updateMonthDisplays() {
   document.getElementById('reqMonthTitle').textContent = `${reqYear}年${reqMonth}月`;
   document.getElementById('shiftMonthTitle').textContent = `${shiftYear}年${shiftMonth}月`;
   document.getElementById('genMonthTitle').textContent = `${genYear}年${genMonth}月`;
+  const dashTitle = document.getElementById('dashMonthTitle');
+  if (dashTitle) dashTitle.textContent = `${dashYear}年${dashMonth}月`;
 }
 
 // DEPT TABS
@@ -1556,16 +1565,16 @@ function refreshCurrentPage() {
 // ===== DASHBOARD =====
 async function loadDashboard() {
   try {
-    const requests = await sb(`shift_requests?year=eq.${currentYear}&month=eq.${currentMonth}&select=staff_id`);
+    const requests = await sb(`shift_requests?year=eq.${dashYear}&month=eq.${dashMonth}&select=staff_id`);
     const submittedIds = new Set(requests.map(r => r.staff_id));
     const total = allStaff.length;
     const submitted = allStaff.filter(s => submittedIds.has(s.id)).length;
 
     document.getElementById('statsGrid').innerHTML = `
       <div class="stat-card"><div class="stat-label">全スタッフ数</div><div class="stat-value">${total}</div><div class="stat-sub">全部門合計</div></div>
-      <div class="stat-card"><div class="stat-label">希望提出済み</div><div class="stat-value" style="color:var(--success)">${submitted}</div><div class="stat-sub">${currentMonth}月</div></div>
-      <div class="stat-card"><div class="stat-label">未提出</div><div class="stat-value" style="color:var(--warning)">${total-submitted}</div><div class="stat-sub">${currentMonth}月</div></div>
-      <div class="stat-card"><div class="stat-label">提出率</div><div class="stat-value">${total > 0 ? Math.round(submitted/total*100) : 0}%</div><div class="stat-sub">${currentMonth}月</div></div>
+      <div class="stat-card"><div class="stat-label">希望提出済み</div><div class="stat-value" style="color:var(--success)">${submitted}</div><div class="stat-sub">${dashMonth}月</div></div>
+      <div class="stat-card"><div class="stat-label">未提出</div><div class="stat-value" style="color:var(--warning)">${total-submitted}</div><div class="stat-sub">${dashMonth}月</div></div>
+      <div class="stat-card"><div class="stat-label">提出率</div><div class="stat-value">${total > 0 ? Math.round(submitted/total*100) : 0}%</div><div class="stat-sub">${dashMonth}月</div></div>
     `;
 
     const rows = allStaff.map(s => `<tr>
@@ -1856,7 +1865,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
       if (isClosedDayType(cellDayType)) {
         if (editable) {
           html += `<td style="padding:2px;background:#f3f4f6">
-            <div style="background:#f3f4f6;color:#cbd5e1;font-size:14px;text-align:center;min-height:34px;display:flex;align-items:center;justify-content:center;border-radius:4px">−</div>
+            <div style="background:#f3f4f6;color:#cbd5e1;font-size:14px;text-align:center;height:36px;display:flex;align-items:center;justify-content:center;border-radius:4px">−</div>
           </td>`;
         } else {
           html += `<td style="background:#f3f4f6"><div style="min-height:20px"></div></td>`;
@@ -1886,7 +1895,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
             data-staff="${staff.id}" data-day="${d}" data-grid="${gridId}"
             data-request="${requestedShift}"
             onclick="handleCellClick(event,'${staff.id}','${escapeJs(staff.name)}',${d},'${gridId}')"
-            style="position:relative;cursor:pointer;${lockBorder};flex-direction:column;min-height:34px;"
+            style="position:relative;cursor:pointer;${lockBorder};flex-direction:column;"
           ><span class="shift-text">${dispShift||'+'}</span>${reqLabel}${lockIcon}</div>
         </td>`;
       } else {
@@ -7121,6 +7130,8 @@ document.getElementById('shiftPrevMonth').addEventListener('click', async () => 
 document.getElementById('shiftNextMonth').addEventListener('click', async () => { saveCurrentShiftStateToCache(); shiftMonth++; if(shiftMonth>12){shiftMonth=1;shiftYear++;} updateMonthDisplays(); const newCtx = `${currentDept}|${shiftYear}|${shiftMonth}`; if (tryRestoreShiftStateFromCache(newCtx)) rerenderShiftGridFromMemory(); else await loadShiftGrid(); });
 document.getElementById('genPrevMonth').addEventListener('click', async () => { genMonth--; if(genMonth<1){genMonth=12;genYear--;} updateMonthDisplays(); await loadGenPage(); });
 document.getElementById('genNextMonth').addEventListener('click', async () => { genMonth++; if(genMonth>12){genMonth=1;genYear++;} updateMonthDisplays(); await loadGenPage(); });
+document.getElementById('dashPrevMonth')?.addEventListener('click', async () => { dashMonth--; if(dashMonth<1){dashMonth=12;dashYear--;} updateMonthDisplays(); await loadDashboard(); });
+document.getElementById('dashNextMonth')?.addEventListener('click', async () => { dashMonth++; if(dashMonth>12){dashMonth=1;dashYear++;} updateMonthDisplays(); await loadDashboard(); });
 
 // LOGOUT
 document.getElementById('adminLogoutBtn').addEventListener('click', () => {
