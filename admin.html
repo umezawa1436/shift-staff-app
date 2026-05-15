@@ -67,7 +67,20 @@
     /* LAYOUT */
     #appScreen { display:none; }
     .layout { display:flex;min-height:100vh; }
-    .sidebar { width:var(--sidebar-w);background:var(--primary);color:white;display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:100;padding-top:env(safe-area-inset-top); }
+    .sidebar { width:var(--sidebar-w);background:var(--primary);color:white;display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:100;padding-top:env(safe-area-inset-top);transition:width 0.2s ease; }
+    .sidebar.collapsed { width:56px; }
+    .sidebar.collapsed .sidebar-logo-title,
+    .sidebar.collapsed .sidebar-logo-sub,
+    .sidebar.collapsed .nav-section,
+    .sidebar.collapsed .nav-item span,
+    .sidebar.collapsed .user-info,
+    .sidebar.collapsed .user-role,
+    .sidebar.collapsed .btn-logout { display:none; }
+    .sidebar.collapsed .nav-item { justify-content:center;padding:10px 0;margin:2px 4px; }
+    .sidebar.collapsed .sidebar-logo { padding:16px 8px;text-align:center; }
+    .sidebar.collapsed .sidebar-footer { padding:8px;text-align:center; }
+    .sidebar-toggle { position:absolute;top:16px;right:-12px;width:24px;height:24px;background:white;color:var(--primary);border:1px solid var(--border);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 4px rgba(0,0,0,0.1);z-index:101;font-size:11px;font-weight:700;transition:transform 0.2s; }
+    .sidebar.collapsed .sidebar-toggle { transform:rotate(180deg); }
     .sidebar-logo { padding:24px 20px 20px;border-bottom:1px solid rgba(255,255,255,0.1); }
     .sidebar-logo-title { font-size:14px;font-weight:700;line-height:1.4; }
     .sidebar-logo-sub { font-size:11px;opacity:0.6;margin-top:2px; }
@@ -80,7 +93,8 @@
     .user-info { font-size:13px;margin-bottom:4px; }
     .user-role { font-size:11px;opacity:0.6; }
     .btn-logout { width:100%;padding:8px;background:rgba(255,255,255,0.1);color:white;border:none;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer;margin-top:8px; }
-    .main { margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column; }
+    .main { margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;transition:margin-left 0.2s ease; }
+    .sidebar.collapsed ~ .main { margin-left:56px; }
     .topbar { background:white;padding:calc(16px + env(safe-area-inset-top)) 28px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50; }
     .page-title { font-size:20px;font-weight:700; }
     .page-sub { font-size:13px;color:var(--text-muted);margin-top:2px; }
@@ -126,17 +140,19 @@
 
     /* SHIFT GRID */
     .shift-grid-wrap { overflow-x:auto; }
-    .shift-grid { border-collapse:collapse;font-size:11px;min-width:100%; }
-    .shift-grid th { padding:6px 4px;text-align:center;font-weight:600;font-size:10px;color:var(--text-muted);border:1px solid var(--border);background:var(--bg);white-space:nowrap;min-width:34px; }
-    .shift-grid th.staff-col { min-width:72px;text-align:left;padding-left:10px; }
-    .shift-grid td { padding:2px;border:1px solid var(--border);text-align:center;vertical-align:middle;height:42px; }
-    .shift-grid tbody tr { height:42px; }
-    .shift-grid td.staff-name { padding:6px 10px;text-align:left;font-weight:500;white-space:nowrap;background:white;font-size:12px;height:42px; }
-    .shift-cell { height:36px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:pointer;transition:all 0.15s;padding:1px;overflow:hidden; }
-    #shiftEditOptions .shift-cell { height:auto;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center; }
+    .shift-grid { border-collapse:separate;border-spacing:0;font-size:11px;table-layout:fixed;width:auto; }
+    .shift-grid th { padding:4px 2px;text-align:center;font-weight:600;font-size:10px;color:var(--text-muted);border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--bg);white-space:nowrap;overflow:hidden; }
+    .shift-grid thead tr:first-child th { border-top:1px solid var(--border); }
+    .shift-grid th:first-child, .shift-grid td:first-child { border-left:1px solid var(--border); }
+    .shift-grid th.staff-col { text-align:left;padding-left:8px;position:sticky;left:0;z-index:5;background:var(--bg);box-shadow:2px 0 4px rgba(0,0,0,0.12); }
+    .shift-grid td { padding:2px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);text-align:center;vertical-align:middle;height:38px;background:white; }
+    .shift-grid tbody tr { height:38px; }
+    .shift-grid td.staff-name { padding:4px 8px;text-align:left;font-weight:500;white-space:nowrap;background:white;font-size:11px;height:38px;overflow:visible;position:sticky;left:0;z-index:4;box-shadow:2px 0 4px rgba(0,0,0,0.12); }
+    .shift-cell { height:32px;border-radius:5px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:pointer;transition:all 0.15s;padding:1px;overflow:hidden;width:100%;box-sizing:border-box; }
+    #shiftEditOptions .shift-cell { height:auto;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;width:auto; }
     .shift-cell.has-req { flex-direction:column;justify-content:center;align-items:center; }
-    .shift-cell .shift-text { font-size:10px;font-weight:600;line-height:1.2; }
-    .shift-cell .req-text { font-size:8px;color:#f59e0b;line-height:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;text-align:center; }
+    .shift-cell .shift-text { font-size:10px;font-weight:600;line-height:1.05;text-align:center;word-break:break-all;overflow:hidden;max-width:100%;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2; }
+    .shift-cell .req-text { font-size:8px;color:#f59e0b;line-height:1;white-space:nowrap;text-align:center;max-width:100%;overflow:hidden; }
     .shift-cell:hover { opacity:0.75;transform:scale(1.08); }
     .shift-cell.empty { background:#f8fafc;color:#d1d5db; }
     .shift-cell.locked { position:relative; }
@@ -607,7 +623,8 @@
 <!-- APP -->
 <div id="appScreen">
   <div class="layout">
-    <div class="sidebar">
+    <div class="sidebar" id="adminSidebar">
+      <button class="sidebar-toggle" id="sidebarToggle" title="サイドバー折りたたみ/展開">◀</button>
       <div class="sidebar-logo">
         <div class="sidebar-logo-title">やちよ総合診療<br>クリニック</div>
         <div class="sidebar-logo-sub">シフト管理システム</div>
@@ -1549,6 +1566,21 @@ document.querySelectorAll('.nav-item[data-page]').forEach(item => {
   });
 });
 
+// SIDEBAR TOGGLE（折りたたみ）
+(function() {
+  const sidebar = document.getElementById('adminSidebar');
+  const toggleBtn = document.getElementById('sidebarToggle');
+  if (!sidebar || !toggleBtn) return;
+  // 初期状態をlocalStorageから復元
+  if (localStorage.getItem('sidebarCollapsed') === 'true') {
+    sidebar.classList.add('collapsed');
+  }
+  toggleBtn.addEventListener('click', () => {
+    sidebar.classList.toggle('collapsed');
+    localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
+  });
+})();
+
 function refreshCurrentPage() {
   const active = document.querySelector('.page.active')?.id?.replace('page-','');
   if (active === 'dashboard') loadDashboard();
@@ -1820,8 +1852,16 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
   }
 
   // ヘッダー行
-  let html = '<thead><tr>';
-  html += `<th class="staff-col" style="min-width:80px;padding:0;font-size:9px;color:var(--text-muted);text-align:center;line-height:1.4">
+  // colgroupで列幅を明示（table-layout:fixedと組み合わせて確実に列幅を固定）
+  let html = '<colgroup>';
+  html += '<col style="width:120px">'; // スタッフ名列（…表示を回避するため拡大）
+  for (let d = 1; d <= daysInMonth; d++) {
+    html += '<col style="width:44px">'; // 日付列（⭐+3文字の希望ラベルが1行で収まる幅）
+  }
+  if (editable) html += '<col style="width:140px">'; // 実働/所定列
+  html += '</colgroup>';
+  html += '<thead><tr>';
+  html += `<th class="staff-col" style="padding:0;font-size:9px;color:var(--text-muted);text-align:center;line-height:1.4">
     <div style="padding:4px 2px">
       <div style="font-weight:700;color:#475569">日</div>
       <div style="font-size:9px">クリックで詳細</div>
@@ -1849,7 +1889,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
     const customClosedLabelText = (window._shiftCustomClosed || {})[d];
     const clinicClosedLabel = dayType4header === 'clinic_closed' ? `<div style="font-size:8px;color:#6b7280;line-height:1.2;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(customClosedLabelText || '休診')}">${escapeHtml(customClosedLabelText || '休診')}</div>` : '';
     if (editable) {
-      html += `<th style="min-width:32px;padding:0;${colStyle}">
+      html += `<th style="padding:0;${colStyle}">
         <div class="day-header" style="display:flex;flex-direction:column">
           <div style="padding:4px 2px;cursor:pointer" onclick="openVerticalView(${d})" title="バーチカル表示">
             <div class="day-num ${cls}">${d}</div>
@@ -1862,10 +1902,10 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
         </div>
       </th>`;
     } else {
-      html += `<th style="min-width:32px;${colStyle}"><div class="day-header"><div class="day-num ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})" title="バーチカル表示">${d}</div><div class="day-dow ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})">${DOW[dow]}</div>${wedLabel}${thuLabel}${holidayLabel}${clinicClosedLabel}</div></th>`;
+      html += `<th style="${colStyle}"><div class="day-header"><div class="day-num ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})" title="バーチカル表示">${d}</div><div class="day-dow ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})">${DOW[dow]}</div>${wedLabel}${thuLabel}${holidayLabel}${clinicClosedLabel}</div></th>`;
     }
   }
-  if (editable) html += '<th style="min-width:160px;text-align:center;cursor:pointer" onclick="showMonthlyHoursEditor()">実働/所定 <span style="font-size:10px;opacity:0.6">✏️</span></th>';
+  if (editable) html += '<th style="text-align:center;cursor:pointer" onclick="showMonthlyHoursEditor()">実働/所定 <span style="font-size:10px;opacity:0.6">✏️</span></th>';
   html += '</tr></thead><tbody>';
 
   // スタッフ行
@@ -1905,7 +1945,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
       if (isClosedDayType(cellDayType)) {
         if (editable) {
           html += `<td style="padding:2px;background:#f3f4f6">
-            <div style="background:#f3f4f6;color:#cbd5e1;font-size:14px;text-align:center;height:36px;display:flex;align-items:center;justify-content:center;border-radius:4px">−</div>
+            <div style="background:#f3f4f6;color:#cbd5e1;font-size:14px;text-align:center;height:32px;display:flex;align-items:center;justify-content:center;border-radius:4px">−</div>
           </td>`;
         } else {
           html += `<td style="background:#f3f4f6"><div style="min-height:20px"></div></td>`;
@@ -1928,7 +1968,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
 
       if (editable) {
         const lockBorder = isLocked ? 'box-shadow:inset 0 0 0 2px #f59e0b;' : '';
-        const reqLabel = hasRequest ? `<div class="req-text" style="font-size:8px;color:#f59e0b;line-height:1;margin-top:1px;pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">⭐${requestedShift}</div>` : '';
+        const reqLabel = hasRequest ? `<div class="req-text" style="font-size:8px;color:#f59e0b;line-height:1;margin-top:1px;pointer-events:none;white-space:nowrap;text-align:center;max-width:100%;overflow:hidden">⭐${requestedShift}</div>` : '';
         const lockIcon = isLocked ? `<span class="lock-icon" style="position:absolute;top:-3px;right:-3px;font-size:11px;line-height:1;z-index:2;pointer-events:none">🔒</span>` : '';
         html += `<td style="padding:2px;position:relative">
           <div class="shift-cell ${colorClass||'empty'}"
@@ -1999,6 +2039,18 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
 
   html += '</tbody>';
   grid.innerHTML = html;
+  // テーブル幅とtable-layoutをJSで強制設定（CSS/colgroupだけでは反映されない場合の保険）
+  const totalWidth = 120 + daysInMonth * 44 + (editable ? 140 : 0);
+  grid.style.tableLayout = 'fixed';
+  grid.style.width = totalWidth + 'px';
+  // colgroupの各col要素にwidthを再設定（!important相当として直接プロパティを書く）
+  const cols = grid.querySelectorAll('col');
+  cols.forEach((col, i) => {
+    const w = i === 0 ? 120 : (editable && i === cols.length - 1) ? 140 : 44;
+    col.style.width = w + 'px';
+    col.style.minWidth = w + 'px';
+    col.style.maxWidth = w + 'px';
+  });
 }
 
 
