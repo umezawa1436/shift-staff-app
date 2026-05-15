@@ -127,12 +127,12 @@
     /* SHIFT GRID */
     .shift-grid-wrap { overflow-x:auto; }
     .shift-grid { border-collapse:collapse;font-size:11px;table-layout:fixed;width:auto; }
-    .shift-grid th { padding:6px 4px;text-align:center;font-weight:600;font-size:10px;color:var(--text-muted);border:1px solid var(--border);background:var(--bg);white-space:nowrap;overflow:hidden; }
-    .shift-grid th.staff-col { text-align:left;padding-left:10px; }
-    .shift-grid td { padding:2px;border:1px solid var(--border);text-align:center;vertical-align:middle;height:48px; }
-    .shift-grid tbody tr { height:48px; }
-    .shift-grid td.staff-name { padding:6px 10px;text-align:left;font-weight:500;white-space:nowrap;background:white;font-size:12px;height:48px;overflow:hidden;text-overflow:ellipsis; }
-    .shift-cell { height:42px;border-radius:5px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:pointer;transition:all 0.15s;padding:1px;overflow:hidden;width:100%;box-sizing:border-box; }
+    .shift-grid th { padding:4px 2px;text-align:center;font-weight:600;font-size:10px;color:var(--text-muted);border:1px solid var(--border);background:var(--bg);white-space:nowrap;overflow:hidden; }
+    .shift-grid th.staff-col { text-align:left;padding-left:8px; }
+    .shift-grid td { padding:2px;border:1px solid var(--border);text-align:center;vertical-align:middle;height:38px; }
+    .shift-grid tbody tr { height:38px; }
+    .shift-grid td.staff-name { padding:4px 8px;text-align:left;font-weight:500;white-space:nowrap;background:white;font-size:11px;height:38px;overflow:visible; }
+    .shift-cell { height:32px;border-radius:5px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:pointer;transition:all 0.15s;padding:1px;overflow:hidden;width:100%;box-sizing:border-box; }
     #shiftEditOptions .shift-cell { height:auto;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;width:auto; }
     .shift-cell.has-req { flex-direction:column;justify-content:center;align-items:center; }
     .shift-cell .shift-text { font-size:10px;font-weight:600;line-height:1.05;text-align:center;word-break:break-all;overflow:hidden;max-width:100%;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2; }
@@ -1822,11 +1822,11 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
   // ヘッダー行
   // colgroupで列幅を明示（table-layout:fixedと組み合わせて確実に列幅を固定）
   let html = '<colgroup>';
-  html += '<col style="width:90px">'; // スタッフ名列
+  html += '<col style="width:120px">'; // スタッフ名列（…表示を回避するため拡大）
   for (let d = 1; d <= daysInMonth; d++) {
-    html += '<col style="width:48px">'; // 日付列（⭐+3文字の希望ラベルが1行で収まる幅）
+    html += '<col style="width:44px">'; // 日付列（⭐+3文字の希望ラベルが1行で収まる幅）
   }
-  if (editable) html += '<col style="width:160px">'; // 実働/所定列
+  if (editable) html += '<col style="width:140px">'; // 実働/所定列
   html += '</colgroup>';
   html += '<thead><tr>';
   html += `<th class="staff-col" style="padding:0;font-size:9px;color:var(--text-muted);text-align:center;line-height:1.4">
@@ -1913,7 +1913,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
       if (isClosedDayType(cellDayType)) {
         if (editable) {
           html += `<td style="padding:2px;background:#f3f4f6">
-            <div style="background:#f3f4f6;color:#cbd5e1;font-size:14px;text-align:center;height:42px;display:flex;align-items:center;justify-content:center;border-radius:4px">−</div>
+            <div style="background:#f3f4f6;color:#cbd5e1;font-size:14px;text-align:center;height:32px;display:flex;align-items:center;justify-content:center;border-radius:4px">−</div>
           </td>`;
         } else {
           html += `<td style="background:#f3f4f6"><div style="min-height:20px"></div></td>`;
@@ -2008,13 +2008,13 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
   html += '</tbody>';
   grid.innerHTML = html;
   // テーブル幅とtable-layoutをJSで強制設定（CSS/colgroupだけでは反映されない場合の保険）
-  const totalWidth = 90 + daysInMonth * 48 + (editable ? 160 : 0);
+  const totalWidth = 120 + daysInMonth * 44 + (editable ? 140 : 0);
   grid.style.tableLayout = 'fixed';
   grid.style.width = totalWidth + 'px';
   // colgroupの各col要素にwidthを再設定（!important相当として直接プロパティを書く）
   const cols = grid.querySelectorAll('col');
   cols.forEach((col, i) => {
-    const w = i === 0 ? 90 : (editable && i === cols.length - 1) ? 160 : 48;
+    const w = i === 0 ? 120 : (editable && i === cols.length - 1) ? 140 : 44;
     col.style.width = w + 'px';
     col.style.minWidth = w + 'px';
     col.style.maxWidth = w + 'px';
