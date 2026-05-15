@@ -1728,8 +1728,10 @@ async function loadShiftGrid() {
     const shiftOpenThursdays = new Set();
     shiftThursdayData.forEach(t => { if(t.is_open) shiftOpenThursdays.add(t.day); });
 
-    // shiftDataは全リセット、lockedCellsはDBのロック状態を保持（ローカルのロックも維持）
-    const prevLockedCells = {...lockedCells};
+    // shiftData・lockedCellsを今月のDB状態で完全に置き換える
+    // ※過去：prevLockedCellsを引き継いでいたが、キーが staffId|day で年月情報を持たないため、
+    //         月跨ぎでロックが伝播するバグの原因になっていた。
+    //         未保存変更の保持は shiftMonthCache が担当するのでここでは不要。
     shiftData = {};
     lockedCells = {};
     existingShifts.forEach(s => {
@@ -1737,8 +1739,6 @@ async function loadShiftGrid() {
       shiftData[key] = s.shift_type_id;
       if (s.is_locked) lockedCells[key] = true;
     });
-    // ローカルでロックしたものも維持
-    Object.assign(lockedCells, prevLockedCells);
 
     const reqMap = {};
     requestData.forEach(r => { reqMap[`${r.staff_id}|${r.day}`] = r.request_type; });
