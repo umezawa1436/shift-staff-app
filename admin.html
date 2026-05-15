@@ -126,17 +126,17 @@
 
     /* SHIFT GRID */
     .shift-grid-wrap { overflow-x:auto; }
-    .shift-grid { border-collapse:collapse;font-size:11px;min-width:100%;table-layout:fixed; }
+    .shift-grid { border-collapse:collapse;font-size:11px;table-layout:fixed;width:auto; }
     .shift-grid th { padding:6px 4px;text-align:center;font-weight:600;font-size:10px;color:var(--text-muted);border:1px solid var(--border);background:var(--bg);white-space:nowrap;width:40px;min-width:40px;max-width:40px; }
     .shift-grid th.staff-col { width:90px;min-width:90px;max-width:90px;text-align:left;padding-left:10px; }
-    .shift-grid td { padding:2px;border:1px solid var(--border);text-align:center;vertical-align:middle;height:42px; }
-    .shift-grid tbody tr { height:42px; }
-    .shift-grid td.staff-name { padding:6px 10px;text-align:left;font-weight:500;white-space:nowrap;background:white;font-size:12px;height:42px;overflow:hidden;text-overflow:ellipsis; }
-    .shift-cell { height:36px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:pointer;transition:all 0.15s;padding:1px;overflow:hidden;width:100%;box-sizing:border-box; }
+    .shift-grid td { padding:2px;border:1px solid var(--border);text-align:center;vertical-align:middle;height:48px; }
+    .shift-grid tbody tr { height:48px; }
+    .shift-grid td.staff-name { padding:6px 10px;text-align:left;font-weight:500;white-space:nowrap;background:white;font-size:12px;height:48px;overflow:hidden;text-overflow:ellipsis; }
+    .shift-cell { height:42px;border-radius:5px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:pointer;transition:all 0.15s;padding:1px;overflow:hidden;width:100%;box-sizing:border-box; }
     #shiftEditOptions .shift-cell { height:auto;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;width:auto; }
     .shift-cell.has-req { flex-direction:column;justify-content:center;align-items:center; }
-    .shift-cell .shift-text { font-size:10px;font-weight:600;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%; }
-    .shift-cell .req-text { font-size:8px;color:#f59e0b;line-height:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;text-align:center; }
+    .shift-cell .shift-text { font-size:10px;font-weight:600;line-height:1.05;text-align:center;word-break:break-all;overflow:hidden;max-width:100%;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2; }
+    .shift-cell .req-text { font-size:8px;color:#f59e0b;line-height:1;word-break:break-all;text-align:center;max-width:100%;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2; }
     .shift-cell:hover { opacity:0.75;transform:scale(1.08); }
     .shift-cell.empty { background:#f8fafc;color:#d1d5db; }
     .shift-cell.locked { position:relative; }
@@ -1849,7 +1849,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
     const customClosedLabelText = (window._shiftCustomClosed || {})[d];
     const clinicClosedLabel = dayType4header === 'clinic_closed' ? `<div style="font-size:8px;color:#6b7280;line-height:1.2;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(customClosedLabelText || '休診')}">${escapeHtml(customClosedLabelText || '休診')}</div>` : '';
     if (editable) {
-      html += `<th style="min-width:32px;padding:0;${colStyle}">
+      html += `<th style="width:40px;min-width:40px;max-width:40px;padding:0;${colStyle}">
         <div class="day-header" style="display:flex;flex-direction:column">
           <div style="padding:4px 2px;cursor:pointer" onclick="openVerticalView(${d})" title="バーチカル表示">
             <div class="day-num ${cls}">${d}</div>
@@ -1862,7 +1862,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
         </div>
       </th>`;
     } else {
-      html += `<th style="min-width:32px;${colStyle}"><div class="day-header"><div class="day-num ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})" title="バーチカル表示">${d}</div><div class="day-dow ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})">${DOW[dow]}</div>${wedLabel}${thuLabel}${holidayLabel}${clinicClosedLabel}</div></th>`;
+      html += `<th style="width:40px;min-width:40px;max-width:40px;${colStyle}"><div class="day-header"><div class="day-num ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})" title="バーチカル表示">${d}</div><div class="day-dow ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})">${DOW[dow]}</div>${wedLabel}${thuLabel}${holidayLabel}${clinicClosedLabel}</div></th>`;
     }
   }
   if (editable) html += '<th style="width:160px;min-width:160px;max-width:160px;text-align:center;cursor:pointer" onclick="showMonthlyHoursEditor()">実働/所定 <span style="font-size:10px;opacity:0.6">✏️</span></th>';
@@ -1905,7 +1905,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
       if (isClosedDayType(cellDayType)) {
         if (editable) {
           html += `<td style="padding:2px;background:#f3f4f6">
-            <div style="background:#f3f4f6;color:#cbd5e1;font-size:14px;text-align:center;height:36px;display:flex;align-items:center;justify-content:center;border-radius:4px">−</div>
+            <div style="background:#f3f4f6;color:#cbd5e1;font-size:14px;text-align:center;height:42px;display:flex;align-items:center;justify-content:center;border-radius:4px">−</div>
           </td>`;
         } else {
           html += `<td style="background:#f3f4f6"><div style="min-height:20px"></div></td>`;
@@ -1928,7 +1928,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
 
       if (editable) {
         const lockBorder = isLocked ? 'box-shadow:inset 0 0 0 2px #f59e0b;' : '';
-        const reqLabel = hasRequest ? `<div class="req-text" style="font-size:8px;color:#f59e0b;line-height:1;margin-top:1px;pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">⭐${requestedShift}</div>` : '';
+        const reqLabel = hasRequest ? `<div class="req-text" style="font-size:8px;color:#f59e0b;line-height:1;margin-top:1px;pointer-events:none;word-break:break-all;text-align:center;max-width:100%">⭐${requestedShift}</div>` : '';
         const lockIcon = isLocked ? `<span class="lock-icon" style="position:absolute;top:-3px;right:-3px;font-size:11px;line-height:1;z-index:2;pointer-events:none">🔒</span>` : '';
         html += `<td style="padding:2px;position:relative">
           <div class="shift-cell ${colorClass||'empty'}"
