@@ -2007,6 +2007,18 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
 
   html += '</tbody>';
   grid.innerHTML = html;
+  // テーブル幅とtable-layoutをJSで強制設定（CSS/colgroupだけでは反映されない場合の保険）
+  const totalWidth = 90 + daysInMonth * 48 + (editable ? 160 : 0);
+  grid.style.tableLayout = 'fixed';
+  grid.style.width = totalWidth + 'px';
+  // colgroupの各col要素にwidthを再設定（!important相当として直接プロパティを書く）
+  const cols = grid.querySelectorAll('col');
+  cols.forEach((col, i) => {
+    const w = i === 0 ? 90 : (editable && i === cols.length - 1) ? 160 : 48;
+    col.style.width = w + 'px';
+    col.style.minWidth = w + 'px';
+    col.style.maxWidth = w + 'px';
+  });
 }
 
 
