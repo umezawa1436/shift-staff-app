@@ -1552,7 +1552,8 @@ document.querySelectorAll('.nav-item[data-page]').forEach(item => {
 
 function refreshCurrentPage() {
   const active = document.querySelector('.page.active')?.id?.replace('page-','');
-  if (active === 'requests') loadRequests();
+  if (active === 'dashboard') loadDashboard();
+  else if (active === 'requests') loadRequests();
   else if (active === 'shift') {
     const ctx = `${currentDept}|${shiftYear}|${shiftMonth}`;
     // 同コンテキストならメモリ状態で再描画（shiftData空でもreqMapが有効なら反映される）
@@ -1576,26 +1577,54 @@ function refreshCurrentPage() {
 
 // ===== DASHBOARD =====
 async function loadDashboard() {
+  const statsEl = document.getElementById('statsGrid');
+  const submissionsEl = document.getElementById('recentSubmissions');
+
+  // 明示的なローディング表示
+  if (submissionsEl) {
+    submissionsEl.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px">
+      <div style="display:inline-block;width:24px;height:24px;border:2px solid #e5e7eb;border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:10px"></div>
+      <div>読み込み中...</div>
+    </div>`;
+  }
+
   try {
-    const requests = await sb(`shift_requests?year=eq.${dashYear}&month=eq.${dashMonth}&select=staff_id`);
+    // タイムアウト10秒
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('タイムアウト（10秒経過）')), 10000));
+    const requestsPromise = sb(`shift_requests?year=eq.${dashYear}&month=eq.${dashMonth}&select=staff_id`);
+    const requests = await Promise.race([requestsPromise, timeoutPromise]);
+
     const submittedIds = new Set(requests.map(r => r.staff_id));
     const total = allStaff.length;
     const submitted = allStaff.filter(s => submittedIds.has(s.id)).length;
 
-    document.getElementById('statsGrid').innerHTML = `
-      <div class="stat-card"><div class="stat-label">全スタッフ数</div><div class="stat-value">${total}</div><div class="stat-sub">全部門合計</div></div>
-      <div class="stat-card"><div class="stat-label">希望提出済み</div><div class="stat-value" style="color:var(--success)">${submitted}</div><div class="stat-sub">${dashMonth}月</div></div>
-      <div class="stat-card"><div class="stat-label">未提出</div><div class="stat-value" style="color:var(--warning)">${total-submitted}</div><div class="stat-sub">${dashMonth}月</div></div>
-      <div class="stat-card"><div class="stat-label">提出率</div><div class="stat-value">${total > 0 ? Math.round(submitted/total*100) : 0}%</div><div class="stat-sub">${dashMonth}月</div></div>
-    `;
+    if (statsEl) {
+      statsEl.innerHTML = `
+        <div class="stat-card"><div class="stat-label">全スタッフ数</div><div class="stat-value">${total}</div><div class="stat-sub">全部門合計</div></div>
+        <div class="stat-card"><div class="stat-label">希望提出済み</div><div class="stat-value" style="color:var(--success)">${submitted}</div><div class="stat-sub">${dashMonth}月</div></div>
+        <div class="stat-card"><div class="stat-label">未提出</div><div class="stat-value" style="color:var(--warning)">${total-submitted}</div><div class="stat-sub">${dashMonth}月</div></div>
+        <div class="stat-card"><div class="stat-label">提出率</div><div class="stat-value">${total > 0 ? Math.round(submitted/total*100) : 0}%</div><div class="stat-sub">${dashMonth}月</div></div>
+      `;
+    }
 
     const rows = allStaff.map(s => `<tr>
-      <td>${s.name}</td><td>${DEPT_NAMES[s.dept_id]}</td>
+      <td>${escapeHtml(s.name)}</td><td>${DEPT_NAMES[s.dept_id]}</td>
       <td><span class="badge ${submittedIds.has(s.id) ? 'badge-submitted' : 'badge-pending'}">${submittedIds.has(s.id) ? '提出済み' : '未提出'}</span></td>
     </tr>`).join('');
-    document.getElementById('recentSubmissions').innerHTML =
-      `<table class="data-table"><thead><tr><th>名前</th><th>部門</th><th>状況</th></tr></thead><tbody>${rows}</tbody></table>`;
-  } catch(e) { console.error(e); }
+    if (submissionsEl) {
+      submissionsEl.innerHTML = `<table class="data-table"><thead><tr><th>名前</th><th>部門</th><th>状況</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+  } catch(e) {
+    console.error('ダッシュボード読み込みエラー:', e);
+    if (submissionsEl) {
+      submissionsEl.innerHTML = `<div style="padding:24px;text-align:center">
+        <div style="color:var(--danger);margin-bottom:8px;font-weight:600">読み込みに失敗しました</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">${escapeHtml(e.message || 'ネットワークエラー')}</div>
+        <button onclick="loadDashboard()" class="btn btn-primary" style="padding:8px 20px;font-size:13px">再読み込み</button>
+      </div>`;
+    }
+    if (statsEl) statsEl.innerHTML = '';
+  }
 }
 
 // ===== REQUESTS =====
