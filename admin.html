@@ -1552,7 +1552,8 @@ document.querySelectorAll('.nav-item[data-page]').forEach(item => {
 
 function refreshCurrentPage() {
   const active = document.querySelector('.page.active')?.id?.replace('page-','');
-  if (active === 'requests') loadRequests();
+  if (active === 'dashboard') loadDashboard();
+  else if (active === 'requests') loadRequests();
   else if (active === 'shift') {
     const ctx = `${currentDept}|${shiftYear}|${shiftMonth}`;
     // 同コンテキストならメモリ状態で再描画（shiftData空でもreqMapが有効なら反映される）
