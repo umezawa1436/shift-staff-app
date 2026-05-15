@@ -774,11 +774,10 @@
 
             <!-- シフトパターン選択 -->
             <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
-              <div style="font-size:13px;font-weight:700;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">
-                <span>📋 使用シフトパターン</span>
-                <button onclick="saveShiftPatternSettings()" style="padding:4px 12px;background:var(--primary);color:white;border:none;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit">この設定を保存</button>
+              <div style="font-size:13px;font-weight:700;margin-bottom:10px">
+                📋 使用シフトパターン
               </div>
-              <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">チェックしたシフトのみ自動生成に使用します（部門ごとに保存されます）</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">チェックしたシフトのみ自動生成に使用します（部門ごとに自動保存）</div>
               <div id="shiftPatternOptions" style="display:flex;flex-wrap:wrap;gap:8px"></div>
             </div>
 
@@ -1355,10 +1354,10 @@ async function adminApi(endpoint, payload) {
 // UI
 function showLoading() { document.getElementById('loading').style.display = 'flex'; }
 function hideLoading() { document.getElementById('loading').style.display = 'none'; }
-function showToast(msg, type='') {
+function showToast(msg, type='', duration=3000) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.className = `toast ${type} show`;
-  setTimeout(() => t.className = 'toast', 3000);
+  setTimeout(() => t.className = 'toast', duration);
 }
 function closeModal(id) { document.getElementById(id).classList.remove('show'); }
 function openModal(id) { document.getElementById(id).classList.add('show'); }
@@ -2839,25 +2838,43 @@ const DEFAULT_SHIFT_PATTERNS = {
   3: ['日勤','日勤+','午前','遅番','遅L','夜勤','時短'],                    // 放射線
 };
 
-let shiftPatternSettings = {}; // 部門ごとの設定
+let shiftPatternSettings = {}; // 部門ごとの設定（DBキャッシュ）
 
-function loadShiftPatternSettings() {
-  // ローカルストレージから読み込み
+async function loadShiftPatternSettings() {
+  // DBから部署ごとのシフトパターン設定を読み込み
   try {
-    const saved = localStorage.getItem('shiftPatternSettings');
-    if (saved) shiftPatternSettings = JSON.parse(saved);
-  } catch(e) {}
+    const rows = await sb('dept_shift_pattern_settings?select=dept_id,enabled_patterns');
+    shiftPatternSettings = {};
+    rows.forEach(r => {
+      shiftPatternSettings[r.dept_id] = r.enabled_patterns || [];
+    });
+  } catch(e) {
+    console.error('シフトパターン設定の読み込みエラー:', e);
+    // 失敗時は空でフォールバック（renderShiftPatternOptionsがデフォルトを使う）
+    shiftPatternSettings = {};
+  }
   renderShiftPatternOptions();
 }
 
-function saveShiftPatternSettings() {
-  // 現在のチェック状態を保存
+async function saveShiftPatternSettings() {
+  // 現在のチェック状態を取得
   const checked = SHIFT_PATTERN_OPTIONS
     .filter(s => document.getElementById(`sp-${s.id}`)?.checked)
     .map(s => s.id);
   shiftPatternSettings[currentDept] = checked;
-  localStorage.setItem('shiftPatternSettings', JSON.stringify(shiftPatternSettings));
-  showToast(`${DEPT_NAMES[currentDept]}のシフトパターンを保存しました ✓`, 'success');
+
+  try {
+    // upsert: 既存ならupdate、なければinsert
+    await sb('dept_shift_pattern_settings', {
+      method: 'POST',
+      headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ dept_id: currentDept, enabled_patterns: checked })
+    });
+    showToast(`${DEPT_NAMES[currentDept]}の設定を保存しました ✓`, 'success', 1500);
+  } catch(e) {
+    console.error('シフトパターン設定の保存エラー:', e);
+    showToast('保存に失敗しました', 'error');
+  }
 }
 
 function renderShiftPatternOptions() {
@@ -2871,7 +2888,7 @@ function renderShiftPatternOptions() {
       border:1.5px solid ${isChecked?'var(--primary)':'var(--border)'};
       border-radius:10px;cursor:pointer;transition:all 0.15s;width:fit-content;flex:0 0 auto">
       <input type="checkbox" id="sp-${s.id}" ${isChecked?'checked':''}
-        onchange="this.closest('label').style.background=this.checked?'#eff6ff':'white';this.closest('label').style.borderColor=this.checked?'var(--primary)':'var(--border)'"
+        onchange="this.closest('label').style.background=this.checked?'#eff6ff':'white';this.closest('label').style.borderColor=this.checked?'var(--primary)':'var(--border)';saveShiftPatternSettings();"
         style="width:15px;height:15px;accent-color:var(--primary);cursor:pointer">
       <div>
         <div style="font-size:13px;font-weight:700;color:var(--text)">${s.label}</div>
