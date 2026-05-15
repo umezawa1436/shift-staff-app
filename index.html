@@ -592,6 +592,7 @@ let SHIFTS = [
     { id: '希望休', color: '#fdba74', time: '' },
     { id: '有休', color: '#e879f9', time: '平日+8.5H / 土日祝+9H' },
     { id: '半有休', color: '#d946ef', time: '所定+5H' },
+    { id: '個人夏休み', color: '#06b6d4', time: '平日+8.5H / 土日祝+9H' },
     { id: '休み', color: '#d1d5db', time: '' },
   ]},
   { category: '日勤系', items: [
@@ -647,7 +648,7 @@ async function loadShiftTypesFromDB() {
     types.forEach(s => { shiftTypesMap[s.id] = s; });
 
     // カスタムシフトをSHIFTSに追加
-    const defaults = ['日勤','日勤+','午前','午後','遅番','遅L','リハ遅','夜勤','長日','中抜け','時短','CC','CHO','CCのみ','休み','有休','半有休','希望休'];
+    const defaults = ['日勤','日勤+','午前','午後','遅番','遅L','リハ遅','夜勤','長日','中抜け','時短','CC','CHO','CCのみ','休み','有休','半有休','個人夏休み','希望休'];
     const customs = types.filter(s => !defaults.includes(s.id));
     if (customs.length > 0) {
       const customCategory = {
@@ -1204,6 +1205,7 @@ function countRequests() {
     if (sh === '希望休') kibouKyu++;
     else if (sh === '有休' || sh === '半有休') yukyu++;
     else if (sh === '休み') off++;
+    else if (sh === '個人夏休み') { /* 月間上限カウント対象外（自由に請求可能） */ }
     else other++;
   });
   return { kibouKyu, yukyu, other, off, total: monthKeys.length };
@@ -1445,14 +1447,14 @@ async function loadConfirmedShifts() {
       '遅番':'#ffedd5','遅L':'#fef3c7','リハ遅':'#f3e8ff','夜勤':'#ede9fe',
       '長日':'#ffe4e6','中抜け':'#ccfbf1','時短':'#dcfce7','CC':'#dbeafe',
       'CHO':'#e0f2fe','CCのみ':'#e0f9ff',
-      '休み':'#f3f4f6','有休':'#fdf4ff','半有休':'#fce7f3','希望休':'#fff7ed'
+      '休み':'#f3f4f6','有休':'#fdf4ff','半有休':'#fce7f3','個人夏休み':'#ecfeff','希望休':'#fff7ed'
     };
     const SHIFT_TEXT_COLORS = {
       '日勤':'#1d4ed8','日勤+':'#1e40af','午前':'#15803d','午後':'#a16207',
       '遅番':'#c2410c','遅L':'#92400e','リハ遅':'#7e22ce','夜勤':'#5b21b6',
       '長日':'#be123c','中抜け':'#0f766e','時短':'#166534','CC':'#1d4ed8',
       'CHO':'#075985','CCのみ':'#0e7490',
-      '休み':'#6b7280','有休':'#86198f','半有休':'#9d174d','希望休':'#9a3412'
+      '休み':'#6b7280','有休':'#86198f','半有休':'#9d174d','個人夏休み':'#155e75','希望休':'#9a3412'
     };
 
     if (shifts.length === 0) {
