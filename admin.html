@@ -1739,6 +1739,19 @@ async function loadShiftGrid() {
       if (s.is_locked) lockedCells[key] = true;
     });
 
+    // ★ 未選択セルのロックを cell_locks テーブルから復元
+    //   shifts.is_locked はシフト選択済みセルのみ保持できるため、未選択セルのロックは別管理。
+    //   テーブル未作成時は警告のみで処理継続（既存機能を壊さない）。
+    try {
+      const cellLocksData = await sb(`cell_locks?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,day`);
+      (cellLocksData || []).forEach(c => {
+        const key = `${c.staff_id}|${c.day}`;
+        lockedCells[key] = true;
+      });
+    } catch(e) {
+      console.warn('cell_locks 読み込みスキップ（テーブル未作成の可能性）:', e);
+    }
+
     const reqMap = {};
     requestData.forEach(r => { reqMap[`${r.staff_id}|${r.day}`] = r.request_type; });
 
@@ -2410,15 +2423,20 @@ async function saveRequirementsQuick(period) {
   showLoading();
   try {
     const dayTypes = ['weekday','wed_normal','wed_cc','wed_cho','weekend','thu_open','holiday_jp'];
-    await sb(`staffing_requirements?dept_id=eq.${currentDept}&period_id=eq.${period}`, {method:'DELETE'});
+    // ★ 曜日別キーのみDELETE（day_YYYY_M_D の日別個別設定は残す）
+    //   旧コードは period_id 単位で全削除していたため、曜日別一括保存を押すと
+    //   editSingleRequirement で設定した日別個別設定まで消えるバグがあった。
+    const inList = dayTypes.map(d => `"${d}"`).join(',');
+    await sb(`staffing_requirements?dept_id=eq.${currentDept}&period_id=eq.${period}&day_type=in.(${inList})`, {method:'DELETE'});
     const inserts = [];
     dayTypes.forEach(dt => {
       const el = document.getElementById(`qreq-${period}-${dt}`);
       if (el && el.value !== '') inserts.push({dept_id:currentDept, period_id:period, day_type:dt, min_count:parseInt(el.value)});
     });
     if (inserts.length > 0) await sb('staffing_requirements', {method:'POST', body:JSON.stringify(inserts)});
-    // ★ ローカル：DBと同様に period 全削除 → 新値で再構築（日別個別設定 day_YYYY_M_D もDB側でクリアされるため整合）
-    shiftGridRequirements[period] = {};
+    // ★ ローカル：曜日別キーのみクリア（日別個別 day_YYYY_M_D は保持）
+    if (!shiftGridRequirements[period]) shiftGridRequirements[period] = {};
+    dayTypes.forEach(dt => { delete shiftGridRequirements[period][dt]; });
     dayTypes.forEach(dt => {
       const el = document.getElementById(`qreq-${period}-${dt}`);
       if (el && el.value !== '') shiftGridRequirements[period][dt] = parseInt(el.value);
@@ -2750,6 +2768,9 @@ document.getElementById('confirmShiftBtn')?.addEventListener('click', async () =
       await sb('shifts', { method:'POST', body:JSON.stringify(inserts) });
     }
 
+    // ★ 未選択セルのロックを永続化
+    await persistCellLocks(ids, shiftYear, shiftMonth);
+
     // バッジを更新
     const badge = document.getElementById('confirmStatusBadge');
     const confirmBtn = document.getElementById('confirmShiftBtn');
@@ -2768,6 +2789,29 @@ document.getElementById('confirmShiftBtn')?.addEventListener('click', async () =
   }
   hideLoading();
 });
+
+// 未選択セルのロック永続化ヘルパー
+// shifts.is_locked はシフト選択済みセル用、cell_locks は未選択セル用に役割分担。
+// 呼び出し側で shifts の保存（DELETE→INSERT）を済ませた後に呼ぶ。
+// テーブル未作成時は警告のみで処理継続（既存機能を壊さない）。
+async function persistCellLocks(staffIdsCsv, year, month) {
+  if (!staffIdsCsv) return;
+  try {
+    await sb(`cell_locks?staff_id=in.(${staffIdsCsv})&year=eq.${year}&month=eq.${month}`, { method:'DELETE' });
+    // シフト未選択かつロック有りのセルのみを cell_locks に保存
+    const inserts = Object.keys(lockedCells)
+      .filter(key => !shiftData[key])
+      .map(key => {
+        const [staffId, day] = parseKey(key);
+        return { staff_id: staffId, year, month, day: parseInt(day) };
+      });
+    if (inserts.length > 0) {
+      await sb('cell_locks', { method:'POST', body:JSON.stringify(inserts) });
+    }
+  } catch(e) {
+    console.warn('cell_locks 保存スキップ（テーブル未作成の可能性）:', e);
+  }
+}
 
 // シフト保存
 document.getElementById('saveShiftBtn').addEventListener('click', async () => {
@@ -2790,6 +2834,8 @@ document.getElementById('saveShiftBtn').addEventListener('click', async () => {
     if (inserts.length > 0) {
       await sb('shifts', { method:'POST', body:JSON.stringify(inserts) });
     }
+    // ★ 未選択セルのロックを永続化
+    await persistCellLocks(ids, shiftYear, shiftMonth);
     // 保存時点スナップショット更新（保存時点に戻すボタン用）
     savedShiftSnapshot = {
       shiftData: JSON.parse(JSON.stringify(shiftData)),
@@ -4094,6 +4140,14 @@ document.getElementById('applyGenerateBtn').addEventListener('click', async () =
 
     if (inserts.length > 0) {
       await sb('shifts', { method:'POST', body:JSON.stringify(inserts) });
+    }
+
+    // ★ AI適用は既存ロックを全リセット（shifts.is_locked:false と挙動を揃える）
+    //   未選択セルロックも同様にクリアしないと、生成結果と矛盾するため。
+    try {
+      await sb(`cell_locks?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}`, { method:'DELETE' });
+    } catch(e) {
+      console.warn('cell_locks クリアスキップ（テーブル未作成の可能性）:', e);
     }
 
     // shiftYearをgenに合わせてシフト表を更新
@@ -6724,7 +6778,8 @@ async function clearFixedShifts(staffId, staffName) {
             delete lockedCells[key];
           }
         });
-        loadShiftGrid();
+        // ★ DB再取得すると未選択セルのロック（メモリのみ保持）が消えるため、メモリ状態のまま再描画
+        rerenderShiftGridFromMemory();
       }
 
       curMonth++;
@@ -6876,7 +6931,8 @@ async function applyFixedShiftsToGrid(staffId, fixedShifts) {
           shiftData[key] = ins.shift_type_id;
           if (withLock) lockedCells[key] = true;
         });
-        loadShiftGrid();
+        // ★ DB再取得すると未選択セルのロック（メモリのみ保持）が消えるため、メモリ状態のまま再描画
+        rerenderShiftGridFromMemory();
       }
 
       monthCount++;
