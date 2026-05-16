@@ -3049,7 +3049,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     const daysInMonth = new Date(genYear, genMonth, 0).getDate();
 
     // データ取得
-    const [requests, existingShifts, requirements, monthlyHoursData, staffSettingsData, specialDaysData, thursdayData2, beginnerLimitsRaw] = await Promise.all([
+    const [requests, existingShifts, requirements, monthlyHoursData, staffSettingsData, specialDaysData, thursdayData2, beginnerLimitsRaw, cellLocksData] = await Promise.all([
       sb(`shift_requests?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&select=staff_id,day,request_type`),
       sb(`shifts?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&select=staff_id,day,shift_type_id,is_locked`),
       sb(`staffing_requirements?dept_id=eq.${currentDept}&select=period_id,day_type,min_count`),
@@ -3057,7 +3057,9 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       sb(`staff_settings?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&select=*`),
       sb(`special_days?year=eq.${genYear}&month=eq.${genMonth}&select=day,day_type,is_closed,is_holiday,label`),
       sb(`thursday_types?year=eq.${genYear}&month=eq.${genMonth}&select=day,is_open`),
-      sb(`beginner_limits?dept_id=eq.${currentDept}&select=period_id,day_type,max_beginners`)
+      sb(`beginner_limits?dept_id=eq.${currentDept}&select=period_id,day_type,max_beginners`),
+      // ★ 未選択セルのロック（cell_locks）も読み込み。テーブル未作成時は空配列。
+      sb(`cell_locks?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&select=staff_id,day`).catch(() => [])
     ]);
 
     // 初心者上限マップ
@@ -3231,7 +3233,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     lockedCells = {};
     const lockMap = {};
     if (optKeepLocked) {
-      // DBから読み込んだロック
+      // 1. DB shifts.is_locked から：シフト入りロック済みセル
       existingShifts.forEach(s => {
         if (s.is_locked) {
           const key = `${s.staff_id}|${s.day}`;
@@ -3239,13 +3241,27 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
           lockedCells[key] = true; // STEP7/STEP8/STEP9で参照
         }
       });
-      // メモリ上のロック（ユーザーが画面で設定したロック）も反映
-      Object.keys(memoryLockedCellsSnapshot).forEach(key => {
+      // 2. ★ DB cell_locks から：未選択ロック済みセル
+      //    旧コードはメモリスナップショットのみ参照していたため、
+      //    異なる月で生成する場合や、メモリ状態が更新前の状態だと
+      //    未選択ロックが拾えず、AIが上書きしてしまうバグがあった。
+      (cellLocksData || []).forEach(c => {
+        const key = `${c.staff_id}|${c.day}`;
         if (lockedCells[key]) return; // 既にDBから反映済み
+        lockMap[key] = ''; // 未選択を表す
         lockedCells[key] = true;
-        // メモリ上のシフト値を保存（未設定なら空文字）
-        lockMap[key] = memoryShiftDataSnapshot[key] || '';
       });
+      // 3. メモリスナップショット：未保存のセッション内ロック
+      //    ※genYear/genMonth と shiftYear/shiftMonth が一致する場合のみ意味がある
+      //      （キーが staffId|day で年月情報を持たないため、別月だと誤適用される）
+      if (genYear === shiftYear && genMonth === shiftMonth) {
+        Object.keys(memoryLockedCellsSnapshot).forEach(key => {
+          if (lockedCells[key]) return;
+          lockedCells[key] = true;
+          // メモリ上のシフト値を保存（未設定なら空文字）
+          lockMap[key] = memoryShiftDataSnapshot[key] || '';
+        });
+      }
     }
     Object.entries(lockMap).forEach(([key, shift]) => {
       result[key] = shift;
@@ -3277,7 +3293,10 @@ _logStep('STEP0完了');
       if (dow === 4 && !openThursdays.has(d) || (holidays.has(d) && closedHolidays.has(d))) {
         deptStaff.forEach(staff => {
           const key = `${staff.id}|${d}`;
-          if (!lockMap[key]) result[key] = '休み';
+          // ★ lockedCells で判定（旧コードは !lockMap[key] で判定していたが、
+          //    未選択ロックは lockMap[key]='' になるため !'' = true で
+          //    休みに上書きされてしまうバグがあった）
+          if (!lockedCells[key]) result[key] = '休み';
         });
       }
     }
@@ -3376,7 +3395,9 @@ _logStep('STEP3完了');
 
     const getAssignCandidates = (staff, d, dt, period, shift, pass = 0) => staff.filter(s => {
       const key = `${s.id}|${d}`;
-      if (result[key]) return false;
+      // ★ lockedCells も判定（旧コードは result[key] のみ。未選択ロックは result[key]=''
+      //    で if ('') = false となり、AI 候補に含まれてしまうバグがあった）
+      if (result[key] || lockedCells[key]) return false;
       // 🌸スタッフは必要人数充足ロジックから完全に除外（STEP9で個別に所定時間補完される）
       if (isNoCount(s)) return false;
       const planH = getStaffPlanHours(s);
