@@ -1739,6 +1739,19 @@ async function loadShiftGrid() {
       if (s.is_locked) lockedCells[key] = true;
     });
 
+    // ★ 未選択セルのロックを cell_locks テーブルから復元
+    //   shifts.is_locked はシフト選択済みセルのみ保持できるため、未選択セルのロックは別管理。
+    //   テーブル未作成時は警告のみで処理継続（既存機能を壊さない）。
+    try {
+      const cellLocksData = await sb(`cell_locks?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,day`);
+      (cellLocksData || []).forEach(c => {
+        const key = `${c.staff_id}|${c.day}`;
+        lockedCells[key] = true;
+      });
+    } catch(e) {
+      console.warn('cell_locks 読み込みスキップ（テーブル未作成の可能性）:', e);
+    }
+
     const reqMap = {};
     requestData.forEach(r => { reqMap[`${r.staff_id}|${r.day}`] = r.request_type; });
 
@@ -2410,15 +2423,20 @@ async function saveRequirementsQuick(period) {
   showLoading();
   try {
     const dayTypes = ['weekday','wed_normal','wed_cc','wed_cho','weekend','thu_open','holiday_jp'];
-    await sb(`staffing_requirements?dept_id=eq.${currentDept}&period_id=eq.${period}`, {method:'DELETE'});
+    // ★ 曜日別キーのみDELETE（day_YYYY_M_D の日別個別設定は残す）
+    //   旧コードは period_id 単位で全削除していたため、曜日別一括保存を押すと
+    //   editSingleRequirement で設定した日別個別設定まで消えるバグがあった。
+    const inList = dayTypes.map(d => `"${d}"`).join(',');
+    await sb(`staffing_requirements?dept_id=eq.${currentDept}&period_id=eq.${period}&day_type=in.(${inList})`, {method:'DELETE'});
     const inserts = [];
     dayTypes.forEach(dt => {
       const el = document.getElementById(`qreq-${period}-${dt}`);
       if (el && el.value !== '') inserts.push({dept_id:currentDept, period_id:period, day_type:dt, min_count:parseInt(el.value)});
     });
     if (inserts.length > 0) await sb('staffing_requirements', {method:'POST', body:JSON.stringify(inserts)});
-    // ★ ローカル：DBと同様に period 全削除 → 新値で再構築（日別個別設定 day_YYYY_M_D もDB側でクリアされるため整合）
-    shiftGridRequirements[period] = {};
+    // ★ ローカル：曜日別キーのみクリア（日別個別 day_YYYY_M_D は保持）
+    if (!shiftGridRequirements[period]) shiftGridRequirements[period] = {};
+    dayTypes.forEach(dt => { delete shiftGridRequirements[period][dt]; });
     dayTypes.forEach(dt => {
       const el = document.getElementById(`qreq-${period}-${dt}`);
       if (el && el.value !== '') shiftGridRequirements[period][dt] = parseInt(el.value);
@@ -2750,6 +2768,9 @@ document.getElementById('confirmShiftBtn')?.addEventListener('click', async () =
       await sb('shifts', { method:'POST', body:JSON.stringify(inserts) });
     }
 
+    // ★ 未選択セルのロックを永続化
+    await persistCellLocks(ids, shiftYear, shiftMonth);
+
     // バッジを更新
     const badge = document.getElementById('confirmStatusBadge');
     const confirmBtn = document.getElementById('confirmShiftBtn');
@@ -2768,6 +2789,29 @@ document.getElementById('confirmShiftBtn')?.addEventListener('click', async () =
   }
   hideLoading();
 });
+
+// 未選択セルのロック永続化ヘルパー
+// shifts.is_locked はシフト選択済みセル用、cell_locks は未選択セル用に役割分担。
+// 呼び出し側で shifts の保存（DELETE→INSERT）を済ませた後に呼ぶ。
+// テーブル未作成時は警告のみで処理継続（既存機能を壊さない）。
+async function persistCellLocks(staffIdsCsv, year, month) {
+  if (!staffIdsCsv) return;
+  try {
+    await sb(`cell_locks?staff_id=in.(${staffIdsCsv})&year=eq.${year}&month=eq.${month}`, { method:'DELETE' });
+    // シフト未選択かつロック有りのセルのみを cell_locks に保存
+    const inserts = Object.keys(lockedCells)
+      .filter(key => !shiftData[key])
+      .map(key => {
+        const [staffId, day] = parseKey(key);
+        return { staff_id: staffId, year, month, day: parseInt(day) };
+      });
+    if (inserts.length > 0) {
+      await sb('cell_locks', { method:'POST', body:JSON.stringify(inserts) });
+    }
+  } catch(e) {
+    console.warn('cell_locks 保存スキップ（テーブル未作成の可能性）:', e);
+  }
+}
 
 // シフト保存
 document.getElementById('saveShiftBtn').addEventListener('click', async () => {
@@ -2790,6 +2834,8 @@ document.getElementById('saveShiftBtn').addEventListener('click', async () => {
     if (inserts.length > 0) {
       await sb('shifts', { method:'POST', body:JSON.stringify(inserts) });
     }
+    // ★ 未選択セルのロックを永続化
+    await persistCellLocks(ids, shiftYear, shiftMonth);
     // 保存時点スナップショット更新（保存時点に戻すボタン用）
     savedShiftSnapshot = {
       shiftData: JSON.parse(JSON.stringify(shiftData)),
@@ -3003,7 +3049,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     const daysInMonth = new Date(genYear, genMonth, 0).getDate();
 
     // データ取得
-    const [requests, existingShifts, requirements, monthlyHoursData, staffSettingsData, specialDaysData, thursdayData2, beginnerLimitsRaw] = await Promise.all([
+    const [requests, existingShifts, requirements, monthlyHoursData, staffSettingsData, specialDaysData, thursdayData2, beginnerLimitsRaw, cellLocksData] = await Promise.all([
       sb(`shift_requests?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&select=staff_id,day,request_type`),
       sb(`shifts?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&select=staff_id,day,shift_type_id,is_locked`),
       sb(`staffing_requirements?dept_id=eq.${currentDept}&select=period_id,day_type,min_count`),
@@ -3011,7 +3057,9 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       sb(`staff_settings?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&select=*`),
       sb(`special_days?year=eq.${genYear}&month=eq.${genMonth}&select=day,day_type,is_closed,is_holiday,label`),
       sb(`thursday_types?year=eq.${genYear}&month=eq.${genMonth}&select=day,is_open`),
-      sb(`beginner_limits?dept_id=eq.${currentDept}&select=period_id,day_type,max_beginners`)
+      sb(`beginner_limits?dept_id=eq.${currentDept}&select=period_id,day_type,max_beginners`),
+      // ★ 未選択セルのロック（cell_locks）も読み込み。テーブル未作成時は空配列。
+      sb(`cell_locks?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&select=staff_id,day`).catch(() => [])
     ]);
 
     // 初心者上限マップ
@@ -3185,7 +3233,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     lockedCells = {};
     const lockMap = {};
     if (optKeepLocked) {
-      // DBから読み込んだロック
+      // 1. DB shifts.is_locked から：シフト入りロック済みセル
       existingShifts.forEach(s => {
         if (s.is_locked) {
           const key = `${s.staff_id}|${s.day}`;
@@ -3193,13 +3241,27 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
           lockedCells[key] = true; // STEP7/STEP8/STEP9で参照
         }
       });
-      // メモリ上のロック（ユーザーが画面で設定したロック）も反映
-      Object.keys(memoryLockedCellsSnapshot).forEach(key => {
+      // 2. ★ DB cell_locks から：未選択ロック済みセル
+      //    旧コードはメモリスナップショットのみ参照していたため、
+      //    異なる月で生成する場合や、メモリ状態が更新前の状態だと
+      //    未選択ロックが拾えず、AIが上書きしてしまうバグがあった。
+      (cellLocksData || []).forEach(c => {
+        const key = `${c.staff_id}|${c.day}`;
         if (lockedCells[key]) return; // 既にDBから反映済み
+        lockMap[key] = ''; // 未選択を表す
         lockedCells[key] = true;
-        // メモリ上のシフト値を保存（未設定なら空文字）
-        lockMap[key] = memoryShiftDataSnapshot[key] || '';
       });
+      // 3. メモリスナップショット：未保存のセッション内ロック
+      //    ※genYear/genMonth と shiftYear/shiftMonth が一致する場合のみ意味がある
+      //      （キーが staffId|day で年月情報を持たないため、別月だと誤適用される）
+      if (genYear === shiftYear && genMonth === shiftMonth) {
+        Object.keys(memoryLockedCellsSnapshot).forEach(key => {
+          if (lockedCells[key]) return;
+          lockedCells[key] = true;
+          // メモリ上のシフト値を保存（未設定なら空文字）
+          lockMap[key] = memoryShiftDataSnapshot[key] || '';
+        });
+      }
     }
     Object.entries(lockMap).forEach(([key, shift]) => {
       result[key] = shift;
@@ -3231,7 +3293,10 @@ _logStep('STEP0完了');
       if (dow === 4 && !openThursdays.has(d) || (holidays.has(d) && closedHolidays.has(d))) {
         deptStaff.forEach(staff => {
           const key = `${staff.id}|${d}`;
-          if (!lockMap[key]) result[key] = '休み';
+          // ★ lockedCells で判定（旧コードは !lockMap[key] で判定していたが、
+          //    未選択ロックは lockMap[key]='' になるため !'' = true で
+          //    休みに上書きされてしまうバグがあった）
+          if (!lockedCells[key]) result[key] = '休み';
         });
       }
     }
@@ -3330,7 +3395,9 @@ _logStep('STEP3完了');
 
     const getAssignCandidates = (staff, d, dt, period, shift, pass = 0) => staff.filter(s => {
       const key = `${s.id}|${d}`;
-      if (result[key]) return false;
+      // ★ lockedCells も判定（旧コードは result[key] のみ。未選択ロックは result[key]=''
+      //    で if ('') = false となり、AI 候補に含まれてしまうバグがあった）
+      if (result[key] || lockedCells[key]) return false;
       // 🌸スタッフは必要人数充足ロジックから完全に除外（STEP9で個別に所定時間補完される）
       if (isNoCount(s)) return false;
       const planH = getStaffPlanHours(s);
@@ -3885,8 +3952,10 @@ _logStep('STEP8完了');
     lockedCells = {};
 
     // 生成結果をshiftDataに設定
+    // ★ ロック済み未選択セルは result[key] = '' で入っているため、空文字はshiftDataに入れない
+    //   （空文字をshiftDataに入れると「シフトあり」と誤解釈され、未選択表示が崩れる）
     Object.entries(result).forEach(([key, shift]) => {
-      shiftData[key] = shift;
+      if (shift !== '') shiftData[key] = shift;
     });
     // ロック済みセルを設定
     Object.entries(lockMap).forEach(([key]) => {
@@ -4087,10 +4156,14 @@ document.getElementById('applyGenerateBtn').addEventListener('click', async () =
 
     await sb(`shifts?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}`, { method:'DELETE' });
 
-    const inserts = Object.entries(generatedShifts).map(([key, shiftId]) => {
-      const [staffId, day] = parseKey(key);
-      return { staff_id:staffId, year:genYear, month:genMonth, day:parseInt(day), shift_type_id:shiftId, is_locked:false };
-    });
+    // ★ 未選択（空シフト）はDB保存しない。ロックされた未選択セルは shift_type_id='' を持つため除外。
+    // ★ is_locked は lockedCells の状態を保持（旧コードは一律 false にしてロックを喪失していた）。
+    const inserts = Object.entries(generatedShifts)
+      .filter(([_, shiftId]) => shiftId !== '')
+      .map(([key, shiftId]) => {
+        const [staffId, day] = parseKey(key);
+        return { staff_id:staffId, year:genYear, month:genMonth, day:parseInt(day), shift_type_id:shiftId, is_locked: !!lockedCells[key] };
+      });
 
     if (inserts.length > 0) {
       await sb('shifts', { method:'POST', body:JSON.stringify(inserts) });
@@ -4098,7 +4171,16 @@ document.getElementById('applyGenerateBtn').addEventListener('click', async () =
 
     // shiftYearをgenに合わせてシフト表を更新
     shiftYear = genYear; shiftMonth = genMonth;
-    shiftData = {...generatedShifts};
+    // ★ 空シフトは shiftData に入れない（生成関数内と同じ理由）
+    shiftData = {};
+    Object.entries(generatedShifts).forEach(([key, shift]) => {
+      if (shift !== '') shiftData[key] = shift;
+    });
+
+    // ★ 未選択セルのロック（cell_locks）も適切に永続化
+    //   旧コード：cell_locks 全削除のみ → 未選択のロックが消失。
+    //   新コード：lockedCells から再構築（空シフトのロック有りセル → cell_locks に保存）。
+    await persistCellLocks(ids, shiftYear, shiftMonth);
 
     document.getElementById('previewCard').style.display = 'none';
     showToast('シフト表に適用しました ✓','success');
@@ -6724,7 +6806,8 @@ async function clearFixedShifts(staffId, staffName) {
             delete lockedCells[key];
           }
         });
-        loadShiftGrid();
+        // ★ DB再取得すると未選択セルのロック（メモリのみ保持）が消えるため、メモリ状態のまま再描画
+        rerenderShiftGridFromMemory();
       }
 
       curMonth++;
@@ -6876,7 +6959,8 @@ async function applyFixedShiftsToGrid(staffId, fixedShifts) {
           shiftData[key] = ins.shift_type_id;
           if (withLock) lockedCells[key] = true;
         });
-        loadShiftGrid();
+        // ★ DB再取得すると未選択セルのロック（メモリのみ保持）が消えるため、メモリ状態のまま再描画
+        rerenderShiftGridFromMemory();
       }
 
       monthCount++;
