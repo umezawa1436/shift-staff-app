@@ -3931,8 +3931,10 @@ _logStep('STEP8完了');
     lockedCells = {};
 
     // 生成結果をshiftDataに設定
+    // ★ ロック済み未選択セルは result[key] = '' で入っているため、空文字はshiftDataに入れない
+    //   （空文字をshiftDataに入れると「シフトあり」と誤解釈され、未選択表示が崩れる）
     Object.entries(result).forEach(([key, shift]) => {
-      shiftData[key] = shift;
+      if (shift !== '') shiftData[key] = shift;
     });
     // ロック済みセルを設定
     Object.entries(lockMap).forEach(([key]) => {
@@ -4133,26 +4135,31 @@ document.getElementById('applyGenerateBtn').addEventListener('click', async () =
 
     await sb(`shifts?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}`, { method:'DELETE' });
 
-    const inserts = Object.entries(generatedShifts).map(([key, shiftId]) => {
-      const [staffId, day] = parseKey(key);
-      return { staff_id:staffId, year:genYear, month:genMonth, day:parseInt(day), shift_type_id:shiftId, is_locked:false };
-    });
+    // ★ 未選択（空シフト）はDB保存しない。ロックされた未選択セルは shift_type_id='' を持つため除外。
+    // ★ is_locked は lockedCells の状態を保持（旧コードは一律 false にしてロックを喪失していた）。
+    const inserts = Object.entries(generatedShifts)
+      .filter(([_, shiftId]) => shiftId !== '')
+      .map(([key, shiftId]) => {
+        const [staffId, day] = parseKey(key);
+        return { staff_id:staffId, year:genYear, month:genMonth, day:parseInt(day), shift_type_id:shiftId, is_locked: !!lockedCells[key] };
+      });
 
     if (inserts.length > 0) {
       await sb('shifts', { method:'POST', body:JSON.stringify(inserts) });
     }
 
-    // ★ AI適用は既存ロックを全リセット（shifts.is_locked:false と挙動を揃える）
-    //   未選択セルロックも同様にクリアしないと、生成結果と矛盾するため。
-    try {
-      await sb(`cell_locks?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}`, { method:'DELETE' });
-    } catch(e) {
-      console.warn('cell_locks クリアスキップ（テーブル未作成の可能性）:', e);
-    }
-
     // shiftYearをgenに合わせてシフト表を更新
     shiftYear = genYear; shiftMonth = genMonth;
-    shiftData = {...generatedShifts};
+    // ★ 空シフトは shiftData に入れない（生成関数内と同じ理由）
+    shiftData = {};
+    Object.entries(generatedShifts).forEach(([key, shift]) => {
+      if (shift !== '') shiftData[key] = shift;
+    });
+
+    // ★ 未選択セルのロック（cell_locks）も適切に永続化
+    //   旧コード：cell_locks 全削除のみ → 未選択のロックが消失。
+    //   新コード：lockedCells から再構築（空シフトのロック有りセル → cell_locks に保存）。
+    await persistCellLocks(ids, shiftYear, shiftMonth);
 
     document.getElementById('previewCard').style.display = 'none';
     showToast('シフト表に適用しました ✓','success');
