@@ -2301,7 +2301,8 @@ async function saveMonthlyHours(hours) {
     await sb('monthly_hours', {method:'POST', body:JSON.stringify([{year:shiftYear,month:shiftMonth,hours,dept_id:null}])});
     shiftGridPlanHours = hours;
     showToast(`所定労働時間を${hours}Hに更新しました ✓`, 'success');
-    loadShiftGrid();
+    // ★ DB再取得すると未選択セルのロック（メモリのみ保持）が消えるため、メモリ状態のまま再描画
+    rerenderShiftGridFromMemory();
   } catch(e) { showToast('保存エラー','error'); }
   hideLoading();
 }
@@ -2317,16 +2318,17 @@ async function editSingleRequirement(period, day, dayType, currentReq) {
   
   showLoading();
   try {
+    const dayKey = `day_${shiftYear}_${shiftMonth}_${day}`;
     if (val.trim() === '') {
       // 日付個別設定を削除（曜日別に戻す）
-      await sb(`staffing_requirements?dept_id=eq.${currentDept}&period_id=eq.${period}&day_type=eq.day_${shiftYear}_${shiftMonth}_${day}`, {method:'DELETE'});
-      // ローカルのshiftGridRequirementsは曜日別のまま
+      await sb(`staffing_requirements?dept_id=eq.${currentDept}&period_id=eq.${period}&day_type=eq.${dayKey}`, {method:'DELETE'});
+      // ★ ローカルからも個別設定を削除（旧コードはloadShiftGrid再取得に依存していた）
+      if (shiftGridRequirements[period]) delete shiftGridRequirements[period][dayKey];
       showToast(`${day}日の個別設定を削除しました`);
     } else {
       const newReq = parseInt(val);
       if (isNaN(newReq) || newReq < 0) { showToast('正しい人数を入力してください','error'); hideLoading(); return; }
       // 日付個別キーで保存
-      const dayKey = `day_${shiftYear}_${shiftMonth}_${day}`;
       await sb(`staffing_requirements?dept_id=eq.${currentDept}&period_id=eq.${period}&day_type=eq.${dayKey}`, {method:'DELETE'});
       await sb('staffing_requirements', {method:'POST', body:JSON.stringify([{dept_id:currentDept, period_id:period, day_type:dayKey, min_count:newReq}])});
       // ローカルに反映
@@ -2334,7 +2336,8 @@ async function editSingleRequirement(period, day, dayType, currentReq) {
       shiftGridRequirements[period][dayKey] = newReq;
       showToast(`${day}日 ${labels[period]}を${newReq}人に設定しました ✓`, 'success');
     }
-    loadShiftGrid();
+    // ★ DB再取得すると未選択セルのロック（メモリのみ保持）が消えるため、メモリ状態のまま再描画
+    rerenderShiftGridFromMemory();
   } catch(e) { console.error(e); showToast('保存エラー','error'); }
   hideLoading();
 }
@@ -2355,8 +2358,15 @@ async function saveStaffHours(staffId, staffName, hours) {
     if (hours !== null) {
       await sb('staff_settings', {method:'POST', body:JSON.stringify([{staff_id:staffId, year:shiftYear, month:shiftMonth, planned_hours:hours}])});
     }
+    // ★ ローカルにも反映（旧コードはloadShiftGrid再取得に依存していた）
+    if (hours !== null) {
+      shiftGridStaffSettings[staffId] = { staff_id: staffId, planned_hours: hours };
+    } else {
+      delete shiftGridStaffSettings[staffId];
+    }
     showToast(`${staffName}の所定時間を更新しました ✓`, 'success');
-    loadShiftGrid();
+    // ★ DB再取得すると未選択セルのロック（メモリのみ保持）が消えるため、メモリ状態のまま再描画
+    rerenderShiftGridFromMemory();
   } catch(e) { showToast('保存エラー','error'); }
   hideLoading();
 }
@@ -2407,15 +2417,16 @@ async function saveRequirementsQuick(period) {
       if (el && el.value !== '') inserts.push({dept_id:currentDept, period_id:period, day_type:dt, min_count:parseInt(el.value)});
     });
     if (inserts.length > 0) await sb('staffing_requirements', {method:'POST', body:JSON.stringify(inserts)});
-    // ローカルにも反映
-    if (!shiftGridRequirements[period]) shiftGridRequirements[period] = {};
+    // ★ ローカル：DBと同様に period 全削除 → 新値で再構築（日別個別設定 day_YYYY_M_D もDB側でクリアされるため整合）
+    shiftGridRequirements[period] = {};
     dayTypes.forEach(dt => {
       const el = document.getElementById(`qreq-${period}-${dt}`);
       if (el && el.value !== '') shiftGridRequirements[period][dt] = parseInt(el.value);
     });
     document.getElementById('requirementsQuickModal')?.remove();
     showToast('必要人数を保存しました ✓', 'success');
-    loadShiftGrid();
+    // ★ DB再取得すると未選択セルのロック（メモリのみ保持）が消えるため、メモリ状態のまま再描画
+    rerenderShiftGridFromMemory();
   } catch(e) { showToast('保存エラー','error'); }
   hideLoading();
 }
