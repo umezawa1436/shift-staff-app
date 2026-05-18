@@ -729,12 +729,29 @@
             <div style="font-size:16px;font-weight:700">やちよ総合診療クリニック シフト表</div>
             <div style="font-size:12px;color:#666" id="printHeaderSub"></div>
           </div>
-          <!-- ★ AI 生成プレビュー承認バナー（自動生成直後に表示）-->
+          <!-- ★ 自動生成プレビュー承認バナー（自動生成直後に表示）-->
           <div id="aiPreviewBanner" style="display:none; position:sticky; top:0; z-index:50; background:linear-gradient(135deg,#fef3c7,#fde68a); border:2px solid #f59e0b; border-radius:12px; padding:16px; margin-bottom:12px; box-shadow:0 4px 12px rgba(245,158,11,0.3)">
             <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px">
-              <div style="flex:1; min-width:200px">
-                <div style="font-size:15px; font-weight:700; color:#92400e; margin-bottom:4px">🤖 AI 生成結果を表示中（まだ保存されていません）</div>
-                <div style="font-size:12px; color:#78350f">内容を確認のうえ、「確定」または「生成前に戻す」を選択してください</div>
+              <div style="flex:1; min-width:200px; display:flex; align-items:flex-start; gap:10px">
+                <svg width="32" height="22" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0; margin-top:2px">
+                  <g transform="translate(20, 30)">
+                    <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
+                    <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
+                  </g>
+                  <g transform="translate(50, 30)">
+                    <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
+                    <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
+                    <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
+                    <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
+                    <circle cx="20" cy="-3" r="5" fill="white"/>
+                    <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
+                    <circle cx="22" cy="-4" r="0.8" fill="white"/>
+                  </g>
+                </svg>
+                <div>
+                  <div style="font-size:15px; font-weight:700; color:#92400e; margin-bottom:4px">自動生成結果を表示中（まだ保存されていません）</div>
+                  <div style="font-size:12px; color:#78350f">内容を確認のうえ、「確定」または「生成前に戻す」を選択してください</div>
+                </div>
               </div>
               <div style="display:flex; gap:8px">
                 <button id="aiPreviewApproveBtn" class="btn btn-success" style="font-weight:700">✓ この内容で確定する</button>
@@ -2318,12 +2335,12 @@ function rerenderShiftGridFromMemory() {
 // 3. すべてロック済み or シフト無しならそのまま続行
 // 戻り値：true = 設定変更を続行可、false = 中止
 async function preFlightCheckForSettingsChange() {
-  // 1. AI 生成プレビュー中の場合はブロック
+  // 1. 自動生成プレビュー中の場合はブロック
   if (Object.keys(generatedShifts).length > 0) {
     alert(
       '【操作不可】\n\n' +
-      'AI 生成プレビューが表示中です。\n' +
-      '設定変更前に「自動生成」タブで「適用」または「破棄」を押してください。'
+      '自動生成プレビューが表示中です。\n' +
+      '設定変更前にシフト表上部のバナーで「確定」または「生成前に戻す」を押してください。'
     );
     return false;
   }
@@ -4273,7 +4290,7 @@ async function approveAIPreview() {
   }
   const monthLabel = `${shiftYear}年${shiftMonth}月`;
   const deptLabel = DEPT_NAMES[currentDept] || `部署${currentDept}`;
-  if (!confirm(`【確認】${deptLabel}・${monthLabel}のシフトを AI 生成結果で確定します。\n\n・現在 DB に保存されているシフトは AI 結果に置き換わります。\n・「ロック済み」のシフトはそのまま残ります。\n\nよろしいですか？`)) {
+  if (!confirm(`【確認】${deptLabel}・${monthLabel}のシフトを自動生成結果で確定します。\n\n・現在 DB に保存されているシフトは自動生成結果に置き換わります。\n・「ロック済み」のシフトはそのまま残ります。\n\nよろしいですか？`)) {
     showToast('確定をキャンセルしました');
     return;
   }
@@ -4327,7 +4344,7 @@ async function approveAIPreview() {
     const card = document.getElementById('previewCard');
     if (card) card.style.display = 'none';
 
-    showToast('AI 生成結果を確定し、編集モードに移行しました ✓','success');
+    showToast('自動生成結果を確定し、編集モードに移行しました ✓','success');
   } catch(e) {
     console.error(e);
     showToast('確定エラー','error');
@@ -4354,7 +4371,7 @@ async function discardAIPreview() {
     preAIGenerationSnapshot = null;
     // 画面を再描画
     rerenderShiftGridFromMemory();
-    showToast('AI 生成前の状態に戻しました');
+    showToast('自動生成前の状態に戻しました');
   } else {
     // フォールバック：スナップショットが無ければ DB から再取得
     showLoading();
@@ -4363,7 +4380,7 @@ async function discardAIPreview() {
     } finally {
       hideLoading();
     }
-    showToast('AI 生成結果を破棄しました');
+    showToast('自動生成結果を破棄しました');
   }
 
   // バナーと旧プレビューカードを非表示
