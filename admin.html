@@ -2314,8 +2314,10 @@ async function saveMonthlyHours(hours) {
     await sb('monthly_hours', {method:'POST', body:JSON.stringify([{year:shiftYear,month:shiftMonth,hours,dept_id:null}])});
     shiftGridPlanHours = hours;
     showToast(`所定労働時間を${hours}Hに更新しました ✓`, 'success');
-    // ★ DB再取得すると未選択セルのロック（メモリのみ保持）が消えるため、メモリ状態のまま再描画
-    rerenderShiftGridFromMemory();
+    // ★ ロールバック: rerenderShiftGridFromMemory ではなく DB から再取得。
+    //   AI 生成プレビュー残骸を確実に消し、データ損失を防ぐ。
+    //   cell_locks 永続化済みのため、未選択ロックは loadShiftGrid で復元される。
+    await loadShiftGrid();
   } catch(e) { showToast('保存エラー','error'); }
   hideLoading();
 }
@@ -2349,8 +2351,8 @@ async function editSingleRequirement(period, day, dayType, currentReq) {
       shiftGridRequirements[period][dayKey] = newReq;
       showToast(`${day}日 ${labels[period]}を${newReq}人に設定しました ✓`, 'success');
     }
-    // ★ DB再取得すると未選択セルのロック（メモリのみ保持）が消えるため、メモリ状態のまま再描画
-    rerenderShiftGridFromMemory();
+    // ★ ロールバック: rerenderShiftGridFromMemory ではなく DB から再取得
+    await loadShiftGrid();
   } catch(e) { console.error(e); showToast('保存エラー','error'); }
   hideLoading();
 }
@@ -2378,8 +2380,8 @@ async function saveStaffHours(staffId, staffName, hours) {
       delete shiftGridStaffSettings[staffId];
     }
     showToast(`${staffName}の所定時間を更新しました ✓`, 'success');
-    // ★ DB再取得すると未選択セルのロック（メモリのみ保持）が消えるため、メモリ状態のまま再描画
-    rerenderShiftGridFromMemory();
+    // ★ ロールバック: rerenderShiftGridFromMemory ではなく DB から再取得
+    await loadShiftGrid();
   } catch(e) { showToast('保存エラー','error'); }
   hideLoading();
 }
@@ -2443,8 +2445,8 @@ async function saveRequirementsQuick(period) {
     });
     document.getElementById('requirementsQuickModal')?.remove();
     showToast('必要人数を保存しました ✓', 'success');
-    // ★ DB再取得すると未選択セルのロック（メモリのみ保持）が消えるため、メモリ状態のまま再描画
-    rerenderShiftGridFromMemory();
+    // ★ ロールバック: rerenderShiftGridFromMemory ではなく DB から再取得
+    await loadShiftGrid();
   } catch(e) { showToast('保存エラー','error'); }
   hideLoading();
 }
@@ -4144,6 +4146,21 @@ function getJapaneseHolidays(year, month) {
 
 // 生成結果を適用
 document.getElementById('applyGenerateBtn').addEventListener('click', async () => {
+  // ★ 破壊的操作のため確認ダイアログを追加
+  //   AI 適用は対象月の既存シフトを全削除してから AI 結果で上書きするため、
+  //   ロックされていないシフトはすべて喪失する。誤操作によるデータ損失を防ぐ。
+  const monthLabel = `${genYear}年${genMonth}月`;
+  const deptLabel = DEPT_NAMES[currentDept] || `部署${currentDept}`;
+  const confirmMsg =
+    `【確認】${deptLabel}・${monthLabel}のシフトを上書きしますか？\n\n` +
+    `・既存のシフトはすべて削除され、AI 生成結果に置き換わります。\n` +
+    `・ロックされていないシフトは復元できません。\n` +
+    `・ロックされたシフト（🔒）のみ保持されます。\n\n` +
+    `本当に適用してよろしいですか？`;
+  if (!confirm(confirmMsg)) {
+    showToast('適用をキャンセルしました');
+    return;
+  }
   showLoading();
   try {
     const deptStaff = allStaff.filter(s => s.dept_id === currentDept).sort((a, b) => {
@@ -4188,9 +4205,18 @@ document.getElementById('applyGenerateBtn').addEventListener('click', async () =
   hideLoading();
 });
 
-document.getElementById('discardGenerateBtn').addEventListener('click', () => {
+document.getElementById('discardGenerateBtn').addEventListener('click', async () => {
   document.getElementById('previewCard').style.display = 'none';
   generatedShifts = {};
+  // ★ AI 生成は shiftData/lockedCells をプレビュー結果で上書きするため、
+  //   破棄時には DB から再取得して画面とメモリを真の DB 状態に戻す。
+  //   これを怠ると、破棄後に保存・設定変更でプレビュー残骸が DB に永続化される事故が起きる。
+  showLoading();
+  try {
+    await loadShiftGrid();
+  } finally {
+    hideLoading();
+  }
   showToast('生成結果を破棄しました');
 });
 
@@ -6806,8 +6832,8 @@ async function clearFixedShifts(staffId, staffName) {
             delete lockedCells[key];
           }
         });
-        // ★ DB再取得すると未選択セルのロック（メモリのみ保持）が消えるため、メモリ状態のまま再描画
-        rerenderShiftGridFromMemory();
+        // ★ ロールバック: rerenderShiftGridFromMemory ではなく DB から再取得
+        await loadShiftGrid();
       }
 
       curMonth++;
@@ -6959,8 +6985,8 @@ async function applyFixedShiftsToGrid(staffId, fixedShifts) {
           shiftData[key] = ins.shift_type_id;
           if (withLock) lockedCells[key] = true;
         });
-        // ★ DB再取得すると未選択セルのロック（メモリのみ保持）が消えるため、メモリ状態のまま再描画
-        rerenderShiftGridFromMemory();
+        // ★ ロールバック: rerenderShiftGridFromMemory ではなく DB から再取得
+        await loadShiftGrid();
       }
 
       monthCount++;
