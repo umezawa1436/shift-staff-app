@@ -729,6 +729,36 @@
             <div style="font-size:16px;font-weight:700">やちよ総合診療クリニック シフト表</div>
             <div style="font-size:12px;color:#666" id="printHeaderSub"></div>
           </div>
+          <!-- ★ 自動生成プレビュー承認バナー（自動生成直後に表示）-->
+          <div id="aiPreviewBanner" style="display:none; position:sticky; top:0; z-index:50; background:linear-gradient(135deg,#fef3c7,#fde68a); border:2px solid #f59e0b; border-radius:12px; padding:16px; margin-bottom:12px; box-shadow:0 4px 12px rgba(245,158,11,0.3)">
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px">
+              <div style="flex:1; min-width:200px; display:flex; align-items:flex-start; gap:10px">
+                <svg width="32" height="22" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0; margin-top:2px">
+                  <g transform="translate(20, 30)">
+                    <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
+                    <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
+                  </g>
+                  <g transform="translate(50, 30)">
+                    <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
+                    <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
+                    <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
+                    <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
+                    <circle cx="20" cy="-3" r="5" fill="white"/>
+                    <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
+                    <circle cx="22" cy="-4" r="0.8" fill="white"/>
+                  </g>
+                </svg>
+                <div>
+                  <div style="font-size:15px; font-weight:700; color:#92400e; margin-bottom:4px">自動生成結果を表示中（まだ保存されていません）</div>
+                  <div style="font-size:12px; color:#78350f">内容を確認のうえ、「確定」または「生成前に戻す」を選択してください</div>
+                </div>
+              </div>
+              <div style="display:flex; gap:8px">
+                <button id="aiPreviewApproveBtn" class="btn btn-success" style="font-weight:700">✓ この内容で確定する</button>
+                <button id="aiPreviewDiscardBtn" class="btn btn-outline" style="background:white; border:1.5px solid #dc2626; color:#dc2626; font-weight:700">↩ 生成前に戻す</button>
+              </div>
+            </div>
+          </div>
           <div class="card" style="padding:12px">
             <div class="shift-grid-wrap">
               <table class="shift-grid" id="shiftGrid"></table>
@@ -1135,6 +1165,8 @@ let shiftYear = new Date().getFullYear(), shiftMonth = new Date().getMonth() + 1
 let dashYear = new Date().getFullYear(), dashMonth = new Date().getMonth() + 1;
 let genYear = new Date().getFullYear(), genMonth = new Date().getMonth() + 1;
 let allStaff = [], shiftData = {}, lockedCells = {}, wedTypes = {}, generatedShifts = {};
+// ★ AI 生成プレビュー用：生成前の状態スナップショット（破棄時の復元用）
+let preAIGenerationSnapshot = null;
 // シフト表の状態管理
 let shiftGridContext = null; // 'dept|year|month' - 現在ロード済みのコンテキスト
 let savedShiftSnapshot = null; // 最後の保存時点（DBロード時 or 保存成功時に更新）
@@ -2297,6 +2329,85 @@ function rerenderShiftGridFromMemory() {
   renderShiftGrid('shiftGrid', deptStaff, daysInMonth, shiftYear, shiftMonth, shiftData, reqMap, lockedCells, true, wedTypesMap);
 }
 
+// 設定変更（所定労働時間・必要人数）の事前チェック
+// 1. AI プレビュー中はブロック（前回事故の再発防止）
+// 2. 未ロックシフトがあれば、全シフトをロック＆保存する確認
+// 3. すべてロック済み or シフト無しならそのまま続行
+// 戻り値：true = 設定変更を続行可、false = 中止
+async function preFlightCheckForSettingsChange() {
+  // 1. 自動生成プレビュー中の場合はブロック
+  if (Object.keys(generatedShifts).length > 0) {
+    alert(
+      '【操作不可】\n\n' +
+      '自動生成プレビューが表示中です。\n' +
+      '設定変更前にシフト表上部のバナーで「確定」または「生成前に戻す」を押してください。'
+    );
+    return false;
+  }
+
+  // 2. 未ロックシフトの検出
+  const unlockedKeys = Object.keys(shiftData).filter(key => !lockedCells[key]);
+  if (unlockedKeys.length === 0) {
+    return true; // 全部ロック済み or シフト無し
+  }
+
+  // 3. ロック＆保存の確認
+  const confirmed = confirm(
+    '所定労働時間や必要人数の変更時は\n' +
+    '未ロックシフトは保存されません。\n\n' +
+    `現在 ${unlockedKeys.length} 件の未ロックシフトがあります。\n` +
+    '現在の選択済みシフトを全てロックしますか？\n\n' +
+    '「OK」: 全シフトをロック＆保存して設定変更を続行\n' +
+    '「キャンセル」: 設定変更を中止'
+  );
+  if (!confirmed) return false;
+
+  // 4. 全シフトをロック＆保存
+  showLoading();
+  try {
+    // メモリ上で全シフトをロック
+    Object.keys(shiftData).forEach(key => {
+      lockedCells[key] = true;
+    });
+
+    // DB に保存（saveShiftBtn と同じロジック）
+    const deptStaff = allStaff.filter(s => s.dept_id === currentDept).sort((a, b) => {
+      const aOrder = a.display_order ?? 99999;
+      const bOrder = b.display_order ?? 99999;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return a.staff_code - b.staff_code;
+    });
+    const ids = deptStaff.map(s => `"${s.id}"`).join(',');
+    if (ids) {
+      await sb(`shifts?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}`, { method:'DELETE' });
+    }
+    const inserts = Object.entries(shiftData).map(([key, shiftId]) => {
+      const [staffId, day] = parseKey(key);
+      return { staff_id:staffId, year:shiftYear, month:shiftMonth, day:parseInt(day), shift_type_id:shiftId, is_locked: true };
+    });
+    if (inserts.length > 0) {
+      await sb('shifts', { method:'POST', body:JSON.stringify(inserts) });
+    }
+    await persistCellLocks(ids, shiftYear, shiftMonth);
+
+    // 保存時点スナップショット更新
+    savedShiftSnapshot = {
+      shiftData: JSON.parse(JSON.stringify(shiftData)),
+      lockedCells: JSON.parse(JSON.stringify(lockedCells))
+    };
+    undoStack = [];
+    redoStack = [];
+    showToast(`全シフト（${inserts.length}件）をロック＆保存しました ✓`, 'success');
+    return true;
+  } catch (e) {
+    console.error(e);
+    showToast('保存エラー', 'error');
+    return false;
+  } finally {
+    hideLoading();
+  }
+}
+
 // 所定労働時間クイック編集
 function showMonthlyHoursEditor() {
   const cur = shiftGridPlanHours;
@@ -2308,14 +2419,18 @@ function showMonthlyHoursEditor() {
 }
 
 async function saveMonthlyHours(hours) {
+  // ★ 事前チェック：未ロックシフトがあれば、ロック＆保存してから続行
+  if (!(await preFlightCheckForSettingsChange())) return;
   showLoading();
   try {
     await sb(`monthly_hours?year=eq.${shiftYear}&month=eq.${shiftMonth}&dept_id=is.null`, {method:'DELETE'});
     await sb('monthly_hours', {method:'POST', body:JSON.stringify([{year:shiftYear,month:shiftMonth,hours,dept_id:null}])});
     shiftGridPlanHours = hours;
     showToast(`所定労働時間を${hours}Hに更新しました ✓`, 'success');
-    // ★ DB再取得すると未選択セルのロック（メモリのみ保持）が消えるため、メモリ状態のまま再描画
-    rerenderShiftGridFromMemory();
+    // ★ ロールバック: rerenderShiftGridFromMemory ではなく DB から再取得。
+    //   AI 生成プレビュー残骸を確実に消し、データ損失を防ぐ。
+    //   cell_locks 永続化済みのため、未選択ロックは loadShiftGrid で復元される。
+    await loadShiftGrid();
   } catch(e) { showToast('保存エラー','error'); }
   hideLoading();
 }
@@ -2328,6 +2443,9 @@ async function editSingleRequirement(period, day, dayType, currentReq) {
   const DOW_JP = ['日','月','火','水','木','金','土'];
   const val = prompt(`${shiftMonth}月${day}日（${DOW_JP[dow]}）${labels[period]}の必要人数\n現在: ${currentReq !== null ? currentReq+'人' : '未設定'}\n（空欄=曜日別設定に従う）`, currentReq !== null ? currentReq : '');
   if (val === null) return;
+  
+  // ★ 事前チェック：未ロックシフトがあれば、ロック＆保存してから続行
+  if (!(await preFlightCheckForSettingsChange())) return;
   
   showLoading();
   try {
@@ -2349,8 +2467,8 @@ async function editSingleRequirement(period, day, dayType, currentReq) {
       shiftGridRequirements[period][dayKey] = newReq;
       showToast(`${day}日 ${labels[period]}を${newReq}人に設定しました ✓`, 'success');
     }
-    // ★ DB再取得すると未選択セルのロック（メモリのみ保持）が消えるため、メモリ状態のまま再描画
-    rerenderShiftGridFromMemory();
+    // ★ ロールバック: rerenderShiftGridFromMemory ではなく DB から再取得
+    await loadShiftGrid();
   } catch(e) { console.error(e); showToast('保存エラー','error'); }
   hideLoading();
 }
@@ -2365,6 +2483,8 @@ function showStaffHoursEditor(staffId, staffName, currentPlan) {
 }
 
 async function saveStaffHours(staffId, staffName, hours) {
+  // ★ 事前チェック：未ロックシフトがあれば、ロック＆保存してから続行
+  if (!(await preFlightCheckForSettingsChange())) return;
   showLoading();
   try {
     await sb(`staff_settings?staff_id=eq.${staffId}&year=eq.${shiftYear}&month=eq.${shiftMonth}`, {method:'DELETE'});
@@ -2378,8 +2498,8 @@ async function saveStaffHours(staffId, staffName, hours) {
       delete shiftGridStaffSettings[staffId];
     }
     showToast(`${staffName}の所定時間を更新しました ✓`, 'success');
-    // ★ DB再取得すると未選択セルのロック（メモリのみ保持）が消えるため、メモリ状態のまま再描画
-    rerenderShiftGridFromMemory();
+    // ★ ロールバック: rerenderShiftGridFromMemory ではなく DB から再取得
+    await loadShiftGrid();
   } catch(e) { showToast('保存エラー','error'); }
   hideLoading();
 }
@@ -2420,6 +2540,8 @@ function showRequirementsEditor(period) {
 }
 
 async function saveRequirementsQuick(period) {
+  // ★ 事前チェック：未ロックシフトがあれば、ロック＆保存してから続行
+  if (!(await preFlightCheckForSettingsChange())) return;
   showLoading();
   try {
     const dayTypes = ['weekday','wed_normal','wed_cc','wed_cho','weekend','thu_open','holiday_jp'];
@@ -2443,8 +2565,8 @@ async function saveRequirementsQuick(period) {
     });
     document.getElementById('requirementsQuickModal')?.remove();
     showToast('必要人数を保存しました ✓', 'success');
-    // ★ DB再取得すると未選択セルのロック（メモリのみ保持）が消えるため、メモリ状態のまま再描画
-    rerenderShiftGridFromMemory();
+    // ★ ロールバック: rerenderShiftGridFromMemory ではなく DB から再取得
+    await loadShiftGrid();
   } catch(e) { showToast('保存エラー','error'); }
   hideLoading();
 }
@@ -3942,6 +4064,16 @@ _logStep('STEP8完了');
       }))
     );
 
+    // ★ AI 生成プレビュー：生成前のメモリ状態をスナップショット
+    //   「生成前に戻す」ボタンで完全復元できるようにする。
+    //   shiftData/lockedCells は次の行から AI 結果で上書きされるため、その直前に退避。
+    preAIGenerationSnapshot = {
+      shiftData: JSON.parse(JSON.stringify(shiftData)),
+      lockedCells: JSON.parse(JSON.stringify(lockedCells)),
+      shiftYear,
+      shiftMonth
+    };
+
     // 生成結果を保存
     generatedShifts = result;
 
@@ -3967,6 +4099,12 @@ _logStep('STEP8完了');
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.querySelector('.nav-item[data-page="shift"]')?.classList.add('active');
     document.getElementById('page-shift')?.classList.add('active');
+
+    // ★ AI 生成プレビュー承認バナーを表示
+    //   ユーザーが「確定」または「生成前に戻す」を押すまで表示し続ける。
+    //   他の設定操作は preFlightCheck で自動ブロックされる。
+    const previewBanner = document.getElementById('aiPreviewBanner');
+    if (previewBanner) previewBanner.style.display = 'block';
 
     // DB再読み込みせずグリッドのみ再描画
     const reqMapForRender = {};
@@ -4142,8 +4280,20 @@ function getJapaneseHolidays(year, month) {
   return new Set(holidays[`${year}-${month}`] || []);
 }
 
-// 生成結果を適用
-document.getElementById('applyGenerateBtn').addEventListener('click', async () => {
+// ===== AI 生成プレビューの確定／破棄ロジック（共通関数化） =====
+
+// 「確定」処理：生成結果を DB に保存して、編集モードに移行
+async function approveAIPreview() {
+  if (Object.keys(generatedShifts).length === 0) {
+    showToast('プレビュー対象がありません', 'error');
+    return;
+  }
+  const monthLabel = `${shiftYear}年${shiftMonth}月`;
+  const deptLabel = DEPT_NAMES[currentDept] || `部署${currentDept}`;
+  if (!confirm(`【確認】${deptLabel}・${monthLabel}のシフトを自動生成結果で確定します。\n\n・現在 DB に保存されているシフトは自動生成結果に置き換わります。\n・「ロック済み」のシフトはそのまま残ります。\n\nよろしいですか？`)) {
+    showToast('確定をキャンセルしました');
+    return;
+  }
   showLoading();
   try {
     const deptStaff = allStaff.filter(s => s.dept_id === currentDept).sort((a, b) => {
@@ -4154,45 +4304,99 @@ document.getElementById('applyGenerateBtn').addEventListener('click', async () =
     });
     const ids = deptStaff.map(s => `"${s.id}"`).join(',');
 
-    await sb(`shifts?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}`, { method:'DELETE' });
+    await sb(`shifts?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}`, { method:'DELETE' });
 
-    // ★ 未選択（空シフト）はDB保存しない。ロックされた未選択セルは shift_type_id='' を持つため除外。
-    // ★ is_locked は lockedCells の状態を保持（旧コードは一律 false にしてロックを喪失していた）。
+    // ★ 空シフトは保存しない。ロックは lockedCells から再構築。
     const inserts = Object.entries(generatedShifts)
       .filter(([_, shiftId]) => shiftId !== '')
       .map(([key, shiftId]) => {
         const [staffId, day] = parseKey(key);
-        return { staff_id:staffId, year:genYear, month:genMonth, day:parseInt(day), shift_type_id:shiftId, is_locked: !!lockedCells[key] };
+        return { staff_id:staffId, year:shiftYear, month:shiftMonth, day:parseInt(day), shift_type_id:shiftId, is_locked: !!lockedCells[key] };
       });
-
     if (inserts.length > 0) {
       await sb('shifts', { method:'POST', body:JSON.stringify(inserts) });
     }
 
-    // shiftYearをgenに合わせてシフト表を更新
-    shiftYear = genYear; shiftMonth = genMonth;
-    // ★ 空シフトは shiftData に入れない（生成関数内と同じ理由）
+    // shiftData は既に AI 結果で上書き済み。再度同期しておく。
     shiftData = {};
     Object.entries(generatedShifts).forEach(([key, shift]) => {
       if (shift !== '') shiftData[key] = shift;
     });
 
-    // ★ 未選択セルのロック（cell_locks）も適切に永続化
-    //   旧コード：cell_locks 全削除のみ → 未選択のロックが消失。
-    //   新コード：lockedCells から再構築（空シフトのロック有りセル → cell_locks に保存）。
+    // cell_locks 永続化
     await persistCellLocks(ids, shiftYear, shiftMonth);
 
-    document.getElementById('previewCard').style.display = 'none';
-    showToast('シフト表に適用しました ✓','success');
-  } catch(e) { console.error(e); showToast('適用エラー','error'); }
-  hideLoading();
-});
+    // 保存時点スナップショット更新（保存ボタンと同じ）
+    savedShiftSnapshot = {
+      shiftData: JSON.parse(JSON.stringify(shiftData)),
+      lockedCells: JSON.parse(JSON.stringify(lockedCells))
+    };
+    undoStack = [];
+    redoStack = [];
 
-document.getElementById('discardGenerateBtn').addEventListener('click', () => {
-  document.getElementById('previewCard').style.display = 'none';
+    // プレビュー状態をクリア
+    generatedShifts = {};
+    preAIGenerationSnapshot = null;
+
+    // バナーと旧プレビューカードを非表示
+    const banner = document.getElementById('aiPreviewBanner');
+    if (banner) banner.style.display = 'none';
+    const card = document.getElementById('previewCard');
+    if (card) card.style.display = 'none';
+
+    showToast('自動生成結果を確定し、編集モードに移行しました ✓','success');
+  } catch(e) {
+    console.error(e);
+    showToast('確定エラー','error');
+  }
+  hideLoading();
+}
+
+// 「生成前に戻す」処理：スナップショットからメモリを完全復元（DB は触らない）
+async function discardAIPreview() {
+  if (!preAIGenerationSnapshot && Object.keys(generatedShifts).length === 0) {
+    showToast('破棄対象がありません', 'error');
+    return;
+  }
+
+  // プレビュー状態をクリア
   generatedShifts = {};
-  showToast('生成結果を破棄しました');
-});
+
+  if (preAIGenerationSnapshot) {
+    // メモリスナップショットから完全復元（DB は触らない）
+    shiftData = JSON.parse(JSON.stringify(preAIGenerationSnapshot.shiftData));
+    lockedCells = JSON.parse(JSON.stringify(preAIGenerationSnapshot.lockedCells));
+    shiftYear = preAIGenerationSnapshot.shiftYear;
+    shiftMonth = preAIGenerationSnapshot.shiftMonth;
+    preAIGenerationSnapshot = null;
+    // 画面を再描画
+    rerenderShiftGridFromMemory();
+    showToast('自動生成前の状態に戻しました');
+  } else {
+    // フォールバック：スナップショットが無ければ DB から再取得
+    showLoading();
+    try {
+      await loadShiftGrid();
+    } finally {
+      hideLoading();
+    }
+    showToast('自動生成結果を破棄しました');
+  }
+
+  // バナーと旧プレビューカードを非表示
+  const banner = document.getElementById('aiPreviewBanner');
+  if (banner) banner.style.display = 'none';
+  const card = document.getElementById('previewCard');
+  if (card) card.style.display = 'none';
+}
+
+// ===== 旧来の「自動生成」タブ内のボタン（後方互換）=====
+document.getElementById('applyGenerateBtn').addEventListener('click', approveAIPreview);
+document.getElementById('discardGenerateBtn').addEventListener('click', discardAIPreview);
+
+// ===== シフト表上の新バナーボタン =====
+document.getElementById('aiPreviewApproveBtn')?.addEventListener('click', approveAIPreview);
+document.getElementById('aiPreviewDiscardBtn')?.addEventListener('click', discardAIPreview);
 
 // ===== SETTINGS =====
 
@@ -6806,8 +7010,8 @@ async function clearFixedShifts(staffId, staffName) {
             delete lockedCells[key];
           }
         });
-        // ★ DB再取得すると未選択セルのロック（メモリのみ保持）が消えるため、メモリ状態のまま再描画
-        rerenderShiftGridFromMemory();
+        // ★ ロールバック: rerenderShiftGridFromMemory ではなく DB から再取得
+        await loadShiftGrid();
       }
 
       curMonth++;
@@ -6959,8 +7163,8 @@ async function applyFixedShiftsToGrid(staffId, fixedShifts) {
           shiftData[key] = ins.shift_type_id;
           if (withLock) lockedCells[key] = true;
         });
-        // ★ DB再取得すると未選択セルのロック（メモリのみ保持）が消えるため、メモリ状態のまま再描画
-        rerenderShiftGridFromMemory();
+        // ★ ロールバック: rerenderShiftGridFromMemory ではなく DB から再取得
+        await loadShiftGrid();
       }
 
       monthCount++;
