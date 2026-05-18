@@ -729,6 +729,19 @@
             <div style="font-size:16px;font-weight:700">やちよ総合診療クリニック シフト表</div>
             <div style="font-size:12px;color:#666" id="printHeaderSub"></div>
           </div>
+          <!-- ★ AI 生成プレビュー承認バナー（自動生成直後に表示）-->
+          <div id="aiPreviewBanner" style="display:none; position:sticky; top:0; z-index:50; background:linear-gradient(135deg,#fef3c7,#fde68a); border:2px solid #f59e0b; border-radius:12px; padding:16px; margin-bottom:12px; box-shadow:0 4px 12px rgba(245,158,11,0.3)">
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px">
+              <div style="flex:1; min-width:200px">
+                <div style="font-size:15px; font-weight:700; color:#92400e; margin-bottom:4px">🤖 AI 生成結果を表示中（まだ保存されていません）</div>
+                <div style="font-size:12px; color:#78350f">内容を確認のうえ、「確定」または「生成前に戻す」を選択してください</div>
+              </div>
+              <div style="display:flex; gap:8px">
+                <button id="aiPreviewApproveBtn" class="btn btn-success" style="font-weight:700">✓ この内容で確定する</button>
+                <button id="aiPreviewDiscardBtn" class="btn btn-outline" style="background:white; border:1.5px solid #dc2626; color:#dc2626; font-weight:700">↩ 生成前に戻す</button>
+              </div>
+            </div>
+          </div>
           <div class="card" style="padding:12px">
             <div class="shift-grid-wrap">
               <table class="shift-grid" id="shiftGrid"></table>
@@ -1135,6 +1148,8 @@ let shiftYear = new Date().getFullYear(), shiftMonth = new Date().getMonth() + 1
 let dashYear = new Date().getFullYear(), dashMonth = new Date().getMonth() + 1;
 let genYear = new Date().getFullYear(), genMonth = new Date().getMonth() + 1;
 let allStaff = [], shiftData = {}, lockedCells = {}, wedTypes = {}, generatedShifts = {};
+// ★ AI 生成プレビュー用：生成前の状態スナップショット（破棄時の復元用）
+let preAIGenerationSnapshot = null;
 // シフト表の状態管理
 let shiftGridContext = null; // 'dept|year|month' - 現在ロード済みのコンテキスト
 let savedShiftSnapshot = null; // 最後の保存時点（DBロード時 or 保存成功時に更新）
@@ -4032,6 +4047,16 @@ _logStep('STEP8完了');
       }))
     );
 
+    // ★ AI 生成プレビュー：生成前のメモリ状態をスナップショット
+    //   「生成前に戻す」ボタンで完全復元できるようにする。
+    //   shiftData/lockedCells は次の行から AI 結果で上書きされるため、その直前に退避。
+    preAIGenerationSnapshot = {
+      shiftData: JSON.parse(JSON.stringify(shiftData)),
+      lockedCells: JSON.parse(JSON.stringify(lockedCells)),
+      shiftYear,
+      shiftMonth
+    };
+
     // 生成結果を保存
     generatedShifts = result;
 
@@ -4057,6 +4082,12 @@ _logStep('STEP8完了');
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.querySelector('.nav-item[data-page="shift"]')?.classList.add('active');
     document.getElementById('page-shift')?.classList.add('active');
+
+    // ★ AI 生成プレビュー承認バナーを表示
+    //   ユーザーが「確定」または「生成前に戻す」を押すまで表示し続ける。
+    //   他の設定操作は preFlightCheck で自動ブロックされる。
+    const previewBanner = document.getElementById('aiPreviewBanner');
+    if (previewBanner) previewBanner.style.display = 'block';
 
     // DB再読み込みせずグリッドのみ再描画
     const reqMapForRender = {};
@@ -4232,21 +4263,18 @@ function getJapaneseHolidays(year, month) {
   return new Set(holidays[`${year}-${month}`] || []);
 }
 
-// 生成結果を適用
-document.getElementById('applyGenerateBtn').addEventListener('click', async () => {
-  // ★ 破壊的操作のため確認ダイアログを追加
-  //   AI 適用は対象月の既存シフトを全削除してから AI 結果で上書きするため、
-  //   ロックされていないシフトはすべて喪失する。誤操作によるデータ損失を防ぐ。
-  const monthLabel = `${genYear}年${genMonth}月`;
+// ===== AI 生成プレビューの確定／破棄ロジック（共通関数化） =====
+
+// 「確定」処理：生成結果を DB に保存して、編集モードに移行
+async function approveAIPreview() {
+  if (Object.keys(generatedShifts).length === 0) {
+    showToast('プレビュー対象がありません', 'error');
+    return;
+  }
+  const monthLabel = `${shiftYear}年${shiftMonth}月`;
   const deptLabel = DEPT_NAMES[currentDept] || `部署${currentDept}`;
-  const confirmMsg =
-    `【確認】${deptLabel}・${monthLabel}のシフトを上書きしますか？\n\n` +
-    `・既存のシフトはすべて削除され、AI 生成結果に置き換わります。\n` +
-    `・ロックされていないシフトは復元できません。\n` +
-    `・ロックされたシフト（🔒）のみ保持されます。\n\n` +
-    `本当に適用してよろしいですか？`;
-  if (!confirm(confirmMsg)) {
-    showToast('適用をキャンセルしました');
+  if (!confirm(`【確認】${deptLabel}・${monthLabel}のシフトを AI 生成結果で確定します。\n\n・現在 DB に保存されているシフトは AI 結果に置き換わります。\n・「ロック済み」のシフトはそのまま残ります。\n\nよろしいですか？`)) {
+    showToast('確定をキャンセルしました');
     return;
   }
   showLoading();
@@ -4259,54 +4287,99 @@ document.getElementById('applyGenerateBtn').addEventListener('click', async () =
     });
     const ids = deptStaff.map(s => `"${s.id}"`).join(',');
 
-    await sb(`shifts?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}`, { method:'DELETE' });
+    await sb(`shifts?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}`, { method:'DELETE' });
 
-    // ★ 未選択（空シフト）はDB保存しない。ロックされた未選択セルは shift_type_id='' を持つため除外。
-    // ★ is_locked は lockedCells の状態を保持（旧コードは一律 false にしてロックを喪失していた）。
+    // ★ 空シフトは保存しない。ロックは lockedCells から再構築。
     const inserts = Object.entries(generatedShifts)
       .filter(([_, shiftId]) => shiftId !== '')
       .map(([key, shiftId]) => {
         const [staffId, day] = parseKey(key);
-        return { staff_id:staffId, year:genYear, month:genMonth, day:parseInt(day), shift_type_id:shiftId, is_locked: !!lockedCells[key] };
+        return { staff_id:staffId, year:shiftYear, month:shiftMonth, day:parseInt(day), shift_type_id:shiftId, is_locked: !!lockedCells[key] };
       });
-
     if (inserts.length > 0) {
       await sb('shifts', { method:'POST', body:JSON.stringify(inserts) });
     }
 
-    // shiftYearをgenに合わせてシフト表を更新
-    shiftYear = genYear; shiftMonth = genMonth;
-    // ★ 空シフトは shiftData に入れない（生成関数内と同じ理由）
+    // shiftData は既に AI 結果で上書き済み。再度同期しておく。
     shiftData = {};
     Object.entries(generatedShifts).forEach(([key, shift]) => {
       if (shift !== '') shiftData[key] = shift;
     });
 
-    // ★ 未選択セルのロック（cell_locks）も適切に永続化
-    //   旧コード：cell_locks 全削除のみ → 未選択のロックが消失。
-    //   新コード：lockedCells から再構築（空シフトのロック有りセル → cell_locks に保存）。
+    // cell_locks 永続化
     await persistCellLocks(ids, shiftYear, shiftMonth);
 
-    document.getElementById('previewCard').style.display = 'none';
-    showToast('シフト表に適用しました ✓','success');
-  } catch(e) { console.error(e); showToast('適用エラー','error'); }
-  hideLoading();
-});
+    // 保存時点スナップショット更新（保存ボタンと同じ）
+    savedShiftSnapshot = {
+      shiftData: JSON.parse(JSON.stringify(shiftData)),
+      lockedCells: JSON.parse(JSON.stringify(lockedCells))
+    };
+    undoStack = [];
+    redoStack = [];
 
-document.getElementById('discardGenerateBtn').addEventListener('click', async () => {
-  document.getElementById('previewCard').style.display = 'none';
-  generatedShifts = {};
-  // ★ AI 生成は shiftData/lockedCells をプレビュー結果で上書きするため、
-  //   破棄時には DB から再取得して画面とメモリを真の DB 状態に戻す。
-  //   これを怠ると、破棄後に保存・設定変更でプレビュー残骸が DB に永続化される事故が起きる。
-  showLoading();
-  try {
-    await loadShiftGrid();
-  } finally {
-    hideLoading();
+    // プレビュー状態をクリア
+    generatedShifts = {};
+    preAIGenerationSnapshot = null;
+
+    // バナーと旧プレビューカードを非表示
+    const banner = document.getElementById('aiPreviewBanner');
+    if (banner) banner.style.display = 'none';
+    const card = document.getElementById('previewCard');
+    if (card) card.style.display = 'none';
+
+    showToast('AI 生成結果を確定し、編集モードに移行しました ✓','success');
+  } catch(e) {
+    console.error(e);
+    showToast('確定エラー','error');
   }
-  showToast('生成結果を破棄しました');
-});
+  hideLoading();
+}
+
+// 「生成前に戻す」処理：スナップショットからメモリを完全復元（DB は触らない）
+async function discardAIPreview() {
+  if (!preAIGenerationSnapshot && Object.keys(generatedShifts).length === 0) {
+    showToast('破棄対象がありません', 'error');
+    return;
+  }
+
+  // プレビュー状態をクリア
+  generatedShifts = {};
+
+  if (preAIGenerationSnapshot) {
+    // メモリスナップショットから完全復元（DB は触らない）
+    shiftData = JSON.parse(JSON.stringify(preAIGenerationSnapshot.shiftData));
+    lockedCells = JSON.parse(JSON.stringify(preAIGenerationSnapshot.lockedCells));
+    shiftYear = preAIGenerationSnapshot.shiftYear;
+    shiftMonth = preAIGenerationSnapshot.shiftMonth;
+    preAIGenerationSnapshot = null;
+    // 画面を再描画
+    rerenderShiftGridFromMemory();
+    showToast('AI 生成前の状態に戻しました');
+  } else {
+    // フォールバック：スナップショットが無ければ DB から再取得
+    showLoading();
+    try {
+      await loadShiftGrid();
+    } finally {
+      hideLoading();
+    }
+    showToast('AI 生成結果を破棄しました');
+  }
+
+  // バナーと旧プレビューカードを非表示
+  const banner = document.getElementById('aiPreviewBanner');
+  if (banner) banner.style.display = 'none';
+  const card = document.getElementById('previewCard');
+  if (card) card.style.display = 'none';
+}
+
+// ===== 旧来の「自動生成」タブ内のボタン（後方互換）=====
+document.getElementById('applyGenerateBtn').addEventListener('click', approveAIPreview);
+document.getElementById('discardGenerateBtn').addEventListener('click', discardAIPreview);
+
+// ===== シフト表上の新バナーボタン =====
+document.getElementById('aiPreviewApproveBtn')?.addEventListener('click', approveAIPreview);
+document.getElementById('aiPreviewDiscardBtn')?.addEventListener('click', discardAIPreview);
 
 // ===== SETTINGS =====
 
