@@ -30,6 +30,27 @@
     .kingyo-tank { width:200px;height:140px;position:relative;margin:0 auto 20px;background:linear-gradient(180deg,rgba(0,180,216,0.15) 0%,rgba(0,180,216,0.35) 100%);border-radius:50%;overflow:hidden;border:2px solid rgba(15,76,129,0.15);box-shadow:0 4px 16px rgba(0,0,0,0.08),inset 0 0 30px rgba(255,255,255,0.3); }
     .water-surface { position:absolute;top:0;left:0;right:0;height:8px;background:linear-gradient(90deg,rgba(255,255,255,0.4) 0%,rgba(255,255,255,0.7) 50%,rgba(255,255,255,0.4) 100%);border-radius:50%;animation:waveMove 3s ease-in-out infinite; }
     @keyframes waveMove { 0%,100%{transform:translateX(-3px);} 50%{transform:translateX(3px);} }
+    /* ★ 画面右上の金魚アニメーション */
+    @keyframes swimAcross {
+      0%   { transform: translateX(0)    translateY(0)  scaleX(1); }
+      25%  { transform: translateX(45px) translateY(-3px) scaleX(1); }
+      45%  { transform: translateX(95px) translateY(0)  scaleX(1); }
+      50%  { transform: translateX(95px) translateY(0)  scaleX(-1); }
+      75%  { transform: translateX(45px) translateY(-3px) scaleX(-1); }
+      95%  { transform: translateX(0)    translateY(0)  scaleX(-1); }
+      100% { transform: translateX(0)    translateY(0)  scaleX(1); }
+    }
+    @keyframes bubbleRise {
+      0%   { transform: translateY(0) scale(0.5); opacity: 0; }
+      20%  { opacity: 0.6; }
+      100% { transform: translateY(-22px) scale(1); opacity: 0; }
+    }
+    .goldfish-tank { position:relative; width:140px; height:36px; overflow:visible; }
+    .goldfish-swimmer { position:absolute; top:6px; left:0; animation: swimAcross 8s ease-in-out infinite; transform-origin: center; }
+    .bubble { position:absolute; width:5px; height:5px; border-radius:50%; background:rgba(96,165,250,0.6); animation: bubbleRise 3s ease-in infinite; }
+    .bubble:nth-child(2) { left:20px;  width:3px; height:3px; animation-delay:0.5s; }
+    .bubble:nth-child(3) { left:60px;  width:4px; height:4px; animation-delay:1.2s; }
+    .bubble:nth-child(4) { left:100px; width:3px; height:3px; animation-delay:2.0s; }
     .kingyo { position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:90px;height:60px;animation:swimAround 6s ease-in-out infinite; }
     @keyframes swimAround {
       0%   { transform: translate(-50%, -50%) translateX(-30px) rotate(-5deg); }
@@ -656,7 +677,29 @@
           <div class="page-title" id="topbarTitle">シフト表</div>
           <div class="page-sub" id="topbarSub"></div>
         </div>
-        <div style="font-size:15px;font-weight:600;color:var(--primary)" id="topbarMonth"></div>
+        <div class="goldfish-tank" id="topbarGoldfish" title="🐟">
+          <div class="bubble" style="bottom:0;left:30px"></div>
+          <div class="bubble" style="bottom:0"></div>
+          <div class="bubble" style="bottom:0"></div>
+          <div class="bubble" style="bottom:0"></div>
+          <div class="goldfish-swimmer">
+            <svg width="36" height="24" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg">
+              <g transform="translate(20, 30)">
+                <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
+                <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
+              </g>
+              <g transform="translate(50, 30)">
+                <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
+                <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
+                <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
+                <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
+                <circle cx="20" cy="-3" r="5" fill="white"/>
+                <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
+                <circle cx="22" cy="-4" r="0.8" fill="white"/>
+              </g>
+            </svg>
+          </div>
+        </div>
       </div>
 
       <div class="content">
@@ -1527,7 +1570,7 @@ async function loadStaff() {
 }
 
 function updateMonthDisplays() {
-  document.getElementById('topbarMonth').textContent = `${currentYear}年${currentMonth}月`;
+  // topbarMonth は金魚アニメーションに置き換えたので更新不要
   document.getElementById('reqMonthTitle').textContent = `${reqYear}年${reqMonth}月`;
   document.getElementById('shiftMonthTitle').textContent = `${shiftYear}年${shiftMonth}月`;
   document.getElementById('genMonthTitle').textContent = `${genYear}年${genMonth}月`;
