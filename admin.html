@@ -2330,12 +2330,11 @@ function rerenderShiftGridFromMemory() {
 }
 
 // 設定変更（所定労働時間・必要人数）の事前チェック
-// 1. AI プレビュー中はブロック（前回事故の再発防止）
-// 2. 未ロックシフトがあれば、全シフトをロック＆保存する確認
-// 3. すべてロック済み or シフト無しならそのまま続行
+// 自動生成プレビュー中のみブロック。それ以外は通過させ、
+// シフトデータ（手動編集・ロック・選択状態）はメモリのまま保持する。
 // 戻り値：true = 設定変更を続行可、false = 中止
 async function preFlightCheckForSettingsChange() {
-  // 1. 自動生成プレビュー中の場合はブロック
+  // 自動生成プレビュー中の場合はブロック
   if (Object.keys(generatedShifts).length > 0) {
     alert(
       '【操作不可】\n\n' +
@@ -2344,68 +2343,7 @@ async function preFlightCheckForSettingsChange() {
     );
     return false;
   }
-
-  // 2. 未ロックシフトの検出
-  const unlockedKeys = Object.keys(shiftData).filter(key => !lockedCells[key]);
-  if (unlockedKeys.length === 0) {
-    return true; // 全部ロック済み or シフト無し
-  }
-
-  // 3. ロック＆保存の確認
-  const confirmed = confirm(
-    '所定労働時間や必要人数の変更時は\n' +
-    '未ロックシフトは保存されません。\n\n' +
-    `現在 ${unlockedKeys.length} 件の未ロックシフトがあります。\n` +
-    '現在の選択済みシフトを全てロックしますか？\n\n' +
-    '「OK」: 全シフトをロック＆保存して設定変更を続行\n' +
-    '「キャンセル」: 設定変更を中止'
-  );
-  if (!confirmed) return false;
-
-  // 4. 全シフトをロック＆保存
-  showLoading();
-  try {
-    // メモリ上で全シフトをロック
-    Object.keys(shiftData).forEach(key => {
-      lockedCells[key] = true;
-    });
-
-    // DB に保存（saveShiftBtn と同じロジック）
-    const deptStaff = allStaff.filter(s => s.dept_id === currentDept).sort((a, b) => {
-      const aOrder = a.display_order ?? 99999;
-      const bOrder = b.display_order ?? 99999;
-      if (aOrder !== bOrder) return aOrder - bOrder;
-      return a.staff_code - b.staff_code;
-    });
-    const ids = deptStaff.map(s => `"${s.id}"`).join(',');
-    if (ids) {
-      await sb(`shifts?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}`, { method:'DELETE' });
-    }
-    const inserts = Object.entries(shiftData).map(([key, shiftId]) => {
-      const [staffId, day] = parseKey(key);
-      return { staff_id:staffId, year:shiftYear, month:shiftMonth, day:parseInt(day), shift_type_id:shiftId, is_locked: true };
-    });
-    if (inserts.length > 0) {
-      await sb('shifts', { method:'POST', body:JSON.stringify(inserts) });
-    }
-    await persistCellLocks(ids, shiftYear, shiftMonth);
-
-    // 保存時点スナップショット更新
-    savedShiftSnapshot = {
-      shiftData: JSON.parse(JSON.stringify(shiftData)),
-      lockedCells: JSON.parse(JSON.stringify(lockedCells))
-    };
-    undoStack = [];
-    redoStack = [];
-    showToast(`全シフト（${inserts.length}件）をロック＆保存しました ✓`, 'success');
-    return true;
-  } catch (e) {
-    console.error(e);
-    showToast('保存エラー', 'error');
-    return false;
-  } finally {
-    hideLoading();
-  }
+  return true;
 }
 
 // 所定労働時間クイック編集
@@ -2419,7 +2357,7 @@ function showMonthlyHoursEditor() {
 }
 
 async function saveMonthlyHours(hours) {
-  // ★ 事前チェック：未ロックシフトがあれば、ロック＆保存してから続行
+  // ★ 事前チェック：自動生成プレビュー中はブロック
   if (!(await preFlightCheckForSettingsChange())) return;
   showLoading();
   try {
@@ -2427,10 +2365,10 @@ async function saveMonthlyHours(hours) {
     await sb('monthly_hours', {method:'POST', body:JSON.stringify([{year:shiftYear,month:shiftMonth,hours,dept_id:null}])});
     shiftGridPlanHours = hours;
     showToast(`所定労働時間を${hours}Hに更新しました ✓`, 'success');
-    // ★ ロールバック: rerenderShiftGridFromMemory ではなく DB から再取得。
-    //   AI 生成プレビュー残骸を確実に消し、データ損失を防ぐ。
-    //   cell_locks 永続化済みのため、未選択ロックは loadShiftGrid で復元される。
-    await loadShiftGrid();
+    // ★ メモリ保持で再描画（loadShiftGrid は呼ばない）
+    //   手動編集、ロック、選択状態はすべてメモリのまま維持される。
+    //   AI プレビュー残骸の問題は preFlightCheck で構造的に防止されている。
+    rerenderShiftGridFromMemory();
   } catch(e) { showToast('保存エラー','error'); }
   hideLoading();
 }
@@ -2444,7 +2382,7 @@ async function editSingleRequirement(period, day, dayType, currentReq) {
   const val = prompt(`${shiftMonth}月${day}日（${DOW_JP[dow]}）${labels[period]}の必要人数\n現在: ${currentReq !== null ? currentReq+'人' : '未設定'}\n（空欄=曜日別設定に従う）`, currentReq !== null ? currentReq : '');
   if (val === null) return;
   
-  // ★ 事前チェック：未ロックシフトがあれば、ロック＆保存してから続行
+  // ★ 事前チェック：自動生成プレビュー中はブロック
   if (!(await preFlightCheckForSettingsChange())) return;
   
   showLoading();
@@ -2467,8 +2405,9 @@ async function editSingleRequirement(period, day, dayType, currentReq) {
       shiftGridRequirements[period][dayKey] = newReq;
       showToast(`${day}日 ${labels[period]}を${newReq}人に設定しました ✓`, 'success');
     }
-    // ★ ロールバック: rerenderShiftGridFromMemory ではなく DB から再取得
-    await loadShiftGrid();
+    // ★ メモリ保持で再描画（loadShiftGrid は呼ばない）
+    //   手動編集、ロック、選択状態を維持。AI プレビュー中は preFlightCheck でブロック済み。
+    rerenderShiftGridFromMemory();
   } catch(e) { console.error(e); showToast('保存エラー','error'); }
   hideLoading();
 }
@@ -2483,7 +2422,7 @@ function showStaffHoursEditor(staffId, staffName, currentPlan) {
 }
 
 async function saveStaffHours(staffId, staffName, hours) {
-  // ★ 事前チェック：未ロックシフトがあれば、ロック＆保存してから続行
+  // ★ 事前チェック：自動生成プレビュー中はブロック
   if (!(await preFlightCheckForSettingsChange())) return;
   showLoading();
   try {
@@ -2498,8 +2437,9 @@ async function saveStaffHours(staffId, staffName, hours) {
       delete shiftGridStaffSettings[staffId];
     }
     showToast(`${staffName}の所定時間を更新しました ✓`, 'success');
-    // ★ ロールバック: rerenderShiftGridFromMemory ではなく DB から再取得
-    await loadShiftGrid();
+    // ★ メモリ保持で再描画（loadShiftGrid は呼ばない）
+    //   手動編集、ロック、選択状態を維持。AI プレビュー中は preFlightCheck でブロック済み。
+    rerenderShiftGridFromMemory();
   } catch(e) { showToast('保存エラー','error'); }
   hideLoading();
 }
@@ -2540,7 +2480,7 @@ function showRequirementsEditor(period) {
 }
 
 async function saveRequirementsQuick(period) {
-  // ★ 事前チェック：未ロックシフトがあれば、ロック＆保存してから続行
+  // ★ 事前チェック：自動生成プレビュー中はブロック
   if (!(await preFlightCheckForSettingsChange())) return;
   showLoading();
   try {
@@ -2565,8 +2505,9 @@ async function saveRequirementsQuick(period) {
     });
     document.getElementById('requirementsQuickModal')?.remove();
     showToast('必要人数を保存しました ✓', 'success');
-    // ★ ロールバック: rerenderShiftGridFromMemory ではなく DB から再取得
-    await loadShiftGrid();
+    // ★ メモリ保持で再描画（loadShiftGrid は呼ばない）
+    //   手動編集、ロック、選択状態を維持。AI プレビュー中は preFlightCheck でブロック済み。
+    rerenderShiftGridFromMemory();
   } catch(e) { showToast('保存エラー','error'); }
   hideLoading();
 }
