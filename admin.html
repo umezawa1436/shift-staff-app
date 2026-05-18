@@ -2737,9 +2737,17 @@ document.addEventListener('keydown', (e) => {
     if (e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA') return;
     e.preventDefault();
     const updatedStaffIds = new Set([...selectedCells].map(k => parseKey(k)[0]));
+    const deletedCount = selectedCells.size;
     applyShiftToSelected(null);
     updatedStaffIds.forEach(sid => refreshHoursCell(sid));
-    showToast(`${selectedCells.size}セルを削除しました`);
+    // ★ 削除後は選択状態をクリアする。
+    //   クリアしないと、次に 1 セルをクリックした時に
+    //  「複数選択中の選択済みセル」と判定されてモーダルが複数適用モードで開き、
+    //   1 セル変更のつもりが選択範囲全体に適用される事故が起きる。
+    selectedCells.clear();
+    lastSelectedCell = null;
+    highlightSelected();
+    showToast(`${deletedCount}セルを削除しました`);
     return;
   }
   if (ctrl && e.key==='z' && !e.shiftKey) {
