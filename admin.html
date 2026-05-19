@@ -772,6 +772,19 @@
             <div style="font-size:16px;font-weight:700">やちよ総合診療クリニック シフト表</div>
             <div style="font-size:12px;color:#666" id="printHeaderSub"></div>
           </div>
+          <!-- ★ 確定ロックバナー（is_confirmed=true の月で表示）-->
+          <div id="confirmLockBanner" style="display:none; position:sticky; top:0; z-index:51; background:linear-gradient(135deg,#dbeafe,#bfdbfe); border:2px solid #2563eb; border-radius:12px; padding:16px; margin-bottom:12px; box-shadow:0 4px 12px rgba(37,99,235,0.2)">
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px">
+              <div style="flex:1; min-width:200px; display:flex; align-items:flex-start; gap:10px">
+                <div style="font-size:28px; line-height:1">🔒</div>
+                <div>
+                  <div style="font-size:15px; font-weight:700; color:#1e3a8a; margin-bottom:4px">このシフト表は確定済み・スタッフに公開中です</div>
+                  <div style="font-size:12px; color:#1e40af">変更するには「確定を取り消して編集する」を押してください</div>
+                </div>
+              </div>
+              <button id="unconfirmBtn" class="btn btn-outline" style="background:white; border:1.5px solid #dc2626; color:#dc2626; font-weight:700">✏️ 確定を取り消して編集する</button>
+            </div>
+          </div>
           <!-- ★ 自動生成プレビュー承認バナー（自動生成直後に表示）-->
           <div id="aiPreviewBanner" style="display:none; position:sticky; top:0; z-index:50; background:linear-gradient(135deg,#fef3c7,#fde68a); border:2px solid #f59e0b; border-radius:12px; padding:16px; margin-bottom:12px; box-shadow:0 4px 12px rgba(245,158,11,0.3)">
             <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px">
@@ -1210,6 +1223,8 @@ let genYear = new Date().getFullYear(), genMonth = new Date().getMonth() + 1;
 let allStaff = [], shiftData = {}, lockedCells = {}, wedTypes = {}, generatedShifts = {};
 // ★ AI 生成プレビュー用：生成前の状態スナップショット（破棄時の復元用）
 let preAIGenerationSnapshot = null;
+// ★ 確定ロック：現在表示中の月が確定済みかどうか
+let isCurrentMonthConfirmed = false;
 // シフト表の状態管理
 let shiftGridContext = null; // 'dept|year|month' - 現在ロード済みのコンテキスト
 let savedShiftSnapshot = null; // 最後の保存時点（DBロード時 or 保存成功時に更新）
@@ -1814,6 +1829,11 @@ async function loadShiftGrid() {
       if (s.is_locked) lockedCells[key] = true;
     });
 
+    // ★ 確定ロック判定：is_confirmed=true のレコードが 1 件でもあればロック状態
+    //   バナー表示と編集操作のブロックに使われる。
+    isCurrentMonthConfirmed = existingShifts.some(s => s.is_confirmed === true);
+    updateConfirmLockUI();
+
     // ★ 未選択セルのロックを cell_locks テーブルから復元
     //   shifts.is_locked はシフト選択済みセルのみ保持できるため、未選択セルのロックは別管理。
     //   テーブル未作成時は警告のみで処理継続（既存機能を壊さない）。
@@ -2091,6 +2111,12 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
 
 
 function handleCellClick(e, staffId, staffName, day, gridId) {
+  // ★ 確定ロック中は編集ブロック（選択も含めて停止）
+  if (!checkConfirmLock()) {
+    e.stopPropagation();
+    e.preventDefault();
+    return;
+  }
   const isMac = navigator.platform.toUpperCase().includes('MAC');
   const ctrl = isMac ? e.metaKey : e.ctrlKey;
   const shift = e.shiftKey;
@@ -2193,6 +2219,8 @@ function applyShiftEdit(shiftId) {
 }
 
 function toggleLock(key) {
+  // ★ 確定ロック中はロック切替もブロック
+  if (!checkConfirmLock()) return;
   saveUndoState();
   if (lockedCells[key]) {
     delete lockedCells[key];
@@ -2372,11 +2400,112 @@ function rerenderShiftGridFromMemory() {
   renderShiftGrid('shiftGrid', deptStaff, daysInMonth, shiftYear, shiftMonth, shiftData, reqMap, lockedCells, true, wedTypesMap);
 }
 
+// ===== 確定ロック関連 =====
+
+// 確定ロックバナーの表示／非表示を切り替え
+function updateConfirmLockUI() {
+  const banner = document.getElementById('confirmLockBanner');
+  if (banner) banner.style.display = isCurrentMonthConfirmed ? 'block' : 'none';
+  // 確定ボタンの文言を状態に応じて切り替え
+  const confirmBtn = document.getElementById('confirmShiftBtn');
+  if (confirmBtn) confirmBtn.textContent = isCurrentMonthConfirmed ? '🔄 再確定する' : '✅ 確定する';
+  const badge = document.getElementById('confirmStatusBadge');
+  if (badge) {
+    if (isCurrentMonthConfirmed) {
+      badge.style.display = 'block';
+      badge.style.background = '#d1fae5';
+      badge.style.color = '#065f46';
+      badge.textContent = '✅ 確定済み';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+}
+
+// 編集操作の前に呼ぶ：確定ロック中なら警告を出して false を返す
+function checkConfirmLock() {
+  if (isCurrentMonthConfirmed) {
+    alert(
+      '【操作不可】\n\n' +
+      `${DEPT_NAMES[currentDept] || ''} ${shiftYear}年${shiftMonth}月のシフト表は確定済み・スタッフに公開中です。\n` +
+      '変更するには、シフト表上部の「確定を取り消して編集する」を押してから操作してください。'
+    );
+    return false;
+  }
+  return true;
+}
+
+// 確定を取り消す（current dept / shiftYear / shiftMonth のみ）
+async function unconfirmCurrentMonth() {
+  const deptLabel = DEPT_NAMES[currentDept] || `部署${currentDept}`;
+  if (!confirm(
+    `${deptLabel} ${shiftYear}年${shiftMonth}月のシフト確定を取り消しますか？\n\n` +
+    '・スタッフへの公開が停止されます\n' +
+    '・編集可能な状態に戻ります\n' +
+    '・編集後は再度「確定する」を押して公開してください'
+  )) return;
+
+  showLoading();
+  try {
+    const deptStaff = allStaff.filter(s => s.dept_id === currentDept);
+    const ids = deptStaff.map(s => `"${s.id}"`).join(',');
+    if (ids) {
+      await sb(
+        `shifts?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&is_confirmed=eq.true`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ is_confirmed: false })
+        }
+      );
+    }
+    isCurrentMonthConfirmed = false;
+    updateConfirmLockUI();
+    showToast('確定を取り消しました。編集可能になりました ✓', 'success');
+  } catch (e) {
+    console.error(e);
+    showToast('取り消しエラー', 'error');
+  }
+  hideLoading();
+}
+
+// バナーのボタンを wire up
+document.getElementById('unconfirmBtn')?.addEventListener('click', unconfirmCurrentMonth);
+
+// 期間内に確定済みの月があるかチェック（固定シフト一括操作用）
+// 確定済みがあれば alert を出して false、無ければ true を返す
+async function checkRangeNotConfirmed(deptId, startYear, startMonth, endYear, endMonth) {
+  const deptStaff = allStaff.filter(s => s.dept_id === deptId);
+  const ids = deptStaff.map(s => `"${s.id}"`).join(',');
+  if (!ids) return true;
+  const confirmedShifts = await sb(`shifts?staff_id=in.(${ids})&is_confirmed=eq.true&select=year,month`);
+  const startKey = startYear * 100 + startMonth;
+  const endKey = endYear * 100 + endMonth;
+  const inRange = (confirmedShifts || []).filter(s => {
+    const ymKey = s.year * 100 + s.month;
+    return ymKey >= startKey && ymKey <= endKey;
+  });
+  if (inRange.length > 0) {
+    const months = [...new Set(inRange.map(s => `${s.year}/${s.month}`))];
+    alert(
+      '【操作不可】\n\n' +
+      '以下の月は確定済み・スタッフに公開中です：\n' +
+      `${months.join(', ')}\n\n` +
+      'シフト表タブで該当月を表示し、\n' +
+      '「確定を取り消して編集する」を押してから再度実行してください。'
+    );
+    return false;
+  }
+  return true;
+}
+
 // 設定変更（所定労働時間・必要人数）の事前チェック
 // 自動生成プレビュー中のみブロック。それ以外は通過させ、
 // シフトデータ（手動編集・ロック・選択状態）はメモリのまま保持する。
 // 戻り値：true = 設定変更を続行可、false = 中止
 async function preFlightCheckForSettingsChange() {
+  // 確定ロック中はブロック
+  if (!checkConfirmLock()) return false;
   // 自動生成プレビュー中の場合はブロック
   if (Object.keys(generatedShifts).length > 0) {
     alert(
@@ -2696,6 +2825,16 @@ document.addEventListener('keydown', (e) => {
   if (activePage !== 'page-shift') return;
   if (selectedCells.size === 0 && !['z','y'].includes(e.key?.toLowerCase())) return;
 
+  // ★ 確定ロック中は破壊的操作（cut/paste/delete/undo/redo）をブロック
+  //   コピー（Ctrl+C）と通常入力はそのまま通す
+  const isDestructive =
+    (ctrl && (e.key === 'x' || e.key === 'v' || e.key?.toLowerCase() === 'z' || e.key?.toLowerCase() === 'y')) ||
+    e.key === 'Delete' || e.key === 'Backspace';
+  if (isDestructive && !checkConfirmLock()) {
+    e.preventDefault();
+    return;
+  }
+
   if (ctrl && e.key === 'c') {
     e.preventDefault();
     clipboard = { type:'copy', data:{} };
@@ -2885,16 +3024,9 @@ document.getElementById('confirmShiftBtn')?.addEventListener('click', async () =
     // ★ 未選択セルのロックを永続化
     await persistCellLocks(ids, shiftYear, shiftMonth);
 
-    // バッジを更新
-    const badge = document.getElementById('confirmStatusBadge');
-    const confirmBtn = document.getElementById('confirmShiftBtn');
-    if (badge) {
-      badge.style.display = 'block';
-      badge.style.background = '#d1fae5';
-      badge.style.color = '#065f46';
-      badge.textContent = '✅ 確定済み';
-    }
-    if (confirmBtn) confirmBtn.textContent = '🔄 再確定する';
+    // ★ 確定状態を更新してバナー表示も自動切替
+    isCurrentMonthConfirmed = true;
+    updateConfirmLockUI();
 
     showToast(`${shiftMonth}月のシフトを確定しました ✓ スタッフに公開されました`, 'success');
   } catch(e) {
@@ -2929,6 +3061,8 @@ async function persistCellLocks(staffIdsCsv, year, month) {
 
 // シフト保存
 document.getElementById('saveShiftBtn').addEventListener('click', async () => {
+  // ★ 確定ロック中は保存ブロック
+  if (!checkConfirmLock()) return;
   showLoading();
   try {
     const deptStaff = allStaff.filter(s => s.dept_id === currentDept).sort((a, b) => {
@@ -3160,6 +3294,22 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     if (!deptStaff.length) { showToast('スタッフがいません','error'); hideLoading(); return; }
 
     const ids = deptStaff.map(s => `"${s.id}"`).join(',');
+
+    // ★ 確定ロックチェック：生成対象（genYear/genMonth/currentDept）が確定済みなら中止
+    //   現在表示中とは別の月を生成しようとした場合も保護する。
+    const confirmedCheck = await sb(`shifts?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&is_confirmed=eq.true&select=staff_id&limit=1`);
+    if (confirmedCheck.length > 0) {
+      hideLoading();
+      const deptLabel = DEPT_NAMES[currentDept] || `部署${currentDept}`;
+      alert(
+        '【操作不可】\n\n' +
+        `${deptLabel} ${genYear}年${genMonth}月のシフト表は確定済み・スタッフに公開中です。\n` +
+        'シフト自動生成で上書きするには、先に確定を取り消してください。\n\n' +
+        'シフト表タブで該当月を表示し、「確定を取り消して編集する」を押してください。'
+      );
+      return;
+    }
+
     const daysInMonth = new Date(genYear, genMonth, 0).getDate();
 
     // データ取得
@@ -6960,6 +7110,12 @@ async function clearFixedShifts(staffId, staffName) {
     return;
   }
 
+  // ★ 確定ロックチェック：操作範囲内に確定済み月があれば中止
+  const maxFutureYearCheck = startYear + 2;
+  if (!(await checkRangeNotConfirmed(currentDept, startYear, startMonth, maxFutureYearCheck, 12))) {
+    return;
+  }
+
   showLoading();
   try {
     // 削除対象の最終月を決定: 既存shiftsの最大年月を取得し、そこまでループ
@@ -7103,6 +7259,11 @@ async function applyFixedShiftsToGrid(staffId, fixedShifts) {
   // 12ヶ月以上は警告（安全のため）
   if (endKey - startKey > 24) {
     if (!confirm(`${endKey - startKey + 1}ヶ月分という長期間です。続行しますか？`)) return;
+  }
+
+  // ★ 確定ロックチェック：操作範囲内に確定済み月があれば中止
+  if (!(await checkRangeNotConfirmed(currentDept, startYear, startMonth, endYear, endMonth))) {
+    return;
   }
 
   showLoading();
