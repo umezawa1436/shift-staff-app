@@ -1239,6 +1239,8 @@ function saveCurrentShiftStateToCache() {
     savedShiftSnapshot: savedShiftSnapshot ? JSON.parse(JSON.stringify(savedShiftSnapshot)) : null,
     undoStack: undoStack.slice(),
     redoStack: redoStack.slice(),
+    // ★ 確定ロック状態も保存（部署/月切替で復元するため）
+    isCurrentMonthConfirmed,
     // 表示用の参照データ（スタッフ希望・水曜種別・休診情報）もキャッシュ
     reqMap: window._shiftReqMap ? JSON.parse(JSON.stringify(window._shiftReqMap)) : {},
     wedTypes: window._shiftWedTypes ? JSON.parse(JSON.stringify(window._shiftWedTypes)) : {},
@@ -1257,6 +1259,9 @@ function tryRestoreShiftStateFromCache(ctx) {
   savedShiftSnapshot = c.savedShiftSnapshot ? JSON.parse(JSON.stringify(c.savedShiftSnapshot)) : null;
   undoStack = c.undoStack.slice();
   redoStack = c.redoStack.slice();
+  // ★ 確定ロック状態を復元 + UI 更新
+  isCurrentMonthConfirmed = !!c.isCurrentMonthConfirmed;
+  updateConfirmLockUI();
   // 表示用の参照データも復元
   window._shiftReqMap = c.reqMap ? JSON.parse(JSON.stringify(c.reqMap)) : {};
   window._shiftWedTypes = c.wedTypes ? JSON.parse(JSON.stringify(c.wedTypes)) : {};
@@ -2406,9 +2411,25 @@ function rerenderShiftGridFromMemory() {
 function updateConfirmLockUI() {
   const banner = document.getElementById('confirmLockBanner');
   if (banner) banner.style.display = isCurrentMonthConfirmed ? 'block' : 'none';
-  // 確定ボタンの文言を状態に応じて切り替え
+  // 確定ボタンの状態を切り替え
   const confirmBtn = document.getElementById('confirmShiftBtn');
-  if (confirmBtn) confirmBtn.textContent = isCurrentMonthConfirmed ? '🔄 再確定する' : '✅ 確定する';
+  if (confirmBtn) {
+    if (isCurrentMonthConfirmed) {
+      // 確定済み：ボタンは表示するが無効化（取り消しはバナー経由）
+      confirmBtn.textContent = '✅ 確定済み';
+      confirmBtn.disabled = true;
+      confirmBtn.style.opacity = '0.6';
+      confirmBtn.style.cursor = 'not-allowed';
+      confirmBtn.title = '確定済み・変更するにはバナーの「確定を取り消して編集する」を押してください';
+    } else {
+      // 未確定：通常通り有効化
+      confirmBtn.textContent = '✅ 確定する';
+      confirmBtn.disabled = false;
+      confirmBtn.style.opacity = '';
+      confirmBtn.style.cursor = '';
+      confirmBtn.title = '';
+    }
+  }
   const badge = document.getElementById('confirmStatusBadge');
   if (badge) {
     if (isCurrentMonthConfirmed) {
