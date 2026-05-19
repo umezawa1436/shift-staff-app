@@ -734,6 +734,22 @@ async function openVerticalView(year, month, day) {
     const allDeptShifts = await supabaseRequest(
       `shifts?year=eq.${year}&month=eq.${month}&day=eq.${day}&is_confirmed=eq.true&select=staff_id,shift_type_id`
     );
+
+    // ★ 確定シフトが無い場合、調整中の可能性をチェック
+    //   レース条件：ユーザーがカレンダーを開いた後に管理者が確定取り消しすると発生する
+    if (allDeptShifts.length === 0) {
+      const unconfirmedExists = await supabaseRequest(
+        `shifts?year=eq.${year}&month=eq.${month}&day=eq.${day}&is_confirmed=eq.false&select=staff_id&limit=1`
+      );
+      hideLoading();
+      if (unconfirmedExists.length > 0) {
+        showToast('この日のシフトは現在調整中です', 'info');
+      } else {
+        showToast('この日の確定シフトがありません', 'info');
+      }
+      return;
+    }
+
     const allDeptStaff = await supabaseRequest(
       `staff?dept_id=eq.${currentUser.deptId}&select=id,name,emp_type&order=display_order.asc.nullslast,staff_code`
     );
@@ -1458,11 +1474,29 @@ async function loadConfirmedShifts() {
     };
 
     if (shifts.length === 0) {
-      grid.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted)">
-        <div style="font-size:40px;margin-bottom:12px">📋</div>
-        <div style="font-size:15px;font-weight:600">確定シフトがまだありません</div>
-        <div style="font-size:13px;margin-top:6px">管理者がシフトを確定すると表示されます</div>
-      </div>`;
+      // ★ 確定シフトがない場合、未確定なのか「調整中」なのかを判別する
+      //   調整中 = 過去に確定されたが、管理者が編集のため一時的に取り消した状態
+      //   この時 shifts テーブルには is_confirmed=false のレコードが残っている
+      const unconfirmedExists = await supabaseRequest(
+        `shifts?staff_id=eq.${currentUser.id}&year=eq.${confYear}&month=eq.${confMonth}&is_confirmed=eq.false&select=day&limit=1`
+      );
+
+      if (unconfirmedExists.length > 0) {
+        // 調整中：管理者が確定を取り消して編集中
+        grid.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted)">
+          <div style="font-size:40px;margin-bottom:12px">🔧</div>
+          <div style="font-size:15px;font-weight:600;color:#1e40af">シフト調整中</div>
+          <div style="font-size:13px;margin-top:6px">管理者が再確定するまでお待ちください</div>
+          <div style="font-size:11px;margin-top:8px;color:var(--text-muted)">※ 再確定されると自動で表示されます</div>
+        </div>`;
+      } else {
+        // 未確定：そもそもシフトが作成されていない
+        grid.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted)">
+          <div style="font-size:40px;margin-bottom:12px">📋</div>
+          <div style="font-size:15px;font-weight:600">確定シフトがまだありません</div>
+          <div style="font-size:13px;margin-top:6px">管理者がシフトを確定すると表示されます</div>
+        </div>`;
+      }
       return;
     }
 
