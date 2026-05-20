@@ -183,7 +183,8 @@
     /* カスタムシフト共通スタイル */
     .sc-custom{background:#f1f5f9;color:#475569;border:1px dashed #94a3b8}
 
-    /* ===== 印刷用CSS（バーチカル表示） ===== */
+    /* ===== 印刷用CSS（バーチカル表示）===== */
+    /* body に .printing-vertical クラスが付いたときだけ適用 */
     @media print {
       @page {
         size: A4 landscape;
@@ -195,10 +196,11 @@
         print-color-adjust: exact !important;
         color-adjust: exact !important;
       }
-      /* 印刷時は印刷対象以外を非表示 */
-      body * { visibility: hidden; }
-      #verticalViewModal, #verticalViewModal * { visibility: visible; }
-      #verticalViewModal {
+      /* バーチカル印刷モード時のみ全体を非表示にしてモーダルだけ表示 */
+      body.printing-vertical * { visibility: hidden; }
+      body.printing-vertical #verticalViewModal,
+      body.printing-vertical #verticalViewModal * { visibility: visible; }
+      body.printing-vertical #verticalViewModal {
         position: absolute !important;
         left: 0 !important;
         top: 0 !important;
@@ -210,35 +212,35 @@
         border: none !important;
         padding: 0 !important;
       }
-      .modal-overlay { background: white !important; }
-      .modal-overlay#verticalViewModal { background: white !important; }
+      body.printing-vertical .modal-overlay { background: white !important; }
+      body.printing-vertical .modal-overlay#verticalViewModal { background: white !important; }
       /* モーダル内のボタンとフッターは非表示 */
-      #verticalViewModal .modal-footer,
-      #verticalViewModal #verticalPrevDay,
-      #verticalViewModal #verticalNextDay,
-      #verticalViewModal #saveBreaksBtn,
-      #verticalViewModal #verticalPrintBtn,
-      #verticalViewModal .modal-title button,
-      #verticalViewModal .modal-title > div { display: none !important; }
-      #verticalViewModal .modal-title {
+      body.printing-vertical #verticalViewModal .modal-footer,
+      body.printing-vertical #verticalViewModal #verticalPrevDay,
+      body.printing-vertical #verticalViewModal #verticalNextDay,
+      body.printing-vertical #verticalViewModal #saveBreaksBtn,
+      body.printing-vertical #verticalViewModal #verticalPrintBtn,
+      body.printing-vertical #verticalViewModal .modal-title button,
+      body.printing-vertical #verticalViewModal .modal-title > div { display: none !important; }
+      body.printing-vertical #verticalViewModal .modal-title {
         font-size: 14pt !important;
         text-align: center !important;
         padding: 8px 0 !important;
         margin-bottom: 8px !important;
         border-bottom: 1px solid #888 !important;
       }
-      #verticalViewContent {
+      body.printing-vertical #verticalViewContent {
         max-height: none !important;
         overflow: visible !important;
         font-size: 9pt !important;
       }
       /* シフト帯の影は印刷で目立つので消す */
-      #verticalViewContent .v-shift-bar {
+      body.printing-vertical #verticalViewContent .v-shift-bar {
         box-shadow: none !important;
         cursor: default !important;
       }
       /* スクロール禁止 */
-      html, body { overflow: visible !important; height: auto !important; }
+      body.printing-vertical, body.printing-vertical html { overflow: visible !important; height: auto !important; }
     }
 
     /* MODAL */
@@ -308,19 +310,63 @@
     .page.active { display:block; }
 
     /* 印刷用スタイル */
+    @page {
+      size: A4 landscape;  /* 横向き印刷でシフト表が読みやすい */
+      margin: 8mm;
+    }
     @media print {
-      body { background: white; font-size: 10px; }
+      body { background: white !important; font-size: 10px; }
+
+      /* 印刷で非表示にするもの（最新のバナー類も明示的に追加） */
       .sidebar, .topbar, .month-nav, .dept-tabs, .action-row,
-      #saveShiftBtn, #exportCsvBtn, #printShiftBtn { display: none !important; }
+      #saveShiftBtn, #exportCsvBtn, #printShiftBtn,
+      #aiConsultBtn, #revertSavedBtn, #confirmShiftBtn,
+      #confirmLockBanner, #aiPreviewBanner,
+      #topbarGoldfish, .goldfish-tank, .goldfish-swimmer, .bubble,
+      .modal-overlay, #verticalOverlay, #verticalModal,
+      .toast, #loading {
+        display: none !important;
+      }
+
+      /* レイアウトリセット */
       .main { margin-left: 0 !important; }
-      .content { padding: 8px !important; }
-      .card { box-shadow: none !important; border: 1px solid #ccc; padding: 8px !important; }
-      .shift-grid th, .shift-grid td { padding: 2px 1px !important; font-size: 8px !important; }
-      .shift-cell { min-height: 20px !important; font-size: 8px !important; border-radius: 2px !important; }
+      .content { padding: 0 !important; }
+      .card { box-shadow: none !important; border: 1px solid #ccc; padding: 4px !important; }
+
+      /* ★ シフトテーブルが切り落とされないように overflow を解除 */
+      .shift-grid-wrap { overflow: visible !important; width: 100% !important; }
+      .shift-grid {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        table-layout: auto !important;
+      }
+      .shift-grid th, .shift-grid td {
+        padding: 1px !important;
+        font-size: 7px !important;
+        page-break-inside: avoid;
+      }
+      .shift-grid tr { page-break-inside: avoid; }
+      .shift-cell {
+        min-height: 16px !important;
+        font-size: 7px !important;
+        border-radius: 2px !important;
+        /* ★ シフト色を印刷時に保持する */
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+      }
       .shift-cell .req-text { display: none !important; }
+
+      /* 全色を印刷時に保持 */
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+      /* ページ表示 */
       .page { display: none !important; }
       #page-shift { display: block !important; }
-      #print-header { display: block !important; }
+      #print-header { display: block !important; text-align: center; margin-bottom: 8px !important; }
     }
     #print-header { display: none; }
 
@@ -6345,9 +6391,16 @@ document.getElementById('applyBreakEditBtn')?.addEventListener('click', () => {
 });
 
 // 休憩を保存（DBへ）
-// 印刷ボタン
+// 印刷ボタン（バーチカル表示用）
 document.getElementById('verticalPrintBtn')?.addEventListener('click', () => {
-  window.print();
+  // ★ バーチカル印刷モード時のみ body にクラスを付与（シフト表印刷との分離）
+  document.body.classList.add('printing-vertical');
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      window.print();
+      setTimeout(() => document.body.classList.remove('printing-vertical'), 1000);
+    });
+  });
 });
 
 document.getElementById('saveBreaksBtn')?.addEventListener('click', async () => {
@@ -7666,9 +7719,15 @@ document.getElementById('printShiftBtn')?.addEventListener('click', () => {
     header.style.display = 'block';
     sub.textContent = `${DEPT_NAMES[currentDept]}　${shiftYear}年${shiftMonth}月`;
   }
-  window.print();
-  // 印刷後にヘッダーを非表示
-  setTimeout(() => { if (header) header.style.display = 'none'; }, 1000);
+  // ★ DOM 更新後にレンダリングが完了してから print() を呼ぶ。
+  //   即座に呼ぶと印刷プレビューが空白になることがある。
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      window.print();
+      // 印刷後にヘッダーを非表示
+      setTimeout(() => { if (header) header.style.display = 'none'; }, 1000);
+    });
+  });
 });
 
 // MONTH NAV
