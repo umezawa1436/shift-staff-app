@@ -319,7 +319,7 @@
 
       /* 印刷で非表示にするもの（最新のバナー類も明示的に追加） */
       .sidebar, .topbar, .month-nav, .dept-tabs, .action-row,
-      #saveShiftBtn, #exportCsvBtn, #printShiftBtn,
+      #saveShiftBtn, #exportCsvBtn, #printShiftBtn, #reloadShiftBtn,
       #aiConsultBtn, #revertSavedBtn, #confirmShiftBtn,
       #confirmLockBanner, #aiPreviewBanner,
       #topbarGoldfish, .goldfish-tank, .goldfish-swimmer, .bubble,
@@ -812,6 +812,7 @@
             </button>
             <button class="btn btn-outline" id="exportCsvBtn">📊 CSV出力</button>
             <button class="btn btn-outline" id="printShiftBtn">🖨️ 印刷</button>
+            <button class="btn btn-outline" id="reloadShiftBtn" title="DB から最新データを読み込み直します（設定変更後など）" style="background:white;border:1.5px solid #06b6d4;color:#0e7490">🔄 リロード</button>
             <div id="confirmStatusBadge" style="display:none;padding:6px 12px;border-radius:100px;font-size:12px;font-weight:600"></div>
           </div>
           <div id="print-header" style="display:none;margin-bottom:12px">
@@ -6719,7 +6720,9 @@ document.getElementById('saveHoursBtn').addEventListener('click', async () => {
         await sb('monthly_hours', { method:'POST', body:JSON.stringify([{year:currentYear,month:m,hours:val,dept_id:null}]) });
       }
     }
-    showToast('所定労働時間を保存しました ✓','success');
+    // ★ シフトキャッシュを無効化 → 次にシフトタブへ移動した時に DB から最新データを読み込む
+    if (typeof invalidateShiftCache === 'function') invalidateShiftCache();
+    showToast('所定労働時間を保存しました ✓ シフト表は次回開いた時に反映されます','success');
   } catch(e) { console.error(e); showToast('保存エラー','error'); }
   hideLoading();
 });
@@ -6742,7 +6745,9 @@ document.getElementById('saveRequirementsBtn').addEventListener('click', async (
     if (inserts.length > 0) {
       await sb('staffing_requirements', { method:'POST', body:JSON.stringify(inserts) });
     }
-    showToast('必要人数を保存しました ✓','success');
+    // ★ シフトキャッシュを無効化 → 次にシフトタブへ移動した時に DB から最新データを読み込む
+    if (typeof invalidateShiftCache === 'function') invalidateShiftCache();
+    showToast('必要人数を保存しました ✓ シフト表は次回開いた時に反映されます','success');
   } catch(e) { console.error(e); showToast('保存エラー','error'); }
   hideLoading();
 });
@@ -7709,6 +7714,40 @@ function getShiftDayTypeForExport(d) {
   if (dow === 4) return 'thu_open';
   return 'weekday';
 }
+
+// ===== シフト表リロード機能 =====
+// DB から最新データを再読み込みする（設定変更後など、外部要因で DB が更新された時用）
+async function reloadShiftGrid() {
+  // 未保存変更があれば確認
+  if (savedShiftSnapshot) {
+    const hasUnsaved = JSON.stringify(shiftData) !== JSON.stringify(savedShiftSnapshot.shiftData)
+                    || JSON.stringify(lockedCells) !== JSON.stringify(savedShiftSnapshot.lockedCells);
+    if (hasUnsaved && !confirm('未保存の変更があります。\nリロードすると変更が失われます。続けますか？')) {
+      return;
+    }
+  }
+  // キャッシュも無効化して、確実に DB から再取得する
+  invalidateShiftCache();
+  showLoading();
+  try {
+    await loadShiftGrid();
+    showToast('シフト表を最新データで更新しました ✓', 'success');
+  } catch(e) {
+    console.error(e);
+    showToast('リロードエラー', 'error');
+  }
+  hideLoading();
+}
+
+// シフト関連のメモリキャッシュを無効化
+// 設定画面で所定労働時間・必要人数などを変更した後に呼ぶことで、
+// シフトタブに戻った時に DB から最新データが読み込まれる。
+function invalidateShiftCache() {
+  shiftMonthCache = {};
+  shiftGridContext = null;
+}
+
+document.getElementById('reloadShiftBtn')?.addEventListener('click', reloadShiftGrid);
 
 // ===== 印刷 =====
 document.getElementById('printShiftBtn')?.addEventListener('click', () => {
