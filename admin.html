@@ -2122,13 +2122,17 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
       const workDays = Math.floor(actual / 8.5);
       const planDays = Math.floor(planH / 8.5);
       const color = planH <= 0 ? '#6b7280' : Math.abs(diff) <= 10 ? '#10b981' : diff > 10 ? '#f97316' : '#ef4444';
-      // ★ 個別設定中は「個別」バッジ＋背景色で明示（基準値より上でも下でも表示）
-      const individualBadge = hasIndividual
-        ? `<span style="display:inline-block;font-size:9px;color:#fff;background:#8b5cf6;border-radius:4px;padding:1px 5px;margin-left:4px;font-weight:700">個別</span>`
+      // ★ 個別設定中は薄紫背景＋「基準値からの差」を表示
+      const baseForType =
+        staff.emp_type === 'full' ? shiftGridPlanHours :
+        staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * 0.75 * 10)/10 : 0;
+      const fromBase = Math.round((planH - baseForType) * 10) / 10;
+      const fromBaseStr = hasIndividual
+        ? `<span style="font-size:9px;color:#8b5cf6;font-weight:700"> (基準${fromBase >= 0 ? '+' : ''}${fromBase}H)</span>`
         : '';
       const cellBg = hasIndividual ? 'background:#f5f3ff;' : '';
       html += `<td style="white-space:nowrap;padding:4px 8px;font-size:11px;font-weight:600;color:${color};cursor:pointer;${cellBg}" onclick="showStaffHoursEditor('${staff.id}','${escapeJs(staff.name)}',${planH})">
-        ${actual}H / ${planH}H（${diffStr}）${individualBadge}<br>
+        ${actual}H / ${planH}H（${diffStr}）${fromBaseStr}<br>
         <span style="font-size:10px;color:var(--text-muted)">${workDays}日 / ${planDays}日</span>
       </td>`;
     }
@@ -2358,9 +2362,13 @@ function refreshHoursCell(staffId) {
   const workDays = Math.floor(actual / 8.5);
   const planDays = Math.floor(planH / 8.5);
   const color = planH <= 0 ? '#6b7280' : Math.abs(diff) <= 10 ? '#10b981' : diff > 10 ? '#f97316' : '#ef4444';
-  // ★ 個別設定中は「個別」バッジ＋背景色で明示
-  const individualBadge = hasIndividual
-    ? `<span style="display:inline-block;font-size:9px;color:#fff;background:#8b5cf6;border-radius:4px;padding:1px 5px;margin-left:4px;font-weight:700">個別</span>`
+  // ★ 個別設定中は薄紫背景＋「基準値からの差」を表示
+  const baseForType =
+    staff.emp_type === 'full' ? shiftGridPlanHours :
+    staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * 0.75 * 10)/10 : 0;
+  const fromBase = Math.round((planH - baseForType) * 10) / 10;
+  const fromBaseStr = hasIndividual
+    ? `<span style="font-size:9px;color:#8b5cf6;font-weight:700"> (基準${fromBase >= 0 ? '+' : ''}${fromBase}H)</span>`
     : '';
 
   // 該当行の最後のtdを更新
@@ -2375,7 +2383,7 @@ function refreshHoursCell(staffId) {
 
   lastTd.style.color = color;
   lastTd.style.background = hasIndividual ? '#f5f3ff' : '';
-  lastTd.innerHTML = `${actual}H / ${planH}H（${diffStr}）${individualBadge}<br>
+  lastTd.innerHTML = `${actual}H / ${planH}H（${diffStr}）${fromBaseStr}<br>
     <span style="font-size:10px;color:var(--text-muted)">${workDays}日 / ${planDays}日</span>`;
 }
 
