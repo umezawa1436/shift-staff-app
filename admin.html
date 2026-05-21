@@ -6713,16 +6713,24 @@ async function loadRequirementsGrid() {
 document.getElementById('saveHoursBtn').addEventListener('click', async () => {
   showLoading();
   try {
+    const savedMonths = [];
     for (let m = 1; m <= 12; m++) {
       const val = parseFloat(document.getElementById(`hours-${m}`)?.value);
       if (!isNaN(val)) {
         await sb(`monthly_hours?year=eq.${currentYear}&month=eq.${m}&dept_id=is.null`, { method:'DELETE' });
         await sb('monthly_hours', { method:'POST', body:JSON.stringify([{year:currentYear,month:m,hours:val,dept_id:null}]) });
+        savedMonths.push(`${m}月=${val}H`);
       }
     }
+    // ★ 診断：実際に保存した内容をログ出力
+    console.log(`[saveHours] 保存した内容 (year=${currentYear}):`, savedMonths);
+    // 検証クエリ：保存直後に DB から読み直して確認
+    const verify = await sb(`monthly_hours?year=eq.${currentYear}&dept_id=is.null&order=month&select=month,hours`);
+    console.log(`[saveHours] 保存後の DB の状態:`, verify);
+
     // ★ シフトキャッシュを無効化 → 次にシフトタブへ移動した時に DB から最新データを読み込む
     if (typeof invalidateShiftCache === 'function') invalidateShiftCache();
-    showToast('所定労働時間を保存しました ✓ シフト表は次回開いた時に反映されます','success');
+    showToast(`所定労働時間を保存しました ✓ (${savedMonths.length}ヶ月分・${currentYear}年)\nシフト表でリロードを押してください`,'success');
   } catch(e) { console.error(e); showToast('保存エラー','error'); }
   hideLoading();
 });
@@ -7730,8 +7738,14 @@ async function reloadShiftGrid() {
   invalidateShiftCache();
   showLoading();
   try {
+    // ★ 診断：DB の monthly_hours を直接確認してログ出力
+    const rawHours = await sb(`monthly_hours?year=eq.${shiftYear}&month=eq.${shiftMonth}&dept_id=is.null&select=hours`);
+    console.log(`[reload] DB の monthly_hours (year=${shiftYear}, month=${shiftMonth}, dept_id=NULL):`, rawHours);
+
     await loadShiftGrid();
-    showToast('シフト表を最新データで更新しました ✓', 'success');
+    console.log(`[reload] loadShiftGrid 後の shiftGridPlanHours:`, shiftGridPlanHours);
+
+    showToast(`シフト表を最新化 ✓ ${shiftYear}年${shiftMonth}月の所定: ${shiftGridPlanHours}H`, 'success');
   } catch(e) {
     console.error(e);
     showToast('リロードエラー', 'error');
