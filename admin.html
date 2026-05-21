@@ -319,7 +319,7 @@
 
       /* 印刷で非表示にするもの（最新のバナー類も明示的に追加） */
       .sidebar, .topbar, .month-nav, .dept-tabs, .action-row,
-      #saveShiftBtn, #exportCsvBtn, #printShiftBtn,
+      #saveShiftBtn, #exportCsvBtn, #printShiftBtn, #reloadShiftBtn,
       #aiConsultBtn, #revertSavedBtn, #confirmShiftBtn,
       #confirmLockBanner, #aiPreviewBanner,
       #topbarGoldfish, .goldfish-tank, .goldfish-swimmer, .bubble,
@@ -812,6 +812,7 @@
             </button>
             <button class="btn btn-outline" id="exportCsvBtn">📊 CSV出力</button>
             <button class="btn btn-outline" id="printShiftBtn">🖨️ 印刷</button>
+            <button class="btn btn-outline" id="reloadShiftBtn" title="DB から最新データを読み込み直します（設定変更後など）" style="background:white;border:1.5px solid #06b6d4;color:#0e7490">🔄 リロード</button>
             <div id="confirmStatusBadge" style="display:none;padding:6px 12px;border-radius:100px;font-size:12px;font-weight:600"></div>
           </div>
           <div id="print-header" style="display:none;margin-bottom:12px">
@@ -935,6 +936,10 @@
             <div class="card-title">月間所定労働時間</div>
             <div id="monthlyHoursGrid"></div>
             <button class="btn btn-primary" style="margin-top:16px" id="saveHoursBtn">保存</button>
+            <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+              <div style="font-size:13px;color:var(--text-muted);margin-bottom:8px">個別所定時間のリセット：特定スタッフに個別設定された所定時間を削除し、上記の基準値に統一します。基準値を変更しても反映されない場合に使用してください。</div>
+              <button class="btn btn-outline" id="clearStaffHoursBtn" style="border:1.5px solid #f59e0b;color:#92400e">⚠️ この部署・指定月の個別所定時間をクリア</button>
+            </div>
           </div>
           <div class="card">
             <div class="card-title">必要人数設定</div>
@@ -2106,6 +2111,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
     // 右端：労働時間列
     if (editable) {
       const setting = shiftGridStaffSettings[staff.id];
+      const hasIndividual = setting?.planned_hours != null; // 個別設定の有無
       let planH = setting?.planned_hours ?? (
         staff.emp_type === 'full' ? shiftGridPlanHours :
         staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * 0.75 * 10)/10 : 0
@@ -2116,10 +2122,17 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
       const workDays = Math.floor(actual / 8.5);
       const planDays = Math.floor(planH / 8.5);
       const color = planH <= 0 ? '#6b7280' : Math.abs(diff) <= 10 ? '#10b981' : diff > 10 ? '#f97316' : '#ef4444';
-      const overBase = setting?.planned_hours && setting.planned_hours > shiftGridPlanHours ? 
-        `<span style="font-size:9px;color:#3b82f6"> (+${Math.round((setting.planned_hours-shiftGridPlanHours)*10)/10}H個別)</span>` : '';
-      html += `<td style="white-space:nowrap;padding:4px 8px;font-size:11px;font-weight:600;color:${color};cursor:pointer" onclick="showStaffHoursEditor('${staff.id}','${escapeJs(staff.name)}',${planH})">
-        ${actual}H / ${planH}H（${diffStr}）${overBase}<br>
+      // ★ 個別設定中は薄紫背景＋「基準値からの差」を表示
+      const baseForType =
+        staff.emp_type === 'full' ? shiftGridPlanHours :
+        staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * 0.75 * 10)/10 : 0;
+      const fromBase = Math.round((planH - baseForType) * 10) / 10;
+      const fromBaseStr = hasIndividual
+        ? `<span style="font-size:9px;color:#8b5cf6;font-weight:700"> (基準${fromBase >= 0 ? '+' : ''}${fromBase}H)</span>`
+        : '';
+      const cellBg = hasIndividual ? 'background:#f5f3ff;' : '';
+      html += `<td style="white-space:nowrap;padding:4px 8px;font-size:11px;font-weight:600;color:${color};cursor:pointer;${cellBg}" onclick="showStaffHoursEditor('${staff.id}','${escapeJs(staff.name)}',${planH})">
+        ${actual}H / ${planH}H（${diffStr}）${fromBaseStr}<br>
         <span style="font-size:10px;color:var(--text-muted)">${workDays}日 / ${planDays}日</span>
       </td>`;
     }
@@ -2337,6 +2350,7 @@ function refreshHoursCell(staffId) {
 
   // 所定時間を取得
   const setting = shiftGridStaffSettings[staffId];
+  const hasIndividual = setting?.planned_hours != null; // 個別設定の有無
   let planH = setting?.planned_hours ?? (
     staff.emp_type === 'full' ? shiftGridPlanHours :
     staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * 0.75 * 10)/10 : 0
@@ -2348,8 +2362,14 @@ function refreshHoursCell(staffId) {
   const workDays = Math.floor(actual / 8.5);
   const planDays = Math.floor(planH / 8.5);
   const color = planH <= 0 ? '#6b7280' : Math.abs(diff) <= 10 ? '#10b981' : diff > 10 ? '#f97316' : '#ef4444';
-  const overBase = setting?.planned_hours && setting.planned_hours > shiftGridPlanHours ?
-    `<span style="font-size:9px;color:#3b82f6"> (+${Math.round((setting.planned_hours-shiftGridPlanHours)*10)/10}H個別)</span>` : '';
+  // ★ 個別設定中は薄紫背景＋「基準値からの差」を表示
+  const baseForType =
+    staff.emp_type === 'full' ? shiftGridPlanHours :
+    staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * 0.75 * 10)/10 : 0;
+  const fromBase = Math.round((planH - baseForType) * 10) / 10;
+  const fromBaseStr = hasIndividual
+    ? `<span style="font-size:9px;color:#8b5cf6;font-weight:700"> (基準${fromBase >= 0 ? '+' : ''}${fromBase}H)</span>`
+    : '';
 
   // 該当行の最後のtdを更新
   const rows = document.querySelectorAll('#shiftGrid tbody tr');
@@ -2362,7 +2382,8 @@ function refreshHoursCell(staffId) {
   if (!lastTd) return;
 
   lastTd.style.color = color;
-  lastTd.innerHTML = `${actual}H / ${planH}H（${diffStr}）${overBase}<br>
+  lastTd.style.background = hasIndividual ? '#f5f3ff' : '';
+  lastTd.innerHTML = `${actual}H / ${planH}H（${diffStr}）${fromBaseStr}<br>
     <span style="font-size:10px;color:var(--text-muted)">${workDays}日 / ${planDays}日</span>`;
 }
 
@@ -2663,6 +2684,21 @@ function showStaffHoursEditor(staffId, staffName, currentPlan) {
 async function saveStaffHours(staffId, staffName, hours) {
   // ★ 事前チェック：自動生成プレビュー中はブロック
   if (!(await preFlightCheckForSettingsChange())) return;
+
+  // ★ 入力値が基準値と同じ場合は個別設定を作らずクリアする
+  //   （個別設定が基準値と同値だと、基準値変更時に追従しない問題を防ぐ）
+  const staff = allStaff.find(s => s.id === staffId);
+  if (hours !== null && staff) {
+    const baseForType =
+      staff.emp_type === 'full' ? shiftGridPlanHours :
+      staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * 0.75 * 10) / 10 :
+      0;
+    if (Math.abs(hours - baseForType) < 0.05) {
+      hours = null; // 基準値と同じ → 個別設定をクリア扱いにする
+      showToast(`基準値（${baseForType}H）と同じため、個別設定をクリアします`, 'info');
+    }
+  }
+
   showLoading();
   try {
     await sb(`staff_settings?staff_id=eq.${staffId}&year=eq.${shiftYear}&month=eq.${shiftMonth}`, {method:'DELETE'});
@@ -6709,17 +6745,74 @@ async function loadRequirementsGrid() {
   document.getElementById('requirementsGrid').innerHTML = html;
 }
 
+// 個別所定時間の一括クリア
+document.getElementById('clearStaffHoursBtn')?.addEventListener('click', async () => {
+  const deptLabel = DEPT_NAMES[currentDept] || `部署${currentDept}`;
+  const monthInput = prompt(
+    `${deptLabel} の個別所定時間をクリアする月を入力してください。\n` +
+    `（例: 6 と入力すると ${currentYear}年6月分を削除）\n\n` +
+    `※ 個別設定を削除すると、そのスタッフは基準値（月間所定労働時間）に統一されます。`,
+    String(shiftMonth)
+  );
+  if (monthInput === null) return;
+  const targetMonth = parseInt(monthInput);
+  if (isNaN(targetMonth) || targetMonth < 1 || targetMonth > 12) {
+    showToast('1〜12 の数字を入力してください', 'error');
+    return;
+  }
+
+  // 対象スタッフと個別設定の件数を事前確認
+  showLoading();
+  try {
+    const deptStaff = allStaff.filter(s => s.dept_id === currentDept);
+    const ids = deptStaff.map(s => `"${s.id}"`).join(',');
+    const existing = await sb(`staff_settings?staff_id=in.(${ids})&year=eq.${currentYear}&month=eq.${targetMonth}&select=staff_id,planned_hours`);
+    hideLoading();
+
+    if (!existing || existing.length === 0) {
+      showToast(`${currentYear}年${targetMonth}月には個別設定がありません`, 'info');
+      return;
+    }
+
+    if (!confirm(
+      `${deptLabel} ${currentYear}年${targetMonth}月の個別所定時間 ${existing.length} 件を削除します。\n\n` +
+      `削除後、これらのスタッフは基準値に統一されます。\n` +
+      `この操作は取り消せません。続けますか？`
+    )) return;
+
+    showLoading();
+    await sb(`staff_settings?staff_id=in.(${ids})&year=eq.${currentYear}&month=eq.${targetMonth}`, { method:'DELETE' });
+    // シフトキャッシュを無効化 → シフトタブで最新表示
+    if (typeof invalidateShiftCache === 'function') invalidateShiftCache();
+    showToast(`個別所定時間 ${existing.length} 件を削除しました ✓ シフト表でリロードしてください`, 'success');
+  } catch(e) {
+    console.error(e);
+    showToast('クリアエラー', 'error');
+  }
+  hideLoading();
+});
+
 document.getElementById('saveHoursBtn').addEventListener('click', async () => {
   showLoading();
   try {
+    const savedMonths = [];
     for (let m = 1; m <= 12; m++) {
       const val = parseFloat(document.getElementById(`hours-${m}`)?.value);
       if (!isNaN(val)) {
         await sb(`monthly_hours?year=eq.${currentYear}&month=eq.${m}&dept_id=is.null`, { method:'DELETE' });
         await sb('monthly_hours', { method:'POST', body:JSON.stringify([{year:currentYear,month:m,hours:val,dept_id:null}]) });
+        savedMonths.push(`${m}月=${val}H`);
       }
     }
-    showToast('所定労働時間を保存しました ✓','success');
+    // ★ 診断：実際に保存した内容をログ出力
+    console.log(`[saveHours] 保存した内容 (year=${currentYear}):`, savedMonths);
+    // 検証クエリ：保存直後に DB から読み直して確認
+    const verify = await sb(`monthly_hours?year=eq.${currentYear}&dept_id=is.null&order=month&select=month,hours`);
+    console.log(`[saveHours] 保存後の DB の状態:`, verify);
+
+    // ★ シフトキャッシュを無効化 → 次にシフトタブへ移動した時に DB から最新データを読み込む
+    if (typeof invalidateShiftCache === 'function') invalidateShiftCache();
+    showToast(`所定労働時間を保存しました ✓ (${savedMonths.length}ヶ月分・${currentYear}年)\nシフト表でリロードを押してください`,'success');
   } catch(e) { console.error(e); showToast('保存エラー','error'); }
   hideLoading();
 });
@@ -6742,7 +6835,9 @@ document.getElementById('saveRequirementsBtn').addEventListener('click', async (
     if (inserts.length > 0) {
       await sb('staffing_requirements', { method:'POST', body:JSON.stringify(inserts) });
     }
-    showToast('必要人数を保存しました ✓','success');
+    // ★ シフトキャッシュを無効化 → 次にシフトタブへ移動した時に DB から最新データを読み込む
+    if (typeof invalidateShiftCache === 'function') invalidateShiftCache();
+    showToast('必要人数を保存しました ✓ シフト表は次回開いた時に反映されます','success');
   } catch(e) { console.error(e); showToast('保存エラー','error'); }
   hideLoading();
 });
@@ -7709,6 +7804,46 @@ function getShiftDayTypeForExport(d) {
   if (dow === 4) return 'thu_open';
   return 'weekday';
 }
+
+// ===== シフト表リロード機能 =====
+// DB から最新データを再読み込みする（設定変更後など、外部要因で DB が更新された時用）
+async function reloadShiftGrid() {
+  // 未保存変更があれば確認
+  if (savedShiftSnapshot) {
+    const hasUnsaved = JSON.stringify(shiftData) !== JSON.stringify(savedShiftSnapshot.shiftData)
+                    || JSON.stringify(lockedCells) !== JSON.stringify(savedShiftSnapshot.lockedCells);
+    if (hasUnsaved && !confirm('未保存の変更があります。\nリロードすると変更が失われます。続けますか？')) {
+      return;
+    }
+  }
+  // キャッシュも無効化して、確実に DB から再取得する
+  invalidateShiftCache();
+  showLoading();
+  try {
+    // ★ 診断：DB の monthly_hours を直接確認してログ出力
+    const rawHours = await sb(`monthly_hours?year=eq.${shiftYear}&month=eq.${shiftMonth}&dept_id=is.null&select=hours`);
+    console.log(`[reload] DB の monthly_hours (year=${shiftYear}, month=${shiftMonth}, dept_id=NULL):`, rawHours);
+
+    await loadShiftGrid();
+    console.log(`[reload] loadShiftGrid 後の shiftGridPlanHours:`, shiftGridPlanHours);
+
+    showToast(`シフト表を最新化 ✓ ${shiftYear}年${shiftMonth}月の所定: ${shiftGridPlanHours}H`, 'success');
+  } catch(e) {
+    console.error(e);
+    showToast('リロードエラー', 'error');
+  }
+  hideLoading();
+}
+
+// シフト関連のメモリキャッシュを無効化
+// 設定画面で所定労働時間・必要人数などを変更した後に呼ぶことで、
+// シフトタブに戻った時に DB から最新データが読み込まれる。
+function invalidateShiftCache() {
+  shiftMonthCache = {};
+  shiftGridContext = null;
+}
+
+document.getElementById('reloadShiftBtn')?.addEventListener('click', reloadShiftGrid);
 
 // ===== 印刷 =====
 document.getElementById('printShiftBtn')?.addEventListener('click', () => {
