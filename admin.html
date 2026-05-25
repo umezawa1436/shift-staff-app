@@ -552,17 +552,24 @@
             <div id="requirementsGrid"></div>
             <button class="btn btn-primary" style="margin-top:16px" id="saveRequirementsBtn">保存</button>
           </div>
+          <!-- 月別設定：祝日・木曜・水曜（全部署共通・1つの月ナビで連動）-->
           <div class="card">
             <div class="card-title">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-              祝日・特殊日管理
+              月別の診療日設定（祝日・木曜・水曜）
             </div>
-            <div class="month-nav" style="margin-bottom:16px">
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">下記の祝日・木曜・水曜の設定はすべて全部署共通です。月を切り替えると3つすべてが連動します。</div>
+            <div class="month-nav" style="margin-bottom:20px">
               <button class="btn-nav" id="specialPrevMonth">◀</button>
               <div class="month-nav-title" id="specialMonthTitle"></div>
               <button class="btn-nav" id="specialNextMonth">▶</button>
             </div>
+
+            <!-- 祝日・特殊日 -->
+            <div style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--primary)">📅 祝日・特殊日</div>
             <div id="specialDaysGrid"></div>
+
+            <!-- 任意休診日 -->
             <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
               <div style="font-size:14px;font-weight:600;margin-bottom:8px">クリニック休診日（任意）</div>
               <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
@@ -575,23 +582,18 @@
               </div>
               <div id="customClosedList"></div>
             </div>
-          </div>
-          <div class="card">
-            <div class="card-title">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-              木曜日の設定
+
+            <!-- 木曜日 -->
+            <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
+              <div style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--primary)">📅 木曜日の設定</div>
+              <div id="thursdayGrid"></div>
             </div>
-            <div id="thursdayGrid"></div>
-          </div>
-          <!-- 水曜日の種別設定（全部署共通・上の月ナビと連動） -->
-          <div class="card">
-            <div class="card-title">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-              水曜日の種別設定（全部署共通）
+
+            <!-- 水曜日 -->
+            <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
+              <div style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--primary)">📅 水曜日の種別設定</div>
+              <div id="wedGrid"></div>
             </div>
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">水曜日をクリックして種別を切り替えてください（通常 → CC → CHO）。この設定は全部署で共通です。月は上の「祝日・特殊日管理」の月ナビと連動します。</div>
-            <div class="wed-grid" id="wedGrid"></div>
-            <button class="btn btn-primary btn-sm" id="saveWedBtn" style="margin-top:12px">水曜設定を保存</button>
           </div>
           <div class="card">
             <div class="card-title">🔰 初心者上限設定</div>
