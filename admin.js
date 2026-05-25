@@ -2293,58 +2293,60 @@ async function loadWedTypesMap(year, month) {
 let settingsWedTypes = {};
 
 function renderSettingsWedGrid(daysInMonth) {
-  const grid = document.getElementById('wedGrid');
-  if (!grid) return;
-  grid.innerHTML = '';
-  // 曜日ヘッダー
-  DOW.forEach(d => {
-    const h = document.createElement('div');
-    h.style.cssText = 'text-align:center;font-size:11px;font-weight:600;color:var(--text-muted);padding:4px 0';
-    h.textContent = d;
-    grid.appendChild(h);
-  });
-  const firstDow = new Date(specialYear, specialMonth-1, 1).getDay();
-  for (let i = 0; i < firstDow; i++) grid.appendChild(document.createElement('div'));
+  const el = document.getElementById('wedGrid');
+  if (!el) return;
 
+  const wedDays = [];
   for (let d = 1; d <= daysInMonth; d++) {
     const dow = new Date(specialYear, specialMonth-1, d).getDay();
-    const isWed = dow === 3;
-    const cell = document.createElement('div');
-    const wType = settingsWedTypes[d] || 'normal';
-    if (isWed) {
-      cell.className = `wed-cell ${wType}`;
-      const labels = { normal:'通常', cc:'CC', cho:'CHO' };
-      cell.innerHTML = `<div style="font-weight:700">${d}</div><div>${labels[wType]}</div>`;
-      cell.addEventListener('click', () => {
-        const cycle = { normal:'cc', cc:'cho', cho:'normal' };
-        settingsWedTypes[d] = cycle[wType] || 'normal';
-        renderSettingsWedGrid(daysInMonth);
-      });
-    } else {
-      cell.style.cssText = 'text-align:center;padding:8px 4px;font-size:12px;color:var(--text-muted)';
-      const dowCls = dow===0?'color:#ef4444':dow===6?'color:#3b82f6':'';
-      cell.innerHTML = `<span style="${dowCls}">${d}</span>`;
-    }
-    grid.appendChild(cell);
+    if (dow === 3) wedDays.push(d);
   }
+
+  const types = [
+    { key: 'normal', label: '通常', activeColor: 'var(--primary)', activeBg: 'var(--primary)', activeText: 'white' },
+    { key: 'cc',     label: 'CC',   activeColor: '#d97706',        activeBg: '#fef3c7',        activeText: '#92400e' },
+    { key: 'cho',    label: 'CHO',  activeColor: '#7c3aed',        activeBg: '#ede9fe',        activeText: '#5b21b6' },
+  ];
+
+  el.innerHTML = `
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">各水曜日の種別を選択してください（クリックで即保存・全部署共通）。</div>
+    ${wedDays.map(d => {
+      const cur = settingsWedTypes[d] || 'normal';
+      const btns = types.map(t => {
+        const active = cur === t.key;
+        return `<button onclick="setWednesdayType(${d},'${t.key}')"
+          style="padding:6px 14px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;
+          border:1.5px solid ${active?t.activeColor:'var(--border)'};
+          background:${active?t.activeBg:'white'};
+          color:${active?t.activeText:'var(--text-muted)'}">
+          ${t.label}</button>`;
+      }).join('');
+      return `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="min-width:120px;font-size:14px;font-weight:600">${specialMonth}/${d}（水）</div>
+        <div style="display:flex;gap:8px">${btns}</div>
+      </div>`;
+    }).join('')}
+  `;
 }
 
-document.getElementById('saveWedBtn')?.addEventListener('click', async () => {
+// 水曜種別を1日分だけ即保存（木曜の setThursdayStatus と同じ方式・全部署共通）
+async function setWednesdayType(day, type) {
   showLoading();
   try {
-    await sb(`wednesday_types?year=eq.${specialYear}&month=eq.${specialMonth}`, { method:'DELETE' });
-    const inserts = Object.entries(settingsWedTypes).map(([day, type]) => ({
-      year: specialYear, month: specialMonth, day: parseInt(day), wed_type: type
-    }));
-    if (inserts.length > 0) {
-      await sb('wednesday_types', { method:'POST', body:JSON.stringify(inserts) });
-    }
-    // シフトキャッシュを無効化（水曜種別はシフト描画にも影響するため）
+    await sb(`wednesday_types?year=eq.${specialYear}&month=eq.${specialMonth}&day=eq.${day}`, {method:'DELETE'});
+    await sb('wednesday_types', {method:'POST', body:JSON.stringify([{
+      year: specialYear, month: specialMonth, day, wed_type: type
+    }])});
+    settingsWedTypes[day] = type;
+    // 水曜種別はシフト描画にも影響するためキャッシュ無効化
     if (typeof invalidateShiftCache === 'function') invalidateShiftCache();
-    showToast(`水曜設定を保存しました ✓（${specialMonth}月・全部署共通）`,'success');
+    renderSettingsWedGrid(new Date(specialYear, specialMonth, 0).getDate());
+    const labels = {normal:'通常', cc:'CC', cho:'CHO'};
+    showToast(`${specialMonth}/${day}（水）を${labels[type]}に設定しました ✓`, 'success');
   } catch(e) { console.error(e); showToast('保存エラー','error'); }
   hideLoading();
-});
+}
 
 async function loadSpecialDays() {
   try {
