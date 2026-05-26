@@ -509,6 +509,7 @@
       <div id="reqLimitDetails" style="display:flex;flex-wrap:wrap;gap:10px;font-size:12px"></div>
     </div>
     <div id="reqLimitWarning" style="display:none;background:#fef2f2;color:#dc2626;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;font-weight:500"></div>
+    <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-bottom:8px">💾 入力内容は自動保存されます（提出ボタンを押すまで管理者には届きません）</div>
     <button class="btn-submit" id="submitBtn">希望を提出する</button>
   </div>
 </div>
@@ -583,6 +584,7 @@ let currentMonth = new Date().getMonth() + 1;
 let clinicClosedDays = {}; // {day: label} — special_daysでis_closed=trueの日
 let thursdayOpenDays = new Set(); // 木曜だが診療日として設定された日
 let requests = {};
+let hasDraft = false; // 未提出の下書きがあるか
 let selectedDay = null;
 let shiftTypesAll = [];
 let shiftTypesMap = {};
@@ -988,12 +990,62 @@ async function showApp() {
 async function loadRequests() {
   if (!currentUser?.id) return;
   try {
-    const data = await supabaseRequest(
-      `shift_requests?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}&select=day,request_type`
+    // ★ まず下書き（自動保存）を読み込む。提出前の入力もここから復元される。
+    const draftData = await supabaseRequest(
+      `shift_request_drafts?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}&select=day,request_type`
     );
     requests = {};
-    data.forEach(r => { requests[`${currentYear}-${currentMonth}-${r.day}`] = r.request_type; });
-  } catch(e) { console.error(e); }
+    if (draftData && draftData.length > 0) {
+      // 下書きがあればそれを使う（最新の作業状態）
+      draftData.forEach(r => { requests[`${currentYear}-${currentMonth}-${r.day}`] = r.request_type; });
+      hasDraft = true;
+    } else {
+      // 下書きが無ければ提出済みを読み込む（初回や下書き未作成の場合）
+      const data = await supabaseRequest(
+        `shift_requests?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}&select=day,request_type`
+      );
+      data.forEach(r => { requests[`${currentYear}-${currentMonth}-${r.day}`] = r.request_type; });
+      hasDraft = false;
+    }
+  } catch(e) {
+    console.error('[loadRequests]', e);
+    // 下書きテーブルが未作成などのエラー時は、従来通り提出済みを読む（フォールバック）
+    try {
+      const data = await supabaseRequest(
+        `shift_requests?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}&select=day,request_type`
+      );
+      requests = {};
+      data.forEach(r => { requests[`${currentYear}-${currentMonth}-${r.day}`] = r.request_type; });
+    } catch(e2) { console.error(e2); }
+  }
+}
+
+// ★ 下書きを1日分だけ自動保存（選択のたびに呼ばれる・その人のアカウント専用）
+async function saveDraftDay(day, requestType) {
+  if (!currentUser?.id) return;
+  try {
+    await supabaseRequest(
+      `shift_request_drafts?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}&day=eq.${day}`,
+      { method: 'DELETE' }
+    );
+    await supabaseRequest('shift_request_drafts', {
+      method: 'POST',
+      body: JSON.stringify([{
+        staff_id: currentUser.id, year: currentYear, month: currentMonth, day, request_type: requestType
+      }])
+    });
+  } catch(e) { console.error('[saveDraftDay]', e); }
+}
+
+// ★ 下書きを1日分だけ削除（クリア時）
+async function deleteDraftDay(day) {
+  if (!currentUser?.id) return;
+  try {
+    await supabaseRequest(
+      `shift_request_drafts?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}&day=eq.${day}`,
+      { method: 'DELETE' }
+    );
+  } catch(e) { console.error('[deleteDraftDay]', e); }
 }
 
 // クリニック休診日の読み込み（木曜デフォルト休診 + special_daysのis_closed=true）
@@ -1108,15 +1160,23 @@ function openDaySheet(day, currentShift) {
 async function selectShift(shiftId) {
   const key = `${currentYear}-${currentMonth}-${selectedDay}`;
   requests[key] = shiftId;
+  hasDraft = true;
+  const day = selectedDay;
   closeSheet();
   renderCalendar();
+  // ★ 下書きを自動保存（提出前でもアカウントに残る）
+  saveDraftDay(day, shiftId);
 }
 
 document.getElementById('clearBtn').addEventListener('click', () => {
   const key = `${currentYear}-${currentMonth}-${selectedDay}`;
+  const day = selectedDay;
   delete requests[key];
+  hasDraft = true;
   closeSheet();
   renderCalendar();
+  // ★ 下書きからもこの日を削除
+  deleteDraftDay(day);
 });
 
 // 提出期限のキャッシュ
@@ -1318,6 +1378,21 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
         body: JSON.stringify(inserts),
       });
     }
+
+    // ★ 提出後、下書きテーブルも提出内容に同期（下書き＝提出済みの状態にする）
+    try {
+      await supabaseRequest(
+        `shift_request_drafts?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}`,
+        { method: 'DELETE' }
+      );
+      if (inserts.length > 0) {
+        await supabaseRequest('shift_request_drafts', {
+          method: 'POST',
+          body: JSON.stringify(inserts),
+        });
+      }
+      hasDraft = false;
+    } catch(e) { console.error('[draft sync after submit]', e); }
 
     showToast(`${currentMonth}月の希望を提出しました ✓`, 'success');
   } catch(e) {
