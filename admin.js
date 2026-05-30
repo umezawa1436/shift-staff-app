@@ -377,7 +377,7 @@ document.getElementById('adminLoginBtn').addEventListener('click', async () => {
     document.getElementById('accountNavItem').style.display = isMaster ? 'flex' : 'none';
     document.getElementById('sidebarUserName').textContent = account.name;
     document.getElementById('sidebarUserRole').textContent =
-      account.role === 'master' ? 'マスター管理者' :
+      account.role === 'master' ? '管理者' :
       account.role === 'leader' ? `${adminUser.deptName} リーダー` : 'スタッフ';
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('appScreen').style.display = 'block';
@@ -2002,7 +2002,7 @@ document.getElementById('revertSavedBtn')?.addEventListener('click', () => {
 async function loadAccountPage() {
   // マスター権限チェック（直接URL等での不正アクセス防止）
   if (!adminUser || adminUser.role !== 'master') {
-    document.getElementById('page-account').innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626"><div style="font-size:32px;margin-bottom:12px">🔒</div><div style="font-size:14px;font-weight:600">アクセス権限がありません</div><div style="font-size:12px;color:#6b7280;margin-top:8px">アカウント管理はマスター権限が必要です</div></div>';
+    document.getElementById('page-account').innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626"><div style="font-size:32px;margin-bottom:12px">🔒</div><div style="font-size:14px;font-weight:600">アクセス権限がありません</div><div style="font-size:12px;color:#6b7280;margin-top:8px">アカウント管理は管理権限が必要です</div></div>';
     return;
   }
   // パスワード変更はすべてのロールで可能
@@ -2053,7 +2053,7 @@ async function loadAccountList() {
   try {
     const data = await adminApi('/api/admin-accounts', { action: 'list' });
     const accounts = data.accounts || [];
-    const ROLE_LABELS = { master:'マスター', leader:'リーダー', staff:'スタッフ' };
+    const ROLE_LABELS = { master:'管理', leader:'リーダー', staff:'スタッフ' };
     document.getElementById('accountBody').innerHTML = accounts.map(a => {
       const isLocked = !!a.locked_at;
       const fails = a.failed_attempts || 0;
@@ -2113,7 +2113,7 @@ function showAddAccountModal() {
         <select class="form-select" id="newAccRole" onchange="document.getElementById('newAccDeptGroup').style.display=this.value==='leader'||this.value==='staff'?'block':'none'">
           <option value="leader">リーダー</option>
           <option value="staff">スタッフ</option>
-          <option value="master">マスター</option>
+          <option value="master">管理</option>
         </select>
       </div>
       <div class="form-group" id="newAccDeptGroup">
@@ -2169,7 +2169,7 @@ function showEditAccountModal(id, name, role, deptId) {
       <div class="form-group"><label class="form-label">名前（苗字）</label><input type="text" class="form-input" id="editAccName" value="${name}"></div>
       <div class="form-group"><label class="form-label">権限${isSelf ? '（自分自身の権限は変更できません）' : ''}</label>
         <select class="form-select" id="editAccRole" ${isSelf ? 'disabled' : ''} onchange="document.getElementById('editAccDeptGroup').style.display=this.value==='master'?'none':'block'">
-          <option value="master" ${role==='master'?'selected':''}>マスター</option>
+          <option value="master" ${role==='master'?'selected':''}>管理</option>
           <option value="leader" ${role==='leader'?'selected':''}>リーダー</option>
           <option value="staff" ${role==='staff'?'selected':''}>スタッフ</option>
         </select>
