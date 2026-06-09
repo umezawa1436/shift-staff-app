@@ -170,6 +170,7 @@
 
     /* ===== 印刷用CSS（バーチカル表示）===== */
     /* body に .printing-vertical クラスが付いたときだけ適用 */
+    /* visibility ではなく display ベースで「不要なものを消す」方式に変更（信頼性が高い）*/
     @media print {
       @page {
         size: A4 landscape;
@@ -181,51 +182,96 @@
         print-color-adjust: exact !important;
         color-adjust: exact !important;
       }
-      /* バーチカル印刷モード時のみ全体を非表示にしてモーダルだけ表示 */
-      body.printing-vertical * { visibility: hidden; }
-      body.printing-vertical #verticalViewModal,
-      body.printing-vertical #verticalViewModal * { visibility: visible; }
+
+      /* バーチカル印刷モード時：バーチカルモーダル以外のページ要素をすべて非表示にする */
+      body.printing-vertical > *:not(#verticalViewModal),
+      body.printing-vertical .sidebar,
+      body.printing-vertical .topbar,
+      body.printing-vertical .month-nav,
+      body.printing-vertical .dept-tabs,
+      body.printing-vertical .action-row,
+      body.printing-vertical .loading,
+      body.printing-vertical .toast,
+      body.printing-vertical #print-header {
+        display: none !important;
+      }
+
+      /* バーチカルモーダル本体：全画面に展開 */
       body.printing-vertical #verticalViewModal {
-        position: absolute !important;
-        left: 0 !important;
-        top: 0 !important;
-        width: 100% !important;
-        max-width: none !important;
-        max-height: none !important;
+        display: block !important;
+        position: static !important;
         background: white !important;
+        backdrop-filter: none !important;
+        z-index: auto !important;
+        width: 100% !important;
+        height: auto !important;
+        max-width: 100% !important;
+        max-height: none !important;
+        overflow: visible !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        inset: auto !important;
+      }
+
+      /* モーダル内側の .modal（インラインスタイルで max-width:1400px;width:95vw が入っている）の制限を解除 */
+      body.printing-vertical #verticalViewModal .modal {
+        max-width: 100% !important;
+        width: 100% !important;
+        height: auto !important;
+        max-height: none !important;
+        margin: 0 !important;
+        padding: 4mm !important;
         box-shadow: none !important;
         border: none !important;
-        padding: 0 !important;
+        background: white !important;
+        overflow: visible !important;
       }
-      body.printing-vertical .modal-overlay { background: white !important; }
-      body.printing-vertical .modal-overlay#verticalViewModal { background: white !important; }
-      /* モーダル内のボタンとフッターは非表示 */
-      body.printing-vertical #verticalViewModal .modal-footer,
-      body.printing-vertical #verticalViewModal #verticalPrevDay,
-      body.printing-vertical #verticalViewModal #verticalNextDay,
-      body.printing-vertical #verticalViewModal #saveBreaksBtn,
-      body.printing-vertical #verticalViewModal #verticalPrintBtn,
-      body.printing-vertical #verticalViewModal .modal-title button,
-      body.printing-vertical #verticalViewModal .modal-title > div { display: none !important; }
+
+      /* タイトル：印刷用に整形 */
       body.printing-vertical #verticalViewModal .modal-title {
         font-size: 14pt !important;
         text-align: center !important;
         padding: 8px 0 !important;
         margin-bottom: 8px !important;
         border-bottom: 1px solid #888 !important;
+        display: block !important;
       }
+
+      /* タイトル内のボタンと内側 div は非表示 */
+      body.printing-vertical #verticalViewModal .modal-title button,
+      body.printing-vertical #verticalViewModal .modal-title > div {
+        display: none !important;
+      }
+
+      /* コンテンツ領域：インラインの overflow:auto;max-height:70vh を解除 */
       body.printing-vertical #verticalViewContent {
         max-height: none !important;
+        height: auto !important;
         overflow: visible !important;
         font-size: 9pt !important;
       }
+
+      /* モーダル下部のボタン類は非表示 */
+      body.printing-vertical #verticalViewModal .modal-footer,
+      body.printing-vertical #verticalViewModal #verticalPrevDay,
+      body.printing-vertical #verticalViewModal #verticalNextDay,
+      body.printing-vertical #verticalViewModal #saveBreaksBtn,
+      body.printing-vertical #verticalViewModal #verticalPrintBtn {
+        display: none !important;
+      }
+
       /* シフト帯の影は印刷で目立つので消す */
       body.printing-vertical #verticalViewContent .v-shift-bar {
         box-shadow: none !important;
         cursor: default !important;
       }
-      /* スクロール禁止 */
-      body.printing-vertical, body.printing-vertical html { overflow: visible !important; height: auto !important; }
+
+      /* スクロール禁止（ページ全体）*/
+      body.printing-vertical,
+      body.printing-vertical html {
+        overflow: visible !important;
+        height: auto !important;
+      }
     }
 
     /* MODAL */
