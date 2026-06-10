@@ -282,6 +282,31 @@
     .modal-footer { display:flex;gap:10px;justify-content:flex-end;margin-top:24px; }
     .modal-lg { max-width:800px; }
 
+    /* ===== バーチカルモーダル専用：フッター（印刷・閉じる・休憩保存ボタン）が
+       画面下に見切れないよう、タイトル・フッター固定でコンテンツのみスクロールする構造にする ===== */
+    #verticalViewModal .modal {
+      max-height: 92vh !important;
+      display: flex !important;
+      flex-direction: column !important;
+      overflow: hidden !important;  /* 親はスクロールしない（内側がスクロール）*/
+    }
+    #verticalViewModal .modal-title {
+      flex: 0 0 auto !important;   /* タイトルは固定 */
+      margin-bottom: 12px !important;
+    }
+    #verticalViewModal #verticalViewContent {
+      flex: 1 1 auto !important;   /* コンテンツは残り高さを使う */
+      max-height: none !important; /* インライン max-height:70vh を解除 */
+      min-height: 0 !important;    /* flex子要素のスクロール許可に必須 */
+      overflow: auto !important;   /* コンテンツのみスクロール */
+    }
+    #verticalViewModal .modal-footer {
+      flex: 0 0 auto !important;   /* フッターは常に最下部に固定 */
+      margin-top: 12px !important;
+      padding-top: 12px !important;
+      border-top: 1px solid var(--border);
+    }
+
     /* BADGES */
     .badge { display:inline-block;padding:3px 10px;border-radius:100px;font-size:11px;font-weight:600; }
     .badge-full { background:#dbeafe;color:#1d4ed8; }
