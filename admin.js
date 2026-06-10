@@ -4445,15 +4445,9 @@ async function loadStaffTable() {
             ${staff.no_night?'夜勤不可':'夜勤可'}
           </button>
 
-          <!-- 招待リンク発行 -->
-          <button onclick="generateInviteLink('${staff.id}','${staff.name}')"
-            style="padding:4px 10px;border-radius:100px;font-size:12px;cursor:pointer;border:1.5px solid #a855f7;background:white;color:#7c3aed;margin-left:auto;font-weight:600">
-            🔗 招待リンク
-          </button>
-
           <!-- 削除 -->
           <button onclick="deleteStaff('${staff.id}','${staff.name}')"
-            style="padding:4px 10px;border-radius:100px;font-size:12px;cursor:pointer;border:1.5px solid var(--border);background:white;color:var(--danger)">
+            style="padding:4px 10px;border-radius:100px;font-size:12px;cursor:pointer;border:1.5px solid var(--border);background:white;color:var(--danger);margin-left:auto">
             削除
           </button>
         </div>
@@ -4928,6 +4922,59 @@ async function applyFixedShiftsToGrid(staffId, fixedShifts) {
 
 document.getElementById('addAccountBtn')?.addEventListener('click', () => showAddAccountModal());
 
+// 招待リンク発行：スタッフ選択モーダル（アカウント管理ページから起動）
+document.getElementById('inviteLinkBtn')?.addEventListener('click', () => showInvitePickerModal());
+
+async function showInvitePickerModal() {
+  // スタッフ未読込なら読み込む（保険）
+  if (!allStaff || allStaff.length === 0) {
+    try { await loadStaff(); } catch(e) {}
+  }
+  document.getElementById('invitePickerModalEl')?.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'invitePickerModalEl';
+  modal.className = 'modal-overlay show';
+
+  // 部門ごとにスタッフを並べる
+  const deptOrder = [0,1,2,3];
+  const sortedStaff = [...allStaff].sort((a,b) => {
+    if (a.dept_id !== b.dept_id) return deptOrder.indexOf(a.dept_id) - deptOrder.indexOf(b.dept_id);
+    return (a.display_order ?? a.staff_code ?? 0) - (b.display_order ?? b.staff_code ?? 0);
+  });
+
+  let listHtml = '';
+  if (sortedStaff.length === 0) {
+    listHtml = '<div style="padding:20px;text-align:center;color:#6b7280;font-size:13px">スタッフが登録されていません</div>';
+  } else {
+    let lastDept = null;
+    sortedStaff.forEach(s => {
+      if (s.dept_id !== lastDept) {
+        listHtml += `<div style="font-size:11px;font-weight:700;color:#7c3aed;margin:12px 0 4px;padding-bottom:2px;border-bottom:1px solid #ede9fe">${DEPT_NAMES[s.dept_id] ?? '未分類'}</div>`;
+        lastDept = s.dept_id;
+      }
+      const safeName = s.name.replace(/'/g, "\\'");
+      listHtml += `
+        <button onclick="document.getElementById('invitePickerModalEl').remove(); generateInviteLink('${s.id}','${safeName}')"
+          style="display:block;width:100%;text-align:left;padding:10px 12px;margin-bottom:4px;border:1.5px solid #e5e7eb;border-radius:8px;background:white;cursor:pointer;font-size:14px;color:#1f2937">
+          ${s.name}
+        </button>`;
+    });
+  }
+
+  modal.innerHTML = `
+    <div class="modal" style="max-width:480px">
+      <div class="modal-title">🔗 招待するスタッフを選択</div>
+      <div style="font-size:12px;color:#6b7280;margin-bottom:12px">選択したスタッフの招待リンクを発行します（アカウント未作成のスタッフも選べます）</div>
+      <div style="max-height:50vh;overflow-y:auto">${listHtml}</div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="document.getElementById('invitePickerModalEl').remove()">キャンセル</button>
+      </div>
+    </div>`;
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
 // =====================================================
 // 招待リンク機能
 // =====================================================
@@ -5005,13 +5052,13 @@ document.getElementById('inviteCopyMessageBtn')?.addEventListener('click', () =>
   const name = document.getElementById('inviteResult').dataset.staffName;
   const msg = `${name}さん
 
-kingyo-shift（シフト管理アプリ）のアカウント作成のご案内です。
-以下のリンクから、メールアドレスとパスワードを設定してアカウントを作成してください。
+下記URLにアクセスして初期パスワード設定してください
 
 ${url}
 
-※リンクは7日間有効です。
-※質問があればお気軽にどうぞ。`;
+設定後のアクセスURLはこちらです
+
+https://kingyo-shift.vercel.app/`;
   navigator.clipboard.writeText(msg).then(() => {
     showToast('メッセージをコピーしました ✓', 'success');
   }).catch(() => {
