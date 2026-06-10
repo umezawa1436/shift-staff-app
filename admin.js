@@ -71,7 +71,11 @@ function saveCurrentShiftStateToCache() {
     wedTypes: window._shiftWedTypes ? JSON.parse(JSON.stringify(window._shiftWedTypes)) : {},
     closedHolidays: window._shiftClosedHolidays ? Array.from(window._shiftClosedHolidays) : [],
     openThursdays: window._shiftOpenThursdays ? Array.from(window._shiftOpenThursdays) : [],
-    customClosed: window._shiftCustomClosed ? JSON.parse(JSON.stringify(window._shiftCustomClosed)) : {}
+    customClosed: window._shiftCustomClosed ? JSON.parse(JSON.stringify(window._shiftCustomClosed)) : {},
+    // ★ 月別の所定労働時間・個別所定・必要人数もキャッシュ（これが無いと月切替で前月の値を引きずる）
+    shiftGridPlanHours: shiftGridPlanHours,
+    shiftGridStaffSettings: JSON.parse(JSON.stringify(shiftGridStaffSettings || {})),
+    shiftGridRequirements: JSON.parse(JSON.stringify(shiftGridRequirements || {}))
   };
 }
 
@@ -79,6 +83,9 @@ function saveCurrentShiftStateToCache() {
 function tryRestoreShiftStateFromCache(ctx) {
   if (!shiftMonthCache[ctx]) return false;
   const c = shiftMonthCache[ctx];
+  // ★ 所定時間が保存されていない古い形のキャッシュは信頼できないので新規読込に回す
+  //   （これが無いと前月の所定労働時間で誤描画される）
+  if (c.shiftGridPlanHours == null) return false;
   shiftData = JSON.parse(JSON.stringify(c.shiftData));
   lockedCells = JSON.parse(JSON.stringify(c.lockedCells));
   savedShiftSnapshot = c.savedShiftSnapshot ? JSON.parse(JSON.stringify(c.savedShiftSnapshot)) : null;
@@ -93,6 +100,10 @@ function tryRestoreShiftStateFromCache(ctx) {
   window._shiftClosedHolidays = new Set(c.closedHolidays || []);
   window._shiftOpenThursdays = new Set(c.openThursdays || []);
   window._shiftCustomClosed = c.customClosed ? JSON.parse(JSON.stringify(c.customClosed)) : {};
+  // ★ 月別の所定労働時間・個別所定・必要人数を復元（月切替で前月値を引きずらないため）
+  shiftGridPlanHours = c.shiftGridPlanHours;
+  shiftGridStaffSettings = c.shiftGridStaffSettings ? JSON.parse(JSON.stringify(c.shiftGridStaffSettings)) : {};
+  shiftGridRequirements = c.shiftGridRequirements ? JSON.parse(JSON.stringify(c.shiftGridRequirements)) : {};
   shiftGridContext = ctx;
   return true;
 }
