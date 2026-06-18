@@ -636,6 +636,44 @@ async function loadAppSettings() {
   }
 }
 
+// 祝日（admin.js と同一の2026マップ。有給の土日祝判定に使用）
+function getJpHolidaysStaff(year, month) {
+  const map = {
+    '2026-1':[1],'2026-2':[11,23],'2026-3':[20],'2026-4':[29],
+    '2026-5':[3,4,5,6],'2026-7':[20],'2026-8':[11],'2026-9':[21,22],
+    '2026-10':[12],'2026-11':[3,23],'2026-12':[]
+  };
+  return new Set(map[`${year}-${month}`] || []);
+}
+// 有給類の加算時間（admin.js と同一ルール：有休/個夏休=土日祝9H・平日8.5H、半有休=5H）
+const PAID_LEAVE_SHIFTS_STAFF = ['有休','個夏休'];
+function getRestShiftHoursStaff(shift, dow, isHoliday) {
+  if (PAID_LEAVE_SHIFTS_STAFF.includes(shift)) return (dow === 0 || dow === 6 || isHoliday) ? 9 : 8.5;
+  if (shift === '半有休') return 5;
+  return 0;
+}
+// 月のシフトから「シフト時間（有給込み）」と「実働時間（勤務のみ）」を算出
+//   shiftByDay: { day(数値文字列): shiftTypeId }
+function calcHours(year, month, shiftByDay) {
+  const holidays = getJpHolidaysStaff(year, month);
+  let work = 0, shiftTime = 0;
+  Object.keys(shiftByDay).forEach(dayKey => {
+    const sh = shiftByDay[dayKey];
+    const st = shiftTypesMap[sh];
+    const day = parseInt(dayKey, 10);
+    const dow = new Date(year, month - 1, day).getDay();
+    const isHol = holidays.has(day);
+    if (st && !st.is_off) {
+      const w = parseFloat(st.work_hours) || 0;
+      work += w;        // 実働（実際に勤務）
+      shiftTime += w;   // シフト時間にも加算
+    } else {
+      shiftTime += getRestShiftHoursStaff(sh, dow, isHol); // 有給類はシフト時間のみ
+    }
+  });
+  return { work: Math.round(work * 10) / 10, shiftTime: Math.round(shiftTime * 10) / 10 };
+}
+
 // 所定労働時間を取得（admin側のロジックと一致：個別設定 > emp_type別デフォルト）
 async function loadPlannedHours() {
   try {
@@ -659,24 +697,21 @@ async function loadPlannedHours() {
   }
 }
 
-// 月トータル希望労働時間の表示更新（休み以外の希望シフトの work_hours 合計 / 所定 / 差分）
+// 月トータルの表示更新（シフト時間=有給込み / 実働時間=勤務のみ / 所定との差）
 function updateLaborTimeDisplay() {
   const el = document.getElementById('laborTimeInfo');
   if (!el) return;
   const show = localStorage.getItem('kingyo_showLaborTime') === '1';
   if (!show) { el.style.display = 'none'; return; }
 
-  const monthKeys = Object.keys(requests).filter(k => k.startsWith(`${currentYear}-${currentMonth}-`));
-  let actual = 0;
-  monthKeys.forEach(k => {
-    const st = shiftTypesMap[requests[k]];
-    if (!st) return;
-    if (st.is_off) return;                 // 休み系は除外
-    actual += parseFloat(st.work_hours) || 0;
+  const prefix = `${currentYear}-${currentMonth}-`;
+  const shiftByDay = {};
+  Object.keys(requests).forEach(k => {
+    if (k.startsWith(prefix)) shiftByDay[k.slice(prefix.length)] = requests[k];
   });
-  actual = Math.round(actual * 10) / 10;
+  const { work, shiftTime } = calcHours(currentYear, currentMonth, shiftByDay);
   const planned = Math.round(staffPlannedHours * 10) / 10;
-  const diff = Math.round((actual - planned) * 10) / 10;
+  const diff = Math.round((shiftTime - planned) * 10) / 10;
   const diffStr = diff >= 0 ? `+${diff}` : `${diff}`;
   const color = planned <= 0 ? '#6b7280'
     : Math.abs(diff) <= 10 ? '#10b981'
@@ -685,13 +720,19 @@ function updateLaborTimeDisplay() {
   el.style.display = 'block';
   el.innerHTML = `
     <div style="font-weight:600;color:#475569;margin-bottom:6px;display:flex;align-items:center;gap:6px">
-      <span style="font-size:13px">⏱</span> 希望シフトの月トータル労働時間
+      <span style="font-size:13px">⏱</span> 希望シフトの月トータル
     </div>
-    <div style="font-size:18px;font-weight:700;color:${color}">
-      ${actual}H <span style="font-size:12px;color:#94a3b8;font-weight:500">/ ${planned}H</span>
-      <span style="font-size:13px;color:${color}">（${diffStr}H）</span>
-    </div>
-    <div style="font-size:10px;color:#94a3b8;margin-top:3px">※休み以外の希望シフトの合計。所定との差を表示</div>`;
+    <div style="display:flex;gap:18px;align-items:baseline;flex-wrap:wrap">
+      <div>
+        <div style="font-size:10px;color:#64748b">シフト時間（有給込み）</div>
+        <div style="font-size:18px;font-weight:700;color:${color}">${shiftTime}H
+          <span style="font-size:11px;color:#94a3b8;font-weight:500">/ ${planned}H（${diffStr}H）</span></div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:#64748b">実働時間（勤務のみ）</div>
+        <div style="font-size:16px;font-weight:700;color:#10b981">${work}H</div>
+      </div>
+    </div>`;
 }
 
 let SHIFTS = [
@@ -1743,15 +1784,24 @@ async function loadConfirmedShifts() {
     }
     html += '</div>';
 
-    let totalHours = 0;
+    let totalHours = 0;   // 実働時間（勤務のみ）
+    let shiftHours = 0;   // シフト時間（有給込み・管理画面の労働予定時間と一致）
     let workCount = 0;
     let restCount = 0;
+    const confHolidays = getJpHolidaysStaff(confYear, confMonth);
     shifts.forEach(s => {
       const st = shiftTypesMap[s.shift_type_id];
       const h = st ? (parseFloat(st.work_hours) || 0) : 0;
-      totalHours += h;
-      if (st?.is_off) restCount++;
-      else if (h > 0) workCount++;
+      const dow = new Date(confYear, confMonth - 1, s.day).getDay();
+      const isHol = confHolidays.has(s.day);
+      if (st && !st.is_off) {
+        totalHours += h;
+        shiftHours += h;
+        if (h > 0) workCount++;
+      } else {
+        shiftHours += getRestShiftHoursStaff(s.shift_type_id, dow, isHol);
+        if (st?.is_off) restCount++;
+      }
     });
 
     html += `<div style="background:var(--bg);border-radius:14px;padding:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;text-align:center">
@@ -1766,6 +1816,7 @@ async function loadConfirmedShifts() {
       <div>
         <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">実働時間</div>
         <div style="font-size:22px;font-weight:700;color:#10b981">${Math.round(totalHours*10)/10}<span style="font-size:12px">H</span></div>
+        <div style="font-size:10px;color:#94a3b8;margin-top:3px;font-weight:600">シフト時間 ${Math.round(shiftHours*10)/10}H</div>
       </div>
     </div>`;
 
