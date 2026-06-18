@@ -167,7 +167,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     const openThursdays = new Set(); // 診療木曜
     thursdayData2.forEach(t => { if (t.is_open) openThursdays.add(t.day); });
 
-    const basePlanHours = monthlyHoursData.length > 0 ? monthlyHoursData[0].hours : 171.4;
+    const basePlanHours = monthlyHoursData.length > 0 ? monthlyHoursData[0].hours : APP_DEFAULT_PLAN_HOURS;
 
     // スタッフごとの所定時間・夜勤上限を計算
     const staffSettingsMap = {};
@@ -177,7 +177,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       const custom = staffSettingsMap[staff.id];
       if (custom?.planned_hours != null) return custom.planned_hours;
       if (staff.emp_type === 'full') return basePlanHours;
-      if (staff.emp_type === 'short') return Math.round(basePlanHours * 0.75 * 10) / 10;
+      if (staff.emp_type === 'short') return Math.round(basePlanHours * APP_SHORT_RATIO * 10) / 10;
       return 0; // part: 個別設定なければ0
     }
 
