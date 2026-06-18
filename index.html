@@ -459,7 +459,9 @@
         <div class="header-dept" id="headerDept"></div>
       </div>
       <div style="display:flex;gap:8px">
-        <button class="logout-btn" id="changePwStaffBtn">🔑</button>
+        <button class="logout-btn" id="settingsStaffBtn" aria-label="設定" title="設定" style="display:flex;align-items:center;justify-content:center;padding:6px 10px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
         <button class="logout-btn" id="logoutBtn">ログアウト</button>
       </div>
     </div>
@@ -508,6 +510,8 @@
       </div>
       <div id="reqLimitDetails" style="display:flex;flex-wrap:wrap;gap:10px;font-size:12px"></div>
     </div>
+    <!-- 月トータル希望労働時間（設定でオン時のみ表示） -->
+    <div id="laborTimeInfo" style="display:none;background:#f8fafc;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px"></div>
     <div id="reqLimitWarning" style="display:none;background:#fef2f2;color:#dc2626;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;font-weight:500"></div>
     <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-bottom:8px">💾 入力内容は自動保存されます（提出ボタンを押すまで管理者には届きません）</div>
     <button class="btn-submit" id="submitBtn">希望を提出する</button>
@@ -555,6 +559,30 @@
   </div>
 </div>
 
+<!-- 設定シート -->
+<div class="overlay" id="settingsOverlay" style="z-index:400"></div>
+<div class="bottom-sheet" id="settingsSheet" style="z-index:500">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header">
+    <div class="sheet-date">設定</div>
+    <div class="sheet-hint">表示やパスワードの設定ができます</div>
+  </div>
+  <div style="padding:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;border:1.5px solid var(--border);border-radius:12px;margin-bottom:16px">
+      <div>
+        <div style="font-size:14px;font-weight:600;color:var(--text)">月トータル労働時間を表示</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">希望シフト（休み以外）の合計時間と所定との差を表示します</div>
+      </div>
+      <label style="position:relative;display:inline-block;width:48px;height:28px;flex-shrink:0;cursor:pointer">
+        <input type="checkbox" id="laborTimeToggle" style="opacity:0;width:0;height:0;position:absolute">
+        <span id="laborTimeToggleTrack" style="position:absolute;inset:0;background:#cbd5e1;border-radius:28px;transition:0.2s"></span>
+        <span id="laborTimeToggleKnob" style="position:absolute;left:3px;top:3px;width:22px;height:22px;background:white;border-radius:50%;transition:0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2)"></span>
+      </label>
+    </div>
+    <button class="btn-submit" id="openPwFromSettingsBtn" style="background:var(--bg);color:var(--text);border:1.5px solid var(--border)">🔑 パスワードを変更する</button>
+  </div>
+</div>
+
 <!-- シフト選択ボトムシート -->
 <div class="bottom-sheet" id="bottomSheet">
   <div class="sheet-handle"></div>
@@ -588,6 +616,83 @@ let hasDraft = false; // 未提出の下書きがあるか
 let selectedDay = null;
 let shiftTypesAll = [];
 let shiftTypesMap = {};
+
+// ===== 月トータル希望労働時間（新機能・設定でオン時のみ表示） =====
+let staffPlannedHours = 0;       // この月の所定労働時間
+let staffEmpTypeCache = null;    // emp_type（初回のみ取得してキャッシュ）
+
+// ★ 所定算出の定数（DB app_settings で一元管理。admin側と同一ソース。未設定時は従来値）
+let APP_SHORT_RATIO = 0.75;
+let APP_DEFAULT_PLAN_HOURS = 171.4;
+async function loadAppSettings() {
+  try {
+    const rows = await supabaseRequest('app_settings?select=key,value');
+    (rows || []).forEach(r => {
+      if (r.key === 'short_ratio' && r.value != null) APP_SHORT_RATIO = parseFloat(r.value);
+      if (r.key === 'default_planned_hours' && r.value != null) APP_DEFAULT_PLAN_HOURS = parseFloat(r.value);
+    });
+  } catch(e) {
+    console.warn('app_settings 読み込みスキップ（デフォルト値を使用）:', e);
+  }
+}
+
+// 所定労働時間を取得（admin側のロジックと一致：個別設定 > emp_type別デフォルト）
+async function loadPlannedHours() {
+  try {
+    if (!currentUser?.id) { staffPlannedHours = 0; return; }
+    const [monthlyHoursData, staffSettingData, staffRow] = await Promise.all([
+      supabaseRequest(`monthly_hours?month=eq.${currentMonth}&year=eq.${currentYear}&dept_id=is.null&select=hours`),
+      supabaseRequest(`staff_settings?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}&select=planned_hours`),
+      staffEmpTypeCache != null ? Promise.resolve(null) : supabaseRequest(`staff?id=eq.${currentUser.id}&select=emp_type`)
+    ]);
+    if (staffRow) staffEmpTypeCache = staffRow[0]?.emp_type || 'full';
+    const baseHours = (monthlyHoursData && monthlyHoursData.length) ? parseFloat(monthlyHoursData[0].hours) : APP_DEFAULT_PLAN_HOURS;
+    const individual = (staffSettingData && staffSettingData.length) ? staffSettingData[0].planned_hours : null;
+    staffPlannedHours = (individual != null)
+      ? parseFloat(individual)
+      : (staffEmpTypeCache === 'full' ? baseHours
+         : staffEmpTypeCache === 'short' ? Math.round(baseHours * APP_SHORT_RATIO * 10) / 10
+         : 0);
+  } catch(e) {
+    console.error('所定時間の取得エラー:', e);
+    staffPlannedHours = 0;
+  }
+}
+
+// 月トータル希望労働時間の表示更新（休み以外の希望シフトの work_hours 合計 / 所定 / 差分）
+function updateLaborTimeDisplay() {
+  const el = document.getElementById('laborTimeInfo');
+  if (!el) return;
+  const show = localStorage.getItem('kingyo_showLaborTime') === '1';
+  if (!show) { el.style.display = 'none'; return; }
+
+  const monthKeys = Object.keys(requests).filter(k => k.startsWith(`${currentYear}-${currentMonth}-`));
+  let actual = 0;
+  monthKeys.forEach(k => {
+    const st = shiftTypesMap[requests[k]];
+    if (!st) return;
+    if (st.is_off) return;                 // 休み系は除外
+    actual += parseFloat(st.work_hours) || 0;
+  });
+  actual = Math.round(actual * 10) / 10;
+  const planned = Math.round(staffPlannedHours * 10) / 10;
+  const diff = Math.round((actual - planned) * 10) / 10;
+  const diffStr = diff >= 0 ? `+${diff}` : `${diff}`;
+  const color = planned <= 0 ? '#6b7280'
+    : Math.abs(diff) <= 10 ? '#10b981'
+    : diff > 10 ? '#f97316' : '#ef4444';
+
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div style="font-weight:600;color:#475569;margin-bottom:6px;display:flex;align-items:center;gap:6px">
+      <span style="font-size:13px">⏱</span> 希望シフトの月トータル労働時間
+    </div>
+    <div style="font-size:18px;font-weight:700;color:${color}">
+      ${actual}H <span style="font-size:12px;color:#94a3b8;font-weight:500">/ ${planned}H</span>
+      <span style="font-size:13px;color:${color}">（${diffStr}H）</span>
+    </div>
+    <div style="font-size:10px;color:#94a3b8;margin-top:3px">※休み以外の希望シフトの合計。所定との差を表示</div>`;
+}
 
 let SHIFTS = [
   { category: '休み・有給', items: [
@@ -975,6 +1080,7 @@ async function showApp() {
   document.getElementById('headerName').textContent = currentUser.name;
   document.getElementById('headerDept').textContent = currentUser.deptName;
   await loadShiftTypesFromDB();
+  await loadAppSettings();
   await loadRequests();
   await loadClinicSettings();
   await loadReqLimitsForStaff();
@@ -1063,6 +1169,8 @@ async function loadClinicSettings() {
     thursdayData.forEach(t => {
       if (t.is_open) thursdayOpenDays.add(t.day);
     });
+    // 月トータル労働時間表示用に所定時間も取得
+    await loadPlannedHours();
   } catch(e) {
     console.error('クリニック設定の読み込みエラー:', e);
     clinicClosedDays = {};
@@ -1327,6 +1435,9 @@ function updateCount() {
   // 期限切れの場合は提出不可
   // 提出ボタンの有効/無効
   document.getElementById('submitBtn').disabled = counts.total === 0 || isOver || deadlinePassed;
+
+  // 月トータル希望労働時間の表示を更新（設定オン時のみ）
+  updateLaborTimeDisplay();
 }
 
 document.getElementById('submitBtn').addEventListener('click', async () => {
@@ -1436,7 +1547,40 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
 
 document.getElementById('overlay').addEventListener('click', closeSheet);
 
-document.getElementById('changePwStaffBtn').addEventListener('click', () => {
+// 設定シートのトグル見た目を状態に同期
+function syncLaborToggleUI() {
+  const on = localStorage.getItem('kingyo_showLaborTime') === '1';
+  const cb = document.getElementById('laborTimeToggle');
+  const track = document.getElementById('laborTimeToggleTrack');
+  const knob = document.getElementById('laborTimeToggleKnob');
+  if (cb) cb.checked = on;
+  if (track) track.style.background = on ? 'var(--primary)' : '#cbd5e1';
+  if (knob) knob.style.left = on ? '23px' : '3px';
+}
+
+function openSettingsSheet() {
+  syncLaborToggleUI();
+  document.getElementById('settingsOverlay').classList.add('show');
+  document.getElementById('settingsSheet').classList.add('show');
+}
+function closeSettingsSheet() {
+  document.getElementById('settingsOverlay').classList.remove('show');
+  document.getElementById('settingsSheet').classList.remove('show');
+}
+
+document.getElementById('settingsStaffBtn').addEventListener('click', openSettingsSheet);
+document.getElementById('settingsOverlay').addEventListener('click', closeSettingsSheet);
+
+// トグル切替 → localStorage 保存 → 表示即時反映
+document.getElementById('laborTimeToggle').addEventListener('change', (e) => {
+  localStorage.setItem('kingyo_showLaborTime', e.target.checked ? '1' : '0');
+  syncLaborToggleUI();
+  updateLaborTimeDisplay();
+});
+
+// 設定シートから「パスワードを変更する」を押したらパスワードシートへ
+document.getElementById('openPwFromSettingsBtn').addEventListener('click', () => {
+  closeSettingsSheet();
   document.getElementById('pwOverlay').classList.add('show');
   document.getElementById('pwSheet').classList.add('show');
 });

@@ -2,6 +2,22 @@ const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE'; 
 // STATE
 let adminUser = null;
+// ★ 所定労働時間の算出定数（DB app_settings で一元管理。未設定時は従来値にフォールバック）
+//   短時間係数 short_ratio と、monthly_hours 未設定月のデフォルト基準 default_planned_hours。
+//   admin.js / admin-generate.js / index.html(スタッフ画面) が各自このテーブルを読むことで二重管理を解消。
+let APP_SHORT_RATIO = 0.75;
+let APP_DEFAULT_PLAN_HOURS = 171.4;
+async function loadAppSettings() {
+  try {
+    const rows = await sb('app_settings?select=key,value');
+    (rows || []).forEach(r => {
+      if (r.key === 'short_ratio' && r.value != null) APP_SHORT_RATIO = parseFloat(r.value);
+      if (r.key === 'default_planned_hours' && r.value != null) APP_DEFAULT_PLAN_HOURS = parseFloat(r.value);
+    });
+  } catch(e) {
+    console.warn('app_settings 読み込みスキップ（デフォルト値を使用）:', e);
+  }
+}
 let currentDept = 0;
 let currentYear = new Date().getFullYear();
 let currentMonth = new Date().getMonth() + 1;
@@ -71,11 +87,7 @@ function saveCurrentShiftStateToCache() {
     wedTypes: window._shiftWedTypes ? JSON.parse(JSON.stringify(window._shiftWedTypes)) : {},
     closedHolidays: window._shiftClosedHolidays ? Array.from(window._shiftClosedHolidays) : [],
     openThursdays: window._shiftOpenThursdays ? Array.from(window._shiftOpenThursdays) : [],
-    customClosed: window._shiftCustomClosed ? JSON.parse(JSON.stringify(window._shiftCustomClosed)) : {},
-    // ★ 月別の所定労働時間・個別所定・必要人数もキャッシュ（これが無いと月切替で前月の値を引きずる）
-    shiftGridPlanHours: shiftGridPlanHours,
-    shiftGridStaffSettings: JSON.parse(JSON.stringify(shiftGridStaffSettings || {})),
-    shiftGridRequirements: JSON.parse(JSON.stringify(shiftGridRequirements || {}))
+    customClosed: window._shiftCustomClosed ? JSON.parse(JSON.stringify(window._shiftCustomClosed)) : {}
   };
 }
 
@@ -83,9 +95,6 @@ function saveCurrentShiftStateToCache() {
 function tryRestoreShiftStateFromCache(ctx) {
   if (!shiftMonthCache[ctx]) return false;
   const c = shiftMonthCache[ctx];
-  // ★ 所定時間が保存されていない古い形のキャッシュは信頼できないので新規読込に回す
-  //   （これが無いと前月の所定労働時間で誤描画される）
-  if (c.shiftGridPlanHours == null) return false;
   shiftData = JSON.parse(JSON.stringify(c.shiftData));
   lockedCells = JSON.parse(JSON.stringify(c.lockedCells));
   savedShiftSnapshot = c.savedShiftSnapshot ? JSON.parse(JSON.stringify(c.savedShiftSnapshot)) : null;
@@ -100,10 +109,6 @@ function tryRestoreShiftStateFromCache(ctx) {
   window._shiftClosedHolidays = new Set(c.closedHolidays || []);
   window._shiftOpenThursdays = new Set(c.openThursdays || []);
   window._shiftCustomClosed = c.customClosed ? JSON.parse(JSON.stringify(c.customClosed)) : {};
-  // ★ 月別の所定労働時間・個別所定・必要人数を復元（月切替で前月値を引きずらないため）
-  shiftGridPlanHours = c.shiftGridPlanHours;
-  shiftGridStaffSettings = c.shiftGridStaffSettings ? JSON.parse(JSON.stringify(c.shiftGridStaffSettings)) : {};
-  shiftGridRequirements = c.shiftGridRequirements ? JSON.parse(JSON.stringify(c.shiftGridRequirements)) : {};
   shiftGridContext = ctx;
   return true;
 }
@@ -410,6 +415,8 @@ document.getElementById('adminPassword').addEventListener('keydown', e => {
 async function initApp() {
   showLoading();
   try {
+    // ★ 所定算出の定数（short_ratio / default_planned_hours）をDBから先に読む
+    await loadAppSettings();
     // 最初にshift_typesをロードして互換マップを構築（カスタムシフト対応）
     await loadShiftTypesAndBuildMaps();
     await loadStaff();
@@ -699,7 +706,7 @@ async function loadShiftGrid() {
     });
 
     // 所定時間
-    shiftGridPlanHours = monthlyHoursData.length > 0 ? monthlyHoursData[0].hours : 171.4;
+    shiftGridPlanHours = monthlyHoursData.length > 0 ? monthlyHoursData[0].hours : APP_DEFAULT_PLAN_HOURS;
 
     // スタッフ個別設定
     shiftGridStaffSettings = {};
@@ -899,7 +906,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
       const hasIndividual = setting?.planned_hours != null; // 個別設定の有無
       let planH = setting?.planned_hours ?? (
         staff.emp_type === 'full' ? shiftGridPlanHours :
-        staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * 0.75 * 10)/10 : 0
+        staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * APP_SHORT_RATIO * 10)/10 : 0
       );
       const actual = Math.round(totalH * 10) / 10;
       const diff = Math.round((actual - planH) * 10) / 10;
@@ -910,7 +917,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
       // ★ 個別設定中は薄紫背景＋「基準値からの差」を表示
       const baseForType =
         staff.emp_type === 'full' ? shiftGridPlanHours :
-        staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * 0.75 * 10)/10 : 0;
+        staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * APP_SHORT_RATIO * 10)/10 : 0;
       const fromBase = Math.round((planH - baseForType) * 10) / 10;
       const fromBaseStr = hasIndividual
         ? `<span style="font-size:9px;color:#8b5cf6;font-weight:700"> (基準${fromBase >= 0 ? '+' : ''}${fromBase}H)</span>`
@@ -1138,7 +1145,7 @@ function refreshHoursCell(staffId) {
   const hasIndividual = setting?.planned_hours != null; // 個別設定の有無
   let planH = setting?.planned_hours ?? (
     staff.emp_type === 'full' ? shiftGridPlanHours :
-    staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * 0.75 * 10)/10 : 0
+    staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * APP_SHORT_RATIO * 10)/10 : 0
   );
 
   const actual = Math.round(totalH * 10) / 10;
@@ -1150,7 +1157,7 @@ function refreshHoursCell(staffId) {
   // ★ 個別設定中は薄紫背景＋「基準値からの差」を表示
   const baseForType =
     staff.emp_type === 'full' ? shiftGridPlanHours :
-    staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * 0.75 * 10)/10 : 0;
+    staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * APP_SHORT_RATIO * 10)/10 : 0;
   const fromBase = Math.round((planH - baseForType) * 10) / 10;
   const fromBaseStr = hasIndividual
     ? `<span style="font-size:9px;color:#8b5cf6;font-weight:700"> (基準${fromBase >= 0 ? '+' : ''}${fromBase}H)</span>`
@@ -1476,7 +1483,7 @@ async function saveStaffHours(staffId, staffName, hours) {
   if (hours !== null && staff) {
     const baseForType =
       staff.emp_type === 'full' ? shiftGridPlanHours :
-      staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * 0.75 * 10) / 10 :
+      staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * APP_SHORT_RATIO * 10) / 10 :
       0;
     if (Math.abs(hours - baseForType) < 0.05) {
       hours = null; // 基準値と同じ → 個別設定をクリア扱いにする
@@ -4456,9 +4463,15 @@ async function loadStaffTable() {
             ${staff.no_night?'夜勤不可':'夜勤可'}
           </button>
 
+          <!-- 招待リンク発行 -->
+          <button onclick="generateInviteLink('${staff.id}','${staff.name}')"
+            style="padding:4px 10px;border-radius:100px;font-size:12px;cursor:pointer;border:1.5px solid #a855f7;background:white;color:#7c3aed;margin-left:auto;font-weight:600">
+            🔗 招待リンク
+          </button>
+
           <!-- 削除 -->
           <button onclick="deleteStaff('${staff.id}','${staff.name}')"
-            style="padding:4px 10px;border-radius:100px;font-size:12px;cursor:pointer;border:1.5px solid var(--border);background:white;color:var(--danger);margin-left:auto">
+            style="padding:4px 10px;border-radius:100px;font-size:12px;cursor:pointer;border:1.5px solid var(--border);background:white;color:var(--danger)">
             削除
           </button>
         </div>
@@ -4933,59 +4946,6 @@ async function applyFixedShiftsToGrid(staffId, fixedShifts) {
 
 document.getElementById('addAccountBtn')?.addEventListener('click', () => showAddAccountModal());
 
-// 招待リンク発行：スタッフ選択モーダル（アカウント管理ページから起動）
-document.getElementById('inviteLinkBtn')?.addEventListener('click', () => showInvitePickerModal());
-
-async function showInvitePickerModal() {
-  // スタッフ未読込なら読み込む（保険）
-  if (!allStaff || allStaff.length === 0) {
-    try { await loadStaff(); } catch(e) {}
-  }
-  document.getElementById('invitePickerModalEl')?.remove();
-
-  const modal = document.createElement('div');
-  modal.id = 'invitePickerModalEl';
-  modal.className = 'modal-overlay show';
-
-  // 部門ごとにスタッフを並べる
-  const deptOrder = [0,1,2,3];
-  const sortedStaff = [...allStaff].sort((a,b) => {
-    if (a.dept_id !== b.dept_id) return deptOrder.indexOf(a.dept_id) - deptOrder.indexOf(b.dept_id);
-    return (a.display_order ?? a.staff_code ?? 0) - (b.display_order ?? b.staff_code ?? 0);
-  });
-
-  let listHtml = '';
-  if (sortedStaff.length === 0) {
-    listHtml = '<div style="padding:20px;text-align:center;color:#6b7280;font-size:13px">スタッフが登録されていません</div>';
-  } else {
-    let lastDept = null;
-    sortedStaff.forEach(s => {
-      if (s.dept_id !== lastDept) {
-        listHtml += `<div style="font-size:11px;font-weight:700;color:#7c3aed;margin:12px 0 4px;padding-bottom:2px;border-bottom:1px solid #ede9fe">${DEPT_NAMES[s.dept_id] ?? '未分類'}</div>`;
-        lastDept = s.dept_id;
-      }
-      const safeName = s.name.replace(/'/g, "\\'");
-      listHtml += `
-        <button onclick="document.getElementById('invitePickerModalEl').remove(); generateInviteLink('${s.id}','${safeName}')"
-          style="display:block;width:100%;text-align:left;padding:10px 12px;margin-bottom:4px;border:1.5px solid #e5e7eb;border-radius:8px;background:white;cursor:pointer;font-size:14px;color:#1f2937">
-          ${s.name}
-        </button>`;
-    });
-  }
-
-  modal.innerHTML = `
-    <div class="modal" style="max-width:480px">
-      <div class="modal-title">🔗 招待するスタッフを選択</div>
-      <div style="font-size:12px;color:#6b7280;margin-bottom:12px">選択したスタッフの招待リンクを発行します（アカウント未作成のスタッフも選べます）</div>
-      <div style="max-height:50vh;overflow-y:auto">${listHtml}</div>
-      <div class="modal-footer">
-        <button class="btn btn-outline" onclick="document.getElementById('invitePickerModalEl').remove()">キャンセル</button>
-      </div>
-    </div>`;
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-  document.body.appendChild(modal);
-}
-
 // =====================================================
 // 招待リンク機能
 // =====================================================
@@ -5063,13 +5023,13 @@ document.getElementById('inviteCopyMessageBtn')?.addEventListener('click', () =>
   const name = document.getElementById('inviteResult').dataset.staffName;
   const msg = `${name}さん
 
-下記URLにアクセスして初期パスワード設定してください
+kingyo-shift（シフト管理アプリ）のアカウント作成のご案内です。
+以下のリンクから、メールアドレスとパスワードを設定してアカウントを作成してください。
 
 ${url}
 
-設定後のアクセスURLはこちらです
-
-https://kingyo-shift.vercel.app/`;
+※リンクは7日間有効です。
+※質問があればお気軽にどうぞ。`;
   navigator.clipboard.writeText(msg).then(() => {
     showToast('メッセージをコピーしました ✓', 'success');
   }).catch(() => {
@@ -5195,7 +5155,7 @@ document.getElementById('exportCsvBtn')?.addEventListener('click', () => {
     const setting = shiftGridStaffSettings[staff.id];
     const planH = setting?.planned_hours ?? (
       staff.emp_type === 'full' ? shiftGridPlanHours :
-      staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * 0.75 * 10)/10 : 0
+      staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * APP_SHORT_RATIO * 10)/10 : 0
     );
     row += `,${Math.round(totalH*10)/10},${planH}`;
     csv += row + '\n';
