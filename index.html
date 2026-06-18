@@ -568,6 +568,17 @@
     <div class="sheet-hint">表示やパスワードの設定ができます</div>
   </div>
   <div style="padding:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;border:1.5px solid var(--border);border-radius:12px;margin-bottom:12px">
+      <div>
+        <div style="font-size:14px;font-weight:600;color:var(--text)">月の上限を表示</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">希望休・有休・その他の月間上限の欄を表示します</div>
+      </div>
+      <label style="position:relative;display:inline-block;width:48px;height:28px;flex-shrink:0;cursor:pointer">
+        <input type="checkbox" id="reqLimitToggle" style="opacity:0;width:0;height:0;position:absolute">
+        <span id="reqLimitToggleTrack" style="position:absolute;inset:0;background:#cbd5e1;border-radius:28px;transition:0.2s"></span>
+        <span id="reqLimitToggleKnob" style="position:absolute;left:3px;top:3px;width:22px;height:22px;background:white;border-radius:50%;transition:0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2)"></span>
+      </label>
+    </div>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;border:1.5px solid var(--border);border-radius:12px;margin-bottom:16px">
       <div>
         <div style="font-size:14px;font-weight:600;color:var(--text)">月トータル労働時間を表示</div>
@@ -1463,7 +1474,9 @@ function updateCount() {
   items.push(renderItem('有休', counts.yukyu, reqLimitCache?.limit_yukyu, '#86198f'));
   items.push(renderItem('その他', counts.other, reqLimitCache?.limit_other, '#075985'));
   detailsEl.innerHTML = items.join('');
-  infoEl.style.display = 'block';
+  // 月の上限欄の表示は設定トグルで制御（既定ON。未設定なら表示）
+  const showReqLimit = localStorage.getItem('kingyo_showReqLimit') !== '0';
+  infoEl.style.display = showReqLimit ? 'block' : 'none';
 
   // 警告表示
   if (warnings.length > 0) {
@@ -1599,8 +1612,20 @@ function syncLaborToggleUI() {
   if (knob) knob.style.left = on ? '23px' : '3px';
 }
 
+// 月の上限トグルの見た目を状態に同期（既定ON）
+function syncReqLimitToggleUI() {
+  const on = localStorage.getItem('kingyo_showReqLimit') !== '0';
+  const cb = document.getElementById('reqLimitToggle');
+  const track = document.getElementById('reqLimitToggleTrack');
+  const knob = document.getElementById('reqLimitToggleKnob');
+  if (cb) cb.checked = on;
+  if (track) track.style.background = on ? 'var(--primary)' : '#cbd5e1';
+  if (knob) knob.style.left = on ? '23px' : '3px';
+}
+
 function openSettingsSheet() {
   syncLaborToggleUI();
+  syncReqLimitToggleUI();
   document.getElementById('settingsOverlay').classList.add('show');
   document.getElementById('settingsSheet').classList.add('show');
 }
@@ -1617,6 +1642,13 @@ document.getElementById('laborTimeToggle').addEventListener('change', (e) => {
   localStorage.setItem('kingyo_showLaborTime', e.target.checked ? '1' : '0');
   syncLaborToggleUI();
   updateLaborTimeDisplay();
+});
+
+// 月の上限トグル切替 → localStorage 保存 → 上限欄の表示を即時反映
+document.getElementById('reqLimitToggle').addEventListener('change', (e) => {
+  localStorage.setItem('kingyo_showReqLimit', e.target.checked ? '1' : '0');
+  syncReqLimitToggleUI();
+  updateCount();
 });
 
 // 設定シートから「パスワードを変更する」を押したらパスワードシートへ
