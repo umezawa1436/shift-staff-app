@@ -570,17 +570,6 @@
   <div style="padding:16px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;border:1.5px solid var(--border);border-radius:12px;margin-bottom:12px">
       <div>
-        <div style="font-size:14px;font-weight:600;color:var(--text)">月トータル労働時間を表示</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">希望シフト（休み以外）の合計時間と所定との差を表示します</div>
-      </div>
-      <label style="position:relative;display:inline-block;width:48px;height:28px;flex-shrink:0;cursor:pointer">
-        <input type="checkbox" id="laborTimeToggle" style="opacity:0;width:0;height:0;position:absolute">
-        <span id="laborTimeToggleTrack" style="position:absolute;inset:0;background:#cbd5e1;border-radius:28px;transition:0.2s"></span>
-        <span id="laborTimeToggleKnob" style="position:absolute;left:3px;top:3px;width:22px;height:22px;background:white;border-radius:50%;transition:0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2)"></span>
-      </label>
-    </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;border:1.5px solid var(--border);border-radius:12px;margin-bottom:16px">
-      <div>
         <div style="font-size:14px;font-weight:600;color:var(--text)">月の上限を表示</div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:2px">希望休・有休・その他の月間上限の欄を表示します</div>
       </div>
@@ -588,6 +577,17 @@
         <input type="checkbox" id="reqLimitToggle" style="opacity:0;width:0;height:0;position:absolute">
         <span id="reqLimitToggleTrack" style="position:absolute;inset:0;background:#cbd5e1;border-radius:28px;transition:0.2s"></span>
         <span id="reqLimitToggleKnob" style="position:absolute;left:3px;top:3px;width:22px;height:22px;background:white;border-radius:50%;transition:0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2)"></span>
+      </label>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;border:1.5px solid var(--border);border-radius:12px;margin-bottom:16px">
+      <div>
+        <div style="font-size:14px;font-weight:600;color:var(--text)">月トータル労働時間を表示</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">希望シフト（休み以外）の合計時間と所定との差を表示します</div>
+      </div>
+      <label style="position:relative;display:inline-block;width:48px;height:28px;flex-shrink:0;cursor:pointer">
+        <input type="checkbox" id="laborTimeToggle" style="opacity:0;width:0;height:0;position:absolute">
+        <span id="laborTimeToggleTrack" style="position:absolute;inset:0;background:#cbd5e1;border-radius:28px;transition:0.2s"></span>
+        <span id="laborTimeToggleKnob" style="position:absolute;left:3px;top:3px;width:22px;height:22px;background:white;border-radius:50%;transition:0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2)"></span>
       </label>
     </div>
     <button class="btn-submit" id="openPwFromSettingsBtn" style="background:var(--bg);color:var(--text);border:1.5px solid var(--border)">🔑 パスワードを変更する</button>
