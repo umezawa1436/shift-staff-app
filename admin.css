@@ -134,15 +134,13 @@
     .data-table tr:hover td { background:#f8fafc; }
 
     /* SHIFT GRID */
-    .shift-grid-wrap { overflow:auto;max-height:calc(100dvh - 240px);-webkit-overflow-scrolling:touch; }
+    .shift-grid-wrap { overflow-x:auto;-webkit-overflow-scrolling:touch; }
     .shift-grid { border-collapse:collapse;font-size:11px;min-width:100%; }
     .shift-grid th { padding:6px 4px;text-align:center;font-weight:600;font-size:10px;color:var(--text-muted);border:1px solid var(--border);background:var(--bg);white-space:nowrap;min-width:34px; }
-    /* 日付ヘッダ行：上に固定（常に表示） */
-    .shift-grid thead th { position:sticky;top:0;z-index:3;box-shadow:0 1px 0 var(--border); }
-    /* 名前列：左に固定（常に表示） */
-    .shift-grid th.staff-col { min-width:72px;text-align:left;padding-left:10px;position:sticky;left:0;z-index:4;box-shadow:1px 0 0 var(--border),0 1px 0 var(--border); }
-    .shift-grid td.staff-name { padding:6px 10px;text-align:left;font-weight:500;white-space:nowrap;background:white;font-size:12px;height:42px;position:sticky;left:0;z-index:2;box-shadow:1px 0 0 var(--border); }
     .shift-grid td { padding:2px;border:1px solid var(--border);text-align:center;vertical-align:middle;height:42px; }
+    /* 名前列：左に固定（横スクロールしても常に表示） */
+    .shift-grid th.staff-col { min-width:72px;text-align:left;padding-left:10px;position:sticky;left:0;z-index:3;background:var(--bg);box-shadow:1px 0 0 var(--border); }
+    .shift-grid td.staff-name { padding:6px 10px;text-align:left;font-weight:500;white-space:nowrap;background:white;font-size:12px;height:42px;position:sticky;left:0;z-index:2;box-shadow:1px 0 0 var(--border); }
     .shift-grid tbody tr { height:42px; }
     .shift-cell { height:36px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:pointer;transition:all 0.15s;padding:1px;overflow:hidden; }
     #shiftEditOptions .shift-cell { height:auto;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center; }
@@ -444,8 +442,6 @@
       .content { padding:16px; }
       .generate-options { grid-template-columns:1fr; }
       .settings-grid { grid-template-columns:1fr; }
-      /* スマホはツールバーが嵩むので表の縦領域を広めに確保 */
-      .shift-grid-wrap { max-height:calc(100dvh - 180px); }
     }
       .btn-icon { background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:14px;transition:all 0.15s; }
     .btn-icon:hover { background:#f1f5f9; }
