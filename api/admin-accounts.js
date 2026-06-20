@@ -105,7 +105,7 @@ export default async function handler(req, res) {
 
 async function listAccounts(req, res, payload) {
   if (payload.role !== 'master') return bad(res, 403, 'masterのみ');
-  const accounts = await sb(`accounts?order=role,dept_id.asc.nullslast,name&select=id,name,role,dept_id,failed_attempts,locked_at`);
+  const accounts = await sb(`accounts?order=role,dept_id.asc.nullslast,name&select=id,name,role,dept_id,failed_attempts,locked_at,staff_id,staff_code`);
   return res.status(200).json({ accounts });
 }
 
@@ -125,20 +125,26 @@ async function createAccount(req, res, body) {
   }
 
   const hash = await sha256(password);
+  const record = {
+    name,
+    password_hash: hash,
+    role,
+    dept_id: (role === 'master') ? null : parseInt(deptId),
+  };
+  // role=staff の場合はスタッフ紐付け（任意）。staff_id/staff_code が無いとスタッフログイン不可なので推奨。
+  if (role === 'staff') {
+    if (body.staffId) record.staff_id = body.staffId;
+    if (body.staffCode !== undefined && body.staffCode !== null && body.staffCode !== '') record.staff_code = parseInt(body.staffCode);
+  }
   await sb('accounts', {
     method: 'POST',
-    body: JSON.stringify([{
-      name,
-      password_hash: hash,
-      role,
-      dept_id: (role === 'master') ? null : parseInt(deptId),
-    }]),
+    body: JSON.stringify([record]),
   });
   return res.status(200).json({ ok: true });
 }
 
 async function updateAccount(req, res, body) {
-  const { id, name, password, role, deptId } = body;
+  const { id, name, password, role, deptId, staffCode, staffId } = body;
   if (!id) return bad(res, 400, 'idがありません');
   const update = {};
   if (name !== undefined) update.name = name;
@@ -154,6 +160,10 @@ async function updateAccount(req, res, body) {
     if (password.length < 4) return bad(res, 400, 'パスワードは4文字以上');
     update.password_hash = await sha256(password);
   }
+  // スタッフ紐付け: staff_code = ログインID（部門内ユニーク）, staff_id = staffレコード参照(uuid)
+  // 空文字/nullで紐付け解除も可能
+  if (staffCode !== undefined) update.staff_code = (staffCode === null || staffCode === '') ? null : parseInt(staffCode);
+  if (staffId !== undefined) update.staff_id = staffId ? staffId : null;
   if (Object.keys(update).length === 0) return bad(res, 400, '更新内容なし');
   await sb(`accounts?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(update) });
   return res.status(200).json({ ok: true });
