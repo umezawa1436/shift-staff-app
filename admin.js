@@ -2759,7 +2759,11 @@ async function loadReqLimits() {
   const tabs = document.getElementById('reqLimitDeptTabs');
   if (tabs && !tabs.dataset.built) {
     tabs.innerHTML = '';
-    Object.entries(DEPT_NAMES).forEach(([id, name]) => {
+    // リーダーは自部署のみ。master は全部署（他機能と同じ分岐）
+    const reqLimitDepts = adminUser.role === 'master'
+      ? Object.entries(DEPT_NAMES)
+      : [[String(adminUser.deptId), DEPT_NAMES[adminUser.deptId]]];
+    reqLimitDepts.forEach(([id, name]) => {
       const btn = document.createElement('button');
       btn.className = `dept-tab${parseInt(id) === reqLimitDept ? ' active' : ''}`;
       btn.textContent = name;
