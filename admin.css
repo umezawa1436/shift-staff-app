@@ -479,13 +479,14 @@
          min-width:100% で表が狭い時のやせ細りを防止。 */
       #page-shift { width:max-content; min-width:100%; }
       /* コマンド群：ビューポート幅で left:0 sticky。横スクロールで左上に固定、縦スクロールで流れて消える。
-         .month-nav / .dept-tabs は flex-wrap:wrap なので 100vw 内で従来どおり折り返す */
+         .month-nav / .dept-tabs は flex-wrap:wrap なので 100vw 内で従来どおり折り返す。
+         will-change:transform で GPU 合成レイヤーに昇格 → 横スクロール時に再描画でなく平行移動だけになりカクツキ解消 */
       #page-shift > .dept-tabs,
-      #page-shift > .month-nav { position:sticky; left:0; width:100vw; z-index:7; }
-      /* 確定取消バナー（ボタンのみ）も左に固定 */
-      #confirmLockBanner { position:sticky; left:0; width:fit-content; }
-      /* 自動生成プレビューバナーは #page-shift 拡幅で表幅に伸びないよう viewport 幅に制限し、上＋左に固定 */
-      #aiPreviewBanner { width:100vw; left:0; }
+      #page-shift > .month-nav { position:sticky; left:0; width:100vw; z-index:7; will-change:transform; }
+      /* 確定取消バナー（ボタンのみ）も左に固定＋合成昇格 */
+      #confirmLockBanner { position:sticky; left:0; width:fit-content; will-change:transform; }
+      /* 自動生成プレビューバナーは #page-shift 拡幅で表幅に伸びないよう viewport 幅に制限し、上＋左に固定＋合成昇格 */
+      #aiPreviewBanner { width:100vw; left:0; will-change:transform; }
     }
       .btn-icon { background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:14px;transition:all 0.15s; }
     .btn-icon:hover { background:#f1f5f9; }
