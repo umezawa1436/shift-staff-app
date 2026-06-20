@@ -973,6 +973,28 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
 
   html += '</tbody>';
   grid.innerHTML = html;
+  if (gridId === 'shiftGrid') setupShiftNameColumnSticky();
+}
+
+// 名前列の横固定（CSS sticky-left が効かない環境向け。横スクロール量だけ右へtransformで戻す）
+let _nameColScrollBound = false;
+function applyNameColTransform() {
+  const wrap = document.querySelector('.shift-grid-wrap');
+  if (!wrap) return;
+  const x = wrap.scrollLeft;
+  const cells = wrap.querySelectorAll('.staff-name, .staff-col');
+  for (let i = 0; i < cells.length; i++) {
+    cells[i].style.transform = x ? `translateX(${x}px)` : '';
+  }
+}
+function setupShiftNameColumnSticky() {
+  const wrap = document.querySelector('.shift-grid-wrap');
+  if (!wrap) return;
+  if (!_nameColScrollBound) {
+    wrap.addEventListener('scroll', () => requestAnimationFrame(applyNameColTransform), { passive: true });
+    _nameColScrollBound = true;
+  }
+  applyNameColTransform(); // 再描画直後に現在のスクロール位置を反映
 }
 
 
