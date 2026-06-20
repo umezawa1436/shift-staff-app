@@ -453,19 +453,23 @@
       .sidebar { transform:translateX(-100%);transition:transform 0.25s ease;box-shadow:2px 0 14px rgba(0,0,0,0.18); }
       body.sidebar-open .sidebar { transform:translateX(0); }
       body.sidebar-open .sidebar-backdrop { display:block; }
-      /* ドロワー展開中は背景（body）のスクロールをロック。閉じると class が外れて自動復帰 */
+      /* ドロワー展開中は背景（body / 新スクロール枠の content）のスクロールをロック。閉じると class が外れて自動復帰 */
       body.sidebar-open { overflow:hidden; }
+      body.sidebar-open .content { overflow:hidden; }
       .main { margin-left:0; }
       .sidebar-toggle { display:flex; }
       .stats-grid { grid-template-columns:repeat(2,1fr); }
-      .content { padding:16px; }
+      /* モバイルは .layout を定値高さにして .content を唯一のスクロール枠にする。
+         バナー・ツールバー・表をまとめて .content でスクロールさせ、表ヘッダ(上)・氏名列(左)を sticky で枠の端に固定する */
+      .layout { height:100vh; }
+      .content { padding:16px; overflow:auto; }
       .generate-options { grid-template-columns:1fr; }
       .settings-grid { grid-template-columns:1fr; }
-      /* モバイルは縦キャップを外してページ全体を縦スクロールさせる。
-         （内側スクロールだと確定バナーが画面外に流れず、上部からスクロールできない問題が出るため）
-         横は overflow-x:auto で内側スクロール＝名前列の固定を維持。
-         overflow-y は hidden を明示（auto のままだと iOS で「縦に溢れが無い時に横スクロールも無効化」される不具合を踏むため）。 */
-      .shift-grid-wrap { max-height:none; overflow-x:auto; overflow-y:hidden; }
+      /* スクロールは .content に集約するため、表ラッパー自身はスクロール容器にしない。
+         これにより 表ヘッダ(thead, sticky top)＝画面上端、氏名列(sticky left)＝画面左端 で固定され、
+         確定バナー・ツールバーは .content 内で上にスクロールして消え、作業領域が最大化される。
+         スクロール容器が1つになるので「途中で止まる」ネスト競合も解消。 */
+      .shift-grid-wrap { max-height:none; overflow:visible; }
     }
       .btn-icon { background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:14px;transition:all 0.15s; }
     .btn-icon:hover { background:#f1f5f9; }
