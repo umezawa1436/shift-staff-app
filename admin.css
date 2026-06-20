@@ -462,9 +462,9 @@
       /* モバイルは .layout を定値高さにして .content を唯一のスクロール枠にする。
          バナー・ツールバー・表をまとめて .content でスクロールさせ、表ヘッダ(上)・氏名列(左)を sticky で枠の端に固定する */
       .layout { height:100vh; }
-      /* 上パディングを0に。iOS Safari の sticky+padding 癖で日付ヘッダ上端に16px隙間ができ、
-         そこにスクロール中のセルが透けていたのを解消。ヘッダが枠上端にぴったり固定される */
-      .content { padding:0 16px 16px; overflow:auto; }
+      /* 上・左パディングを0に。iOS Safari の sticky+padding 癖で日付ヘッダ上端・氏名列左端に
+         隙間ができ、そこにスクロール中のセルが透けていたのを解消。ヘッダ＝枠上端、氏名列＝枠左端でぴったり固定 */
+      .content { padding:0 16px 16px 0; overflow:auto; }
       .generate-options { grid-template-columns:1fr; }
       .settings-grid { grid-template-columns:1fr; }
       /* スクロールは .content に集約するため、表ラッパー自身はスクロール容器にしない。
