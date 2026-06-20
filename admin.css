@@ -260,9 +260,10 @@
         height: auto !important;
         overflow: visible !important;
         font-size: 9pt !important;
-        /* 8:30〜21:30 の全幅(名前列＋タイムライン≈1388px)を用紙幅に収める。
-           --v-print-scale は印刷直前に JS が実幅から算出してセットする */
-        zoom: var(--v-print-scale, 1);
+        /* 8:30〜21:30 の全幅(名前列140px＋タイムライン1248px≈1388px)を A4横の用紙幅に確実に収める。
+           内容幅はほぼ固定のため、JS連携(var)に依存せず固定倍率で縮小する。
+           zoom はレイアウト幅自体を縮めるので印刷で切れない（Chrome/Edge/Safari）。 */
+        zoom: 0.72;
       }
 
       /* モーダル下部のボタン類は非表示 */
