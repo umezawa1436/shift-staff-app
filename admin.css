@@ -461,7 +461,10 @@
       .content { padding:16px; }
       .generate-options { grid-template-columns:1fr; }
       .settings-grid { grid-template-columns:1fr; }
-      .shift-grid-wrap { max-height:calc(100vh - 170px); }
+      /* モバイルは縦キャップを外してページ全体を縦スクロールさせる。
+         （内側スクロールだと確定バナーが画面外に流れず、上部からスクロールできない問題が出るため）
+         横スクロールは overflow-x で内側のまま＝名前列の固定を維持。 */
+      .shift-grid-wrap { max-height:none; overflow-x:auto; }
     }
       .btn-icon { background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:14px;transition:all 0.15s; }
     .btn-icon:hover { background:#f1f5f9; }
