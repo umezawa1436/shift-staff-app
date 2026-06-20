@@ -448,20 +448,35 @@
     }
     #print-header { display: none; }
 
-    @media (max-width:768px) {
+    /* 縦向きスマホ(幅≤768) に加え、横向きスマホ(landscape かつ 高さ≤600px) も同じモバイル挙動にする。
+       横向きでは幅が768pxを超えてこのブロックが外れ、固定ヘッダ等が効かなくなっていたのを解消。
+       タブレット(landscapeでも高さ>600)は対象外でPCレイアウトのまま。 */
+    @media (max-width:768px), (orientation:landscape) and (max-height:600px) {
       /* サイドバーはオフキャンバス・ドロワー（ハンバーガーで開閉） */
       .sidebar { transform:translateX(-100%);transition:transform 0.25s ease;box-shadow:2px 0 14px rgba(0,0,0,0.18); }
       body.sidebar-open .sidebar { transform:translateX(0); }
       body.sidebar-open .sidebar-backdrop { display:block; }
-      /* ドロワー展開中は背景（body）のスクロールをロック。閉じると class が外れて自動復帰 */
+      /* ドロワー展開中は背景（body / 新スクロール枠の content）のスクロールをロック。閉じると class が外れて自動復帰 */
       body.sidebar-open { overflow:hidden; }
+      body.sidebar-open .content { overflow:hidden; }
       .main { margin-left:0; }
       .sidebar-toggle { display:flex; }
       .stats-grid { grid-template-columns:repeat(2,1fr); }
-      .content { padding:16px; }
+      /* モバイルは .layout を定値高さにして .content を唯一のスクロール枠にする。
+         バナー・ツールバー・表をまとめて .content でスクロールさせ、表ヘッダ(上)・氏名列(左)を sticky で枠の端に固定する */
+      .layout { height:100vh; }
+      /* 上・左パディングを0に。iOS Safari の sticky+padding 癖で日付ヘッダ上端・氏名列左端に
+         隙間ができ、そこにスクロール中のセルが透けていたのを解消。ヘッダ＝枠上端、氏名列＝枠左端でぴったり固定 */
+      .content { padding:0 16px 16px 0; overflow:auto; }
       .generate-options { grid-template-columns:1fr; }
       .settings-grid { grid-template-columns:1fr; }
-      .shift-grid-wrap { max-height:calc(100vh - 170px); }
+      /* スクロールは .content に集約するため、表ラッパー自身はスクロール容器にしない。
+         これにより 表ヘッダ(thead, sticky top)＝画面上端、氏名列(sticky left)＝画面左端 で固定され、
+         確定バナー・ツールバーは .content 内で上にスクロールして消え、作業領域が最大化される。
+         スクロール容器が1つになるので「途中で止まる」ネスト競合も解消。 */
+      .shift-grid-wrap { max-height:none; overflow:visible; }
+      /* コマンド群・確定取消バナーは通常フロー（縦横とも普通にスクロールして流れて消える）。
+         横スクロールで左上固定する案は描画が重くカクつくため、ひとまず不採用。 */
     }
       .btn-icon { background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:14px;transition:all 0.15s; }
     .btn-icon:hover { background:#f1f5f9; }

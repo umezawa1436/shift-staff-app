@@ -495,7 +495,7 @@ document.querySelectorAll('.nav-item[data-page]').forEach(item => {
     document.getElementById('topbarTitle').textContent = titles[page] || page;
     refreshCurrentPage();
     // スマホ：メニュー選択後はドロワーを閉じる
-    if (window.matchMedia('(max-width:768px)').matches) document.body.classList.remove('sidebar-open');
+    if (window.matchMedia('(max-width:768px), (orientation:landscape) and (max-height:600px)').matches) document.body.classList.remove('sidebar-open');
   });
 });
 
@@ -1319,7 +1319,7 @@ function updateConfirmLockUI() {
       badge.style.display = 'block';
       badge.style.background = '#d1fae5';
       badge.style.color = '#065f46';
-      badge.textContent = '✅ 確定済み';
+      badge.textContent = '📢 公開中';
     } else {
       badge.style.display = 'none';
     }
