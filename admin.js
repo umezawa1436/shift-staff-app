@@ -973,54 +973,6 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
 
   html += '</tbody>';
   grid.innerHTML = html;
-  if (gridId === 'shiftGrid') setupShiftNameColumnSticky();
-}
-
-// 名前列の横固定（CSS sticky-left が効かない環境向け。横スクロール量だけ右へtransformで戻す）
-let _nameColScrollBound = false;
-// 【診断用】実際に横スクロールしている要素を探す（wrap限定にしない）
-function findHorizontalScroller() {
-  const grid = document.getElementById('shiftGrid');
-  if (!grid) return null;
-  let el = grid.parentElement;
-  while (el && el !== document.body) {
-    if (el.scrollWidth > el.clientWidth + 2) return el;
-    el = el.parentElement;
-  }
-  return document.scrollingElement || document.documentElement;
-}
-function applyNameColTransform() {
-  const scroller = findHorizontalScroller();
-  if (!scroller) return;
-  const x = scroller.scrollLeft;
-  const cells = document.querySelectorAll('#shiftGrid .staff-name, #shiftGrid .staff-col');
-  for (let i = 0; i < cells.length; i++) {
-    cells[i].style.transform = x ? `translateX(${x}px)` : '';
-  }
-  // 【診断表示】
-  const dbg = document.getElementById('_stickyDbg');
-  if (dbg) dbg.textContent = `scroller=${scroller.tagName}.${(scroller.className||'').toString().split(' ')[0]} SL=${x} cells=${cells.length}`;
-}
-function setupShiftNameColumnSticky() {
-  // 【診断バッジを画面右下に出す】
-  if (!document.getElementById('_stickyDbg')) {
-    const d = document.createElement('div');
-    d.id = '_stickyDbg';
-    d.style.cssText = 'position:fixed;right:6px;bottom:6px;z-index:9999;background:rgba(0,0,0,0.8);color:#0f0;font-size:10px;padding:4px 6px;border-radius:4px;font-family:monospace;pointer-events:none;max-width:90vw;white-space:nowrap;overflow:hidden';
-    d.textContent = '診断: スクロール待ち';
-    document.body.appendChild(d);
-  }
-  const scroller = findHorizontalScroller();
-  if (!scroller) return;
-  if (!_nameColScrollBound) {
-    // wrap だけでなく実スクローラとwrap両方に張る（取りこぼし防止）
-    scroller.addEventListener('scroll', () => requestAnimationFrame(applyNameColTransform), { passive: true });
-    const wrap = document.querySelector('.shift-grid-wrap');
-    if (wrap && wrap !== scroller) wrap.addEventListener('scroll', () => requestAnimationFrame(applyNameColTransform), { passive: true });
-    window.addEventListener('scroll', () => requestAnimationFrame(applyNameColTransform), { passive: true });
-    _nameColScrollBound = true;
-  }
-  applyNameColTransform();
 }
 
 
