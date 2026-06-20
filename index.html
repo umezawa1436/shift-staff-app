@@ -361,6 +361,9 @@
         overflow: visible !important;
         padding: 0 !important;
         font-size: 9pt !important;
+        /* 8:30〜21:30 の全幅(名前列＋タイムライン≈1348px)を A4横の用紙幅に確実に収める。
+           内容幅はほぼ固定のため固定倍率で縮小（zoom はレイアウト幅を縮めるので印刷で切れない）。 */
+        zoom: 0.72;
       }
       html, body { overflow: visible !important; height: auto !important; }
     }

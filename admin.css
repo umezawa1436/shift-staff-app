@@ -182,7 +182,9 @@
     /* visibility ではなく display ベースで「不要なものを消す」方式に変更（信頼性が高い）*/
     @media print {
       @page {
-        size: A4 landscape;
+        /* size を指定すると Chrome が向き(縦/横)セレクタをロックするため、size は指定しない。
+           margin だけ指定し、用紙サイズ・向きは印刷ダイアログでユーザーが選択する。
+           横向きを選ぶとシフト表・バーチカルが読みやすい */
         margin: 5mm;
       }
       /* 背景色・帯の色を強制的に印刷する */
@@ -258,6 +260,10 @@
         height: auto !important;
         overflow: visible !important;
         font-size: 9pt !important;
+        /* 8:30〜21:30 の全幅(名前列140px＋タイムライン1248px≈1388px)を A4横の用紙幅に確実に収める。
+           内容幅はほぼ固定のため、JS連携(var)に依存せず固定倍率で縮小する。
+           zoom はレイアウト幅自体を縮めるので印刷で切れない（Chrome/Edge/Safari）。 */
+        zoom: 0.72;
       }
 
       /* モーダル下部のボタン類は非表示 */
@@ -376,7 +382,8 @@
 
     /* 印刷用スタイル */
     @page {
-      size: A4 landscape;  /* 横向き印刷でシフト表が読みやすい */
+      /* size を指定すると Chrome が向き(縦/横)セレクタをロックするため、size は指定しない。
+         margin だけ指定し、用紙サイズ・向きは印刷ダイアログでユーザーが選択する */
       margin: 8mm;
     }
     @media print {
