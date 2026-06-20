@@ -3882,6 +3882,14 @@ document.getElementById('applyBreakEditBtn')?.addEventListener('click', () => {
 document.getElementById('verticalPrintBtn')?.addEventListener('click', () => {
   // ★ バーチカル印刷モード時のみ body にクラスを付与（シフト表印刷との分離）
   document.body.classList.add('printing-vertical');
+  // 8:30〜21:30 の全幅（名前列＋タイムライン）を A4横の用紙幅に収めるための縮小率を実幅から算出
+  const content = document.getElementById('verticalViewContent');
+  if (content) {
+    const contentW = content.scrollWidth || 1; // 名前列＋タイムライン全幅(px)
+    const TARGET_PRINT_W = 1010; // A4横・余白込みの印刷可能幅(約)px@96dpi。超過時のみ縮小
+    const scale = Math.min(1, TARGET_PRINT_W / contentW);
+    content.style.setProperty('--v-print-scale', scale);
+  }
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       window.print();
