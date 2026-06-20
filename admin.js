@@ -26,6 +26,8 @@ let shiftYear = new Date().getFullYear(), shiftMonth = new Date().getMonth() + 1
 let dashYear = new Date().getFullYear(), dashMonth = new Date().getMonth() + 1;
 let genYear = new Date().getFullYear(), genMonth = new Date().getMonth() + 1;
 let allStaff = [], shiftData = {}, lockedCells = {}, wedTypes = {}, generatedShifts = {};
+// ★ シフト表セル内のロックアイコン🔒の表示/非表示（コーナーのボタンで切替。ロック状態自体は保持）
+let hideLockIcons = false;
 // ★ AI 生成プレビュー用：生成前の状態スナップショット（破棄時の復元用）
 let preAIGenerationSnapshot = null;
 // ★ 確定ロック：現在表示中の月が確定済みかどうか
@@ -788,13 +790,15 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
 
   // ヘッダー行
   let html = '<thead><tr>';
-  html += `<th class="staff-col" style="min-width:80px;padding:0;font-size:9px;color:var(--text-muted);text-align:center;line-height:1.4">
+  html += `<th class="staff-col" style="min-width:80px;padding:0;font-size:9px;color:var(--text-muted);text-align:center;line-height:1.4;white-space:nowrap">
     <div style="padding:4px 2px">
       <div style="font-weight:700;color:#475569">日</div>
       <div style="font-size:9px">クリックで詳細</div>
     </div>
-    <div style="border-top:1px solid #cbd5e1;background:#f8fafc;padding:2px 0">
-      <div style="font-size:9px">🔓=ロック</div>
+    <div style="border-top:1px solid #cbd5e1;background:#f8fafc;padding:2px">
+      ${editable
+        ? `<button id="lockIconToggleBtn" onclick="toggleLockIcons()" title="氏名欄の行ロック鍵マーク🔒/🔓の表示/非表示を切り替えます（ロック状態自体は変わりません）" style="font-size:8px;padding:2px 5px;border:1px solid #cbd5e1;border-radius:4px;background:white;cursor:pointer;font-family:inherit;line-height:1.2;white-space:nowrap">🔒 ${hideLockIcons ? 'OFF' : 'ON'}</button>`
+        : `<div style="font-size:9px">🔓=ロック</div>`}
     </div>
   </th>`;
   for (let d = 1; d <= daysInMonth; d++) {
@@ -844,16 +848,14 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
 
     if (editable) {
       const rowLockStyle = rowLocked ? 'background:#fef9c3;' : '';
-      // 属性表示
-      const empLabel = staff.emp_type === 'short' ? '<span style="font-size:9px;color:#0f766e;background:#ccfbf1;padding:1px 4px;border-radius:3px;margin-left:3px">時短</span>' 
-        : staff.emp_type === 'part' ? '<span style="font-size:9px;color:#6b7280;background:#f3f4f6;padding:1px 4px;border-radius:3px;margin-left:3px">パート</span>'
-        : '<span style="font-size:9px;color:#1d4ed8;background:#dbeafe;padding:1px 4px;border-radius:3px;margin-left:3px">常勤</span>';
+      // 属性表示：雇用形態ラベル(常勤/時短/パート)は作業領域確保のため非表示
+      const empLabel = '';
       const skillLabel = staff.skill_level === 'beginner' ? '<span style="margin-left:2px;font-size:11px">🔰</span>'
         : staff.skill_level === 'no_count' ? '<span style="margin-left:2px;font-size:11px">🌸</span>'
         : '';
       html += `<tr style="${rowLockStyle}"><td class="staff-name" style="cursor:pointer;user-select:none;white-space:nowrap" onclick="toggleRowLock('${staff.id}',${daysInMonth})" title="${rowLocked?'行ロック解除':'行ロック'}">
         <span style="font-size:12px;font-weight:600">${staff.name}</span>${empLabel}${skillLabel}
-        <span style="margin-left:4px;font-size:10px">${rowLocked?'🔒':'<span style=\"color:#d1d5db\">🔓</span>'}</span>
+        <span class="row-lock-icon" style="margin-left:4px;font-size:10px">${rowLocked?'🔒':'<span style=\"color:#d1d5db\">🔓</span>'}</span>
       </td>`;
     } else {
       html += `<tr><td class="staff-name">${staff.name}</td>`;
@@ -974,6 +976,17 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
 
   html += '</tbody>';
   grid.innerHTML = html;
+  // 再描画後もロックアイコン表示状態を維持（編集グリッドのみ）
+  if (gridId === 'shiftGrid') grid.classList.toggle('hide-lock-icons', hideLockIcons);
+}
+
+// シフト表セル内のロックアイコン🔒の表示/非表示をトグル（CSSクラスで切替＝再描画不要・ロック状態は不変）
+function toggleLockIcons() {
+  hideLockIcons = !hideLockIcons;
+  const grid = document.getElementById('shiftGrid');
+  if (grid) grid.classList.toggle('hide-lock-icons', hideLockIcons);
+  const btn = document.getElementById('lockIconToggleBtn');
+  if (btn) btn.textContent = `🔒 ${hideLockIcons ? 'OFF' : 'ON'}`;
 }
 
 
@@ -3882,10 +3895,25 @@ document.getElementById('applyBreakEditBtn')?.addEventListener('click', () => {
 document.getElementById('verticalPrintBtn')?.addEventListener('click', () => {
   // ★ バーチカル印刷モード時のみ body にクラスを付与（シフト表印刷との分離）
   document.body.classList.add('printing-vertical');
+  // 8:30〜21:30 の全幅（名前列＋タイムライン）を A4横の用紙幅に収めるための縮小率を実幅から算出
+  const content = document.getElementById('verticalViewContent');
+  if (content) {
+    const contentW = content.scrollWidth || 1; // 名前列＋タイムライン全幅(px)
+    const TARGET_PRINT_W = 1010; // A4横・余白込みの印刷可能幅(約)px@96dpi。超過時のみ縮小
+    const scale = Math.min(1, TARGET_PRINT_W / contentW);
+    content.style.setProperty('--v-print-scale', scale);
+  }
+  // ★ クラス除去は固定タイマーではなく afterprint で行う。
+  //   print() が非同期な環境や、プレビューで向き変更などに時間がかかっても、
+  //   印刷ダイアログが閉じるまで printing-vertical を保持し続ける（途中でシフト表に化けるのを防ぐ）。
+  const cleanup = () => {
+    document.body.classList.remove('printing-vertical');
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       window.print();
-      setTimeout(() => document.body.classList.remove('printing-vertical'), 1000);
     });
   });
 });
@@ -5342,6 +5370,8 @@ async function loadExportPage() {
 
 // ===== 印刷 =====
 document.getElementById('printShiftBtn')?.addEventListener('click', () => {
+  // ★ 念のためバーチカル印刷状態を解除（クラスが残っていてもシフト表印刷を誤らせない保険）
+  document.body.classList.remove('printing-vertical');
   // エクスポートページから押された場合でも、印刷対象のシフト表を表示状態にしてから印刷する
   activateShiftPageForOutput();
   // 印刷ヘッダーを表示
@@ -5351,13 +5381,17 @@ document.getElementById('printShiftBtn')?.addEventListener('click', () => {
     header.style.display = 'block';
     sub.textContent = `${DEPT_NAMES[currentDept]}　${shiftYear}年${shiftMonth}月`;
   }
+  // ★ ヘッダー除去も afterprint で（プレビュー操作中に消えるのを防ぐ）
+  const cleanup = () => {
+    if (header) header.style.display = 'none';
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
   // ★ DOM 更新後にレンダリングが完了してから print() を呼ぶ。
   //   即座に呼ぶと印刷プレビューが空白になることがある。
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       window.print();
-      // 印刷後にヘッダーを非表示
-      setTimeout(() => { if (header) header.style.display = 'none'; }, 1000);
     });
   });
 });
