@@ -472,11 +472,20 @@
          確定バナー・ツールバーは .content 内で上にスクロールして消え、作業領域が最大化される。
          スクロール容器が1つになるので「途中で止まる」ネスト競合も解消。 */
       .shift-grid-wrap { max-height:none; overflow:visible; }
-      /* コマンド群（部署タブ・ツールバー）：縦スクロールでは普通に流れて消えるが、
-         横スクロールでは左に固定して画面外へ消さない（＝左上固定イメージ）。
-         left のみ指定なので横軸だけ sticky、縦軸は通常スクロール。 */
+      /* ── コマンド群を「横スクロール＝左上固定／縦スクロール＝流れて消える」にする ──
+         sticky-left の要素は包含ブロックの外には張り付けない。#page-shift がビューポート幅のままだと
+         表幅ぶん横スクロールした時にコマンド群も一緒に左へ消える。そこで #page-shift を
+         スクロール内容（表）の幅まで広げ、コマンド群が表の全幅にわたって左に張り付けるようにする。
+         min-width:100% で表が狭い時のやせ細りを防止。 */
+      #page-shift { width:max-content; min-width:100%; }
+      /* コマンド群：ビューポート幅で left:0 sticky。横スクロールで左上に固定、縦スクロールで流れて消える。
+         .month-nav / .dept-tabs は flex-wrap:wrap なので 100vw 内で従来どおり折り返す */
       #page-shift > .dept-tabs,
-      #page-shift > .month-nav { position:sticky; left:0; z-index:7; }
+      #page-shift > .month-nav { position:sticky; left:0; width:100vw; z-index:7; }
+      /* 確定取消バナー（ボタンのみ）も左に固定 */
+      #confirmLockBanner { position:sticky; left:0; width:fit-content; }
+      /* 自動生成プレビューバナーは #page-shift 拡幅で表幅に伸びないよう viewport 幅に制限し、上＋左に固定 */
+      #aiPreviewBanner { width:100vw; left:0; }
     }
       .btn-icon { background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:14px;transition:all 0.15s; }
     .btn-icon:hover { background:#f1f5f9; }
