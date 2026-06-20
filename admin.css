@@ -463,8 +463,9 @@
       .settings-grid { grid-template-columns:1fr; }
       /* モバイルは縦キャップを外してページ全体を縦スクロールさせる。
          （内側スクロールだと確定バナーが画面外に流れず、上部からスクロールできない問題が出るため）
-         横スクロールは overflow-x で内側のまま＝名前列の固定を維持。 */
-      .shift-grid-wrap { max-height:none; overflow-x:auto; }
+         横は overflow-x:auto で内側スクロール＝名前列の固定を維持。
+         overflow-y は hidden を明示（auto のままだと iOS で「縦に溢れが無い時に横スクロールも無効化」される不具合を踏むため）。 */
+      .shift-grid-wrap { max-height:none; overflow-x:auto; overflow-y:hidden; }
     }
       .btn-icon { background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:14px;transition:all 0.15s; }
     .btn-icon:hover { background:#f1f5f9; }
