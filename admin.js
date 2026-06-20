@@ -474,6 +474,14 @@ function buildAllDeptTabs() {
 }
 
 // NAVIGATION
+// サイドバー開閉（スマホ用ドロワー）
+document.getElementById('sidebarToggle')?.addEventListener('click', () => {
+  document.body.classList.toggle('sidebar-open');
+});
+document.getElementById('sidebarBackdrop')?.addEventListener('click', () => {
+  document.body.classList.remove('sidebar-open');
+});
+
 document.querySelectorAll('.nav-item[data-page]').forEach(item => {
   item.addEventListener('click', () => {
     const page = item.dataset.page;
@@ -484,6 +492,8 @@ document.querySelectorAll('.nav-item[data-page]').forEach(item => {
     const titles = {dashboard:'ダッシュボード',requests:'希望一覧',shift:'シフト表',generate:'自動生成',settings:'設定',staff:'スタッフ管理',account:'アカウント管理'};
     document.getElementById('topbarTitle').textContent = titles[page] || page;
     refreshCurrentPage();
+    // スマホ：メニュー選択後はドロワーを閉じる
+    if (window.matchMedia('(max-width:768px)').matches) document.body.classList.remove('sidebar-open');
   });
 });
 

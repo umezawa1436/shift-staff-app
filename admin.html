@@ -12,7 +12,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
   <title>kingyo-shift 管理画面</title>
-  <link rel="stylesheet" href="admin.css?v=4">
+  <link rel="stylesheet" href="admin.css?v=11">
 </head>
 <body>
 
@@ -290,6 +290,7 @@
 <!-- APP -->
 <div id="appScreen">
   <div class="layout">
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
     <div class="sidebar">
       <div class="sidebar-logo">
         <div class="sidebar-logo-title">やちよ総合診療<br>クリニック</div>
@@ -335,6 +336,9 @@
 
     <div class="main">
       <div class="topbar">
+        <button class="sidebar-toggle" id="sidebarToggle" aria-label="メニュー">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+        </button>
         <div>
           <div class="page-title" id="topbarTitle">シフト表</div>
           <div class="page-sub" id="topbarSub"></div>
@@ -877,7 +881,7 @@
   </div>
 </div>
 
-<script src="admin.js?v=2"></script>
-<script src="admin-generate.js?v=2"></script>
+<script src="admin.js?v=6"></script>
+<script src="admin-generate.js?v=3"></script>
 </body>
 </html>

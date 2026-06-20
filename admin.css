@@ -86,11 +86,14 @@
     .user-info { font-size:13px;margin-bottom:4px; }
     .user-role { font-size:11px;opacity:0.6; }
     .btn-logout { width:100%;padding:8px;background:rgba(255,255,255,0.1);color:white;border:none;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer;margin-top:8px; }
-    .main { margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column; }
+    .main { margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-width:0; }
+    /* スマホ用：メニュー開閉ボタンとドロワー背景（デフォルト非表示） */
+    .sidebar-toggle { display:none;align-items:center;justify-content:center;background:transparent;border:1px solid var(--border);border-radius:8px;width:40px;height:40px;color:var(--text);cursor:pointer;margin-right:12px;flex-shrink:0; }
+    .sidebar-backdrop { display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:90; }
     .topbar { background:white;padding:calc(16px + env(safe-area-inset-top)) 28px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50; }
     .page-title { font-size:20px;font-weight:700; }
     .page-sub { font-size:13px;color:var(--text-muted);margin-top:2px; }
-    .content { padding:24px 28px;flex:1; }
+    .content { padding:24px 28px;flex:1;min-width:0; }
 
     /* CARDS */
     .card { background:white;border-radius:16px;padding:20px;box-shadow:0 2px 12px rgba(0,0,0,0.06);margin-bottom:20px; }
@@ -131,13 +134,19 @@
     .data-table tr:hover td { background:#f8fafc; }
 
     /* SHIFT GRID */
-    .shift-grid-wrap { overflow-x:auto; }
-    .shift-grid { border-collapse:collapse;font-size:11px;min-width:100%; }
-    .shift-grid th { padding:6px 4px;text-align:center;font-weight:600;font-size:10px;color:var(--text-muted);border:1px solid var(--border);background:var(--bg);white-space:nowrap;min-width:34px; }
-    .shift-grid th.staff-col { min-width:72px;text-align:left;padding-left:10px; }
-    .shift-grid td { padding:2px;border:1px solid var(--border);text-align:center;vertical-align:middle;height:42px; }
+    /* 縦スクロール容器（vh使用＝フリーズ回避）。日付と名前を両方固定するために必要 */
+    .shift-grid-wrap { overflow:auto;max-height:calc(100vh - 220px);-webkit-overflow-scrolling:touch; }
+    /* sticky を縦横とも効かせるには border-collapse:separate が必須（collapseだと左列stickyが描画されない） */
+    .shift-grid { border-collapse:separate;border-spacing:0;font-size:11px;min-width:100%; }
+    .shift-grid th { padding:6px 4px;text-align:center;font-weight:600;font-size:10px;color:var(--text-muted);border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--bg);white-space:nowrap;min-width:34px; }
+    .shift-grid td { padding:2px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);text-align:center;vertical-align:middle;height:42px; }
+    /* 日付ヘッダ行：上に固定（縦スクロール時） */
+    .shift-grid thead th { position:sticky;top:0;z-index:3;border-top:1px solid var(--border); }
+    /* 名前列：左に固定（横スクロール時）。鍵マーク(z-index:2)より上に重ねる */
+    .shift-grid td.staff-name { padding:6px 10px;text-align:left;font-weight:500;white-space:nowrap;background:white;font-size:12px;height:42px;position:sticky;left:0;z-index:4;border-left:1px solid var(--border);box-shadow:1px 0 0 var(--border); }
+    /* 左上の角（名前列ヘッダ）：縦横ともに固定・最前面 */
+    .shift-grid th.staff-col { min-width:72px;text-align:left;padding-left:10px;position:sticky;left:0;top:0;z-index:6;background:var(--bg);border-left:1px solid var(--border);box-shadow:1px 0 0 var(--border); }
     .shift-grid tbody tr { height:42px; }
-    .shift-grid td.staff-name { padding:6px 10px;text-align:left;font-weight:500;white-space:nowrap;background:white;font-size:12px;height:42px; }
     .shift-cell { height:36px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:pointer;transition:all 0.15s;padding:1px;overflow:hidden; }
     #shiftEditOptions .shift-cell { height:auto;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center; }
     .shift-cell.has-req { flex-direction:column;justify-content:center;align-items:center; }
@@ -390,7 +399,8 @@
       .card { box-shadow: none !important; border: 1px solid #ccc; padding: 4px !important; }
 
       /* ★ シフトテーブルが切り落とされないように overflow を解除 */
-      .shift-grid-wrap { overflow: visible !important; width: 100% !important; }
+      .shift-grid-wrap { overflow: visible !important; width: 100% !important; max-height: none !important; }
+      .shift-grid thead th, .shift-grid th.staff-col, .shift-grid td.staff-name { position: static !important; box-shadow: none !important; }
       .shift-grid {
         width: 100% !important;
         border-collapse: collapse !important;
@@ -427,14 +437,17 @@
     #print-header { display: none; }
 
     @media (max-width:768px) {
-      .sidebar { width:56px; }
-      .sidebar-logo-title,.sidebar-logo-sub,.nav-section,.nav-item span,.user-info,.user-role,.btn-logout { display:none; }
-      .main { margin-left:56px; }
-      .nav-item { justify-content:center;padding:12px; }
+      /* サイドバーはオフキャンバス・ドロワー（ハンバーガーで開閉） */
+      .sidebar { transform:translateX(-100%);transition:transform 0.25s ease;box-shadow:2px 0 14px rgba(0,0,0,0.18); }
+      body.sidebar-open .sidebar { transform:translateX(0); }
+      body.sidebar-open .sidebar-backdrop { display:block; }
+      .main { margin-left:0; }
+      .sidebar-toggle { display:flex; }
       .stats-grid { grid-template-columns:repeat(2,1fr); }
       .content { padding:16px; }
       .generate-options { grid-template-columns:1fr; }
       .settings-grid { grid-template-columns:1fr; }
+      .shift-grid-wrap { max-height:calc(100vh - 170px); }
     }
       .btn-icon { background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:14px;transition:all 0.15s; }
     .btn-icon:hover { background:#f1f5f9; }
