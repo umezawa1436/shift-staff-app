@@ -790,14 +790,14 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
 
   // ヘッダー行
   let html = '<thead><tr>';
-  html += `<th class="staff-col" style="min-width:80px;padding:0;font-size:9px;color:var(--text-muted);text-align:center;line-height:1.4">
+  html += `<th class="staff-col" style="min-width:80px;padding:0;font-size:9px;color:var(--text-muted);text-align:center;line-height:1.4;white-space:nowrap">
     <div style="padding:4px 2px">
       <div style="font-weight:700;color:#475569">日</div>
       <div style="font-size:9px">クリックで詳細</div>
     </div>
     <div style="border-top:1px solid #cbd5e1;background:#f8fafc;padding:2px">
       ${editable
-        ? `<button id="lockIconToggleBtn" onclick="toggleLockIcons()" title="ロックアイコン🔒の表示/非表示を切り替えます（ロック状態自体は変わりません）" style="font-size:8px;padding:2px 5px;border:1px solid #cbd5e1;border-radius:4px;background:white;cursor:pointer;font-family:inherit;line-height:1.2;white-space:nowrap">🔒 ${hideLockIcons ? 'OFF' : 'ON'}</button>`
+        ? `<button id="lockIconToggleBtn" onclick="toggleLockIcons()" title="氏名欄の行ロック鍵マーク🔒/🔓の表示/非表示を切り替えます（ロック状態自体は変わりません）" style="font-size:8px;padding:2px 5px;border:1px solid #cbd5e1;border-radius:4px;background:white;cursor:pointer;font-family:inherit;line-height:1.2;white-space:nowrap">🔒 ${hideLockIcons ? 'OFF' : 'ON'}</button>`
         : `<div style="font-size:9px">🔓=ロック</div>`}
     </div>
   </th>`;
@@ -855,7 +855,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
         : '';
       html += `<tr style="${rowLockStyle}"><td class="staff-name" style="cursor:pointer;user-select:none;white-space:nowrap" onclick="toggleRowLock('${staff.id}',${daysInMonth})" title="${rowLocked?'行ロック解除':'行ロック'}">
         <span style="font-size:12px;font-weight:600">${staff.name}</span>${empLabel}${skillLabel}
-        <span style="margin-left:4px;font-size:10px">${rowLocked?'🔒':'<span style=\"color:#d1d5db\">🔓</span>'}</span>
+        <span class="row-lock-icon" style="margin-left:4px;font-size:10px">${rowLocked?'🔒':'<span style=\"color:#d1d5db\">🔓</span>'}</span>
       </td>`;
     } else {
       html += `<tr><td class="staff-name">${staff.name}</td>`;
