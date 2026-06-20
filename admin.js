@@ -2199,7 +2199,7 @@ function showEditAccountModal(id, name, role, deptId) {
   modal.innerHTML = `
     <div class="modal">
       <div class="modal-title">${name}のアカウント編集</div>
-      <div class="form-group"><label class="form-label">名前（苗字）</label><input type="text" class="form-input" id="editAccName" value="${name}"></div>
+      <div class="form-group"><label class="form-label">名前（苗字）</label><input type="text" class="form-input" id="editAccName" value="${name}">${deptId !== null ? '<div style="font-size:11px;color:#6b7280;margin-top:4px">※同部門で同名のスタッフがいる場合、シフト表・スタッフ管理上の氏名も連動して変わります</div>' : ''}</div>
       <div class="form-group"><label class="form-label">権限${isSelf ? '（自分自身の権限は変更できません）' : ''}</label>
         <select class="form-select" id="editAccRole" ${isSelf ? 'disabled' : ''} onchange="document.getElementById('editAccDeptGroup').style.display=this.value==='master'?'none':'block'">
           <option value="master" ${role==='master'?'selected':''}>管理</option>
@@ -2219,14 +2219,14 @@ function showEditAccountModal(id, name, role, deptId) {
       <div class="form-group"><label class="form-label">新しいパスワード（変更する場合のみ）</label><input type="password" class="form-input" id="editAccPw" placeholder="空欄で変更なし"></div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="document.getElementById('editAccountModalEl').remove()">キャンセル</button>
-        <button class="btn btn-primary" onclick="updateAccount('${id}')">保存する</button>
+        <button class="btn btn-primary" onclick="updateAccount('${id}', '${name}', ${deptId})">保存する</button>
       </div>
     </div>`;
   modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
   document.body.appendChild(modal);
 }
 
-async function updateAccount(id) {
+async function updateAccount(id, oldName, oldDeptId) {
   const name = document.getElementById('editAccName').value.trim();
   const pw = document.getElementById('editAccPw').value;
   const isSelf = id === adminUser.id;
@@ -2245,9 +2245,38 @@ async function updateAccount(id) {
       payload.deptId = deptId;
     }
     await adminApi('/api/admin-accounts', payload);
+
+    // ★ 紐づくスタッフの氏名も連動更新
+    // accounts と staff は「部門＋氏名」で実質的に紐付いているため、
+    // 氏名が変わった & 部門のあるアカウント（master以外）の場合、
+    // 同部門・旧氏名の staff を新氏名に PATCH して、シフト表／スタッフ管理側も連動させる。
+    let syncedCount = 0;
+    if (name !== oldName && oldDeptId !== null && oldDeptId !== undefined && !Number.isNaN(Number(oldDeptId))) {
+      const enc = encodeURIComponent(oldName);
+      const matched = await sb(`staff?name=eq.${enc}&dept_id=eq.${oldDeptId}&select=id`);
+      if (matched.length > 0) {
+        await sb(`staff?name=eq.${enc}&dept_id=eq.${oldDeptId}`, {
+          method: 'PATCH',
+          headers: { 'Prefer': 'return=representation' },
+          body: JSON.stringify({ name })
+        });
+        // メモリ上の allStaff も即時更新（次のシフト表／スタッフ管理描画に反映）
+        matched.forEach(m => {
+          const idx = allStaff.findIndex(s => s.id === m.id);
+          if (idx !== -1) allStaff[idx].name = name;
+        });
+        syncedCount = matched.length;
+      }
+    }
+
     document.getElementById('editAccountModalEl')?.remove();
     await loadAccountList();
-    showToast('アカウントを更新しました ✓', 'success');
+    showToast(
+      syncedCount > 0
+        ? `アカウントを更新し、スタッフ${syncedCount}件の氏名も連動しました ✓`
+        : 'アカウントを更新しました ✓',
+      'success'
+    );
   } catch(e) {
     console.error(e);
     showToast('更新エラー：' + (e.message || ''), 'error');
