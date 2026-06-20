@@ -182,7 +182,9 @@
     /* visibility ではなく display ベースで「不要なものを消す」方式に変更（信頼性が高い）*/
     @media print {
       @page {
-        size: A4 landscape;
+        /* 向き(landscape)を固定しない＝印刷ダイアログで縦/横を選択できるようにする。
+           横向きの方が読みやすいため、ダイアログで「横」を選んで印刷する想定 */
+        size: A4;
         margin: 5mm;
       }
       /* 背景色・帯の色を強制的に印刷する */
@@ -258,6 +260,9 @@
         height: auto !important;
         overflow: visible !important;
         font-size: 9pt !important;
+        /* 8:30〜21:30 の全幅(名前列＋タイムライン≈1388px)を用紙幅に収める。
+           --v-print-scale は印刷直前に JS が実幅から算出してセットする */
+        zoom: var(--v-print-scale, 1);
       }
 
       /* モーダル下部のボタン類は非表示 */
@@ -376,7 +381,9 @@
 
     /* 印刷用スタイル */
     @page {
-      size: A4 landscape;  /* 横向き印刷でシフト表が読みやすい */
+      /* 向き(landscape)を固定しない＝印刷ダイアログで縦/横を選べるようにする。
+         横向きの方がシフト表は読みやすいため、ダイアログで「横」を選んで印刷する想定 */
+      size: A4;
       margin: 8mm;
     }
     @media print {
