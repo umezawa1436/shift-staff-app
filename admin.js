@@ -489,7 +489,7 @@ document.querySelectorAll('.nav-item[data-page]').forEach(item => {
     item.classList.add('active');
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById(`page-${page}`).classList.add('active');
-    const titles = {dashboard:'ダッシュボード',requests:'希望一覧',shift:'シフト表',generate:'自動生成',settings:'設定',staff:'スタッフ管理',account:'アカウント管理'};
+    const titles = {dashboard:'ダッシュボード',requests:'希望一覧',shift:'シフト表',generate:'自動生成',settings:'設定',staff:'スタッフ管理',account:'アカウント管理',export:'エクスポート'};
     document.getElementById('topbarTitle').textContent = titles[page] || page;
     refreshCurrentPage();
     // スマホ：メニュー選択後はドロワーを閉じる
@@ -520,6 +520,7 @@ function refreshCurrentPage() {
   else if (active === 'settings') loadSettings();
   else if (active === 'staff') loadStaffTable();
   else if (active === 'account') loadAccountPage();
+  else if (active === 'export') loadExportPage();
 }
 
 // ===== DASHBOARD =====
@@ -1723,6 +1724,34 @@ function refreshSummaryRows() {
   });
 }
 
+// 元に戻す／やり直し（キーボード Ctrl+Z / Ctrl+Y と、ツールバーの 戻る/進む ボタンで共用）
+function doUndo() {
+  if (!checkConfirmLock()) return;
+  if (undoStack.length === 0) { showToast('これ以上戻れません'); return; }
+  redoStack.push({
+    shiftData: JSON.parse(JSON.stringify(shiftData)),
+    lockedCells: JSON.parse(JSON.stringify(lockedCells))
+  });
+  const prev = undoStack.pop();
+  shiftData = prev.shiftData;
+  lockedCells = prev.lockedCells;
+  rerenderShiftGridFromMemory();
+  showToast('元に戻しました');
+}
+function doRedo() {
+  if (!checkConfirmLock()) return;
+  if (redoStack.length === 0) { showToast('これ以上進めません'); return; }
+  undoStack.push({
+    shiftData: JSON.parse(JSON.stringify(shiftData)),
+    lockedCells: JSON.parse(JSON.stringify(lockedCells))
+  });
+  const next = redoStack.pop();
+  shiftData = next.shiftData;
+  lockedCells = next.lockedCells;
+  rerenderShiftGridFromMemory();
+  showToast('やり直しました');
+}
+
 document.addEventListener('keydown', (e) => {
   const isMac = navigator.platform.toUpperCase().includes('MAC');
   const ctrl = isMac ? e.metaKey : e.ctrlKey;
@@ -1839,31 +1868,12 @@ document.addEventListener('keydown', (e) => {
   }
   if (ctrl && e.key==='z' && !e.shiftKey) {
     e.preventDefault();
-    if (undoStack.length===0) { showToast('これ以上戻れません'); return; }
-    redoStack.push({
-      shiftData: JSON.parse(JSON.stringify(shiftData)),
-      lockedCells: JSON.parse(JSON.stringify(lockedCells))
-    });
-    const prev = undoStack.pop();
-    shiftData = prev.shiftData;
-    lockedCells = prev.lockedCells;
-    // ロック状態も変わる可能性があるためヘッダーごと再描画
-    rerenderShiftGridFromMemory();
-    showToast('元に戻しました');
+    doUndo();
     return;
   }
   if ((ctrl&&e.key==='y')||(ctrl&&e.shiftKey&&e.key==='z')) {
     e.preventDefault();
-    if (redoStack.length===0) { showToast('これ以上進めません'); return; }
-    undoStack.push({
-      shiftData: JSON.parse(JSON.stringify(shiftData)),
-      lockedCells: JSON.parse(JSON.stringify(lockedCells))
-    });
-    const next = redoStack.pop();
-    shiftData = next.shiftData;
-    lockedCells = next.lockedCells;
-    rerenderShiftGridFromMemory();
-    showToast('やり直しました');
+    doRedo();
     return;
   }
   if (ctrl&&e.key==='a') {
@@ -2002,26 +2012,8 @@ document.getElementById('saveShiftBtn').addEventListener('click', async () => {
 });
 
 // 保存時点に戻すボタン
-document.getElementById('revertSavedBtn')?.addEventListener('click', () => {
-  if (!savedShiftSnapshot) {
-    showToast('保存時点が記録されていません', 'error');
-    return;
-  }
-  // メモリ状態と保存時点が同じなら何もしない
-  const cur = JSON.stringify({sd: shiftData, lc: lockedCells});
-  const sav = JSON.stringify({sd: savedShiftSnapshot.shiftData, lc: savedShiftSnapshot.lockedCells});
-  if (cur === sav) {
-    showToast('変更はありません');
-    return;
-  }
-  if (!confirm('最後の保存時点まで戻します。それ以降の変更（ロック含む）は失われます。よろしいですか？')) return;
-  shiftData = JSON.parse(JSON.stringify(savedShiftSnapshot.shiftData));
-  lockedCells = JSON.parse(JSON.stringify(savedShiftSnapshot.lockedCells));
-  undoStack = [];
-  redoStack = [];
-  rerenderShiftGridFromMemory();
-  showToast('保存時点に戻しました ✓','success');
-});
+document.getElementById('undoBtn')?.addEventListener('click', doUndo);
+document.getElementById('redoBtn')?.addEventListener('click', doRedo);
 
 // ===== SETTINGS =====
 
@@ -5302,10 +5294,56 @@ function invalidateShiftCache() {
   shiftGridContext = null;
 }
 
-document.getElementById('reloadShiftBtn')?.addEventListener('click', reloadShiftGrid);
+// 希望（スタッフ提出シフト希望）だけを再取得して上書き表示する。
+// 未保存のシフト編集（shiftData / lockedCells）は保持したまま、希望オーバーレイのみ最新化する。
+async function reloadRequestsOnly() {
+  showLoading();
+  try {
+    const deptStaff = allStaff.filter(s => s.dept_id === currentDept);
+    const ids = deptStaff.map(s => s.id);
+    const reqMap = {};
+    if (ids.length > 0) {
+      const reqs = await sb(`shift_requests?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,day,request_type`);
+      reqs.forEach(r => { reqMap[`${r.staff_id}|${r.day}`] = r.request_type; });
+    }
+    window._shiftReqMap = reqMap;
+    rerenderShiftGridFromMemory();
+    showToast('希望を最新化しました ✓', 'success');
+  } catch (e) {
+    console.error(e);
+    showToast('希望のリロードに失敗しました', 'error');
+  }
+  hideLoading();
+}
+document.getElementById('reloadShiftBtn')?.addEventListener('click', reloadRequestsOnly);
+
+// エクスポートページ：印刷対象のシフト表DOMを表示状態にする（@media print はシフト表DOMに依存するため）
+function activateShiftPageForOutput() {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const shiftNav = document.querySelector('.nav-item[data-page="shift"]');
+  if (shiftNav) shiftNav.classList.add('active');
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const shiftPage = document.getElementById('page-shift');
+  if (shiftPage) shiftPage.classList.add('active');
+  const t = document.getElementById('topbarTitle');
+  if (t) t.textContent = 'シフト表';
+}
+
+// エクスポートページ：出力対象（シフト表で選択中の部署・月）をグリッドに用意し、ラベルを更新
+async function loadExportPage() {
+  const ctx = `${currentDept}|${shiftYear}|${shiftMonth}`;
+  // 既に同コンテキストが読み込まれている場合は未保存編集を消さないため再読込しない
+  if (shiftGridContext !== ctx) {
+    await loadShiftGrid();
+  }
+  const label = document.getElementById('exportContextLabel');
+  if (label) label.textContent = `${DEPT_NAMES[currentDept] || ''}　${shiftYear}年${shiftMonth}月`;
+}
 
 // ===== 印刷 =====
 document.getElementById('printShiftBtn')?.addEventListener('click', () => {
+  // エクスポートページから押された場合でも、印刷対象のシフト表を表示状態にしてから印刷する
+  activateShiftPageForOutput();
   // 印刷ヘッダーを表示
   const header = document.getElementById('print-header');
   const sub = document.getElementById('printHeaderSub');
