@@ -2103,13 +2103,13 @@ async function loadAccountList() {
         : '';
       return `
       <tr>
-        <td>${a.name}</td>
+        <td>${a.name}${a.role==='staff' ? `<div style="font-size:11px;color:#6b7280;margin-top:2px">スタッフID: ${a.staff_code != null ? a.staff_code : '<span style="color:#dc2626">未設定</span>'}</div>` : ''}</td>
         <td><span class="badge ${a.role==='master'?'badge-master':a.role==='leader'?'badge-leader':'badge-part'}">${ROLE_LABELS[a.role]||a.role}</span></td>
         <td>${a.dept_id !== null ? DEPT_NAMES[a.dept_id] : '全部門'}</td>
         <td>${statusHtml}</td>
         <td style="display:flex;gap:6px;flex-wrap:wrap">
           ${unlockBtn}
-          <button class="btn btn-outline btn-sm" onclick="showEditAccountModal('${a.id}','${a.name}','${a.role}',${a.dept_id})">編集</button>
+          <button class="btn btn-outline btn-sm" onclick="showEditAccountModal('${a.id}','${a.name}','${a.role}',${a.dept_id},${a.staff_code != null ? a.staff_code : 'null'},'${a.staff_id || ''}')">編集</button>
           ${a.id !== adminUser.id ? `<button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="deleteAccount('${a.id}','${a.name}')">削除</button>` : ''}
         </td>
       </tr>`;
@@ -2190,7 +2190,19 @@ async function addAccount() {
   hideLoading();
 }
 
-function showEditAccountModal(id, name, role, deptId) {
+// アカウント紐付け用：指定部門のスタッフを<option>化（value=staff.id, data-code=現staff_code）
+function accountStaffOptions(deptId, selectedStaffId) {
+  const d = Number(deptId);
+  const list = (typeof allStaff !== 'undefined' ? allStaff : []).filter(s => s.dept_id === d);
+  const opts = ['<option value="">（紐付けなし）</option>'];
+  list.forEach(s => {
+    const sel = (selectedStaffId && s.id === selectedStaffId) ? 'selected' : '';
+    opts.push(`<option value="${s.id}" data-code="${s.staff_code ?? ''}" ${sel}>${escapeHtml(s.name)}（現ID:${s.staff_code ?? '—'}）</option>`);
+  });
+  return opts.join('');
+}
+
+function showEditAccountModal(id, name, role, deptId, staffCode, staffId) {
   document.getElementById('editAccountModalEl')?.remove();
   const modal = document.createElement('div');
   modal.id = 'editAccountModalEl';
@@ -2199,9 +2211,9 @@ function showEditAccountModal(id, name, role, deptId) {
   modal.innerHTML = `
     <div class="modal">
       <div class="modal-title">${name}のアカウント編集</div>
-      <div class="form-group"><label class="form-label">名前（苗字）</label><input type="text" class="form-input" id="editAccName" value="${name}">${deptId !== null ? '<div style="font-size:11px;color:#6b7280;margin-top:4px">※同部門で同名のスタッフがいる場合、シフト表・スタッフ管理上の氏名も連動して変わります</div>' : ''}</div>
+      <div class="form-group"><label class="form-label">名前（苗字）</label><input type="text" class="form-input" id="editAccName" value="${name}"></div>
       <div class="form-group"><label class="form-label">権限${isSelf ? '（自分自身の権限は変更できません）' : ''}</label>
-        <select class="form-select" id="editAccRole" ${isSelf ? 'disabled' : ''} onchange="document.getElementById('editAccDeptGroup').style.display=this.value==='master'?'none':'block'">
+        <select class="form-select" id="editAccRole" ${isSelf ? 'disabled' : ''} onchange="document.getElementById('editAccDeptGroup').style.display=this.value==='master'?'none':'block';document.getElementById('editAccStaffLinkGroup').style.display=this.value==='staff'?'block':'none';document.getElementById('editAccStaffSelect').innerHTML=accountStaffOptions(document.getElementById('editAccDept').value,'')">
           <option value="master" ${role==='master'?'selected':''}>管理</option>
           <option value="leader" ${role==='leader'?'selected':''}>リーダー</option>
           <option value="staff" ${role==='staff'?'selected':''}>スタッフ</option>
@@ -2209,24 +2221,31 @@ function showEditAccountModal(id, name, role, deptId) {
       </div>
       <div class="form-group" id="editAccDeptGroup" style="display:${role==='master'?'none':'block'}">
         <label class="form-label">部門</label>
-        <select class="form-select" id="editAccDept" ${isSelf ? 'disabled' : ''}>
+        <select class="form-select" id="editAccDept" ${isSelf ? 'disabled' : ''} onchange="document.getElementById('editAccStaffSelect').innerHTML=accountStaffOptions(this.value,'')">
           <option value="0" ${deptId===0?'selected':''}>医療事務</option>
           <option value="1" ${deptId===1?'selected':''}>看護</option>
           <option value="2" ${deptId===2?'selected':''}>リハビリ</option>
           <option value="3" ${deptId===3?'selected':''}>放射線</option>
         </select>
       </div>
+      <div class="form-group" id="editAccStaffLinkGroup" style="display:${role==='staff'?'block':'none'}">
+        <label class="form-label">紐付けスタッフ</label>
+        <select class="form-select" id="editAccStaffSelect" onchange="var o=this.options[this.selectedIndex];document.getElementById('editAccStaffCode').value=o.getAttribute('data-code')||''">${accountStaffOptions(deptId, staffId || '')}</select>
+        <label class="form-label" style="margin-top:8px">スタッフID（4〜5桁・ログイン用）</label>
+        <input type="text" inputmode="numeric" class="form-input" id="editAccStaffCode" value="${staffCode ?? ''}" placeholder="例: 1042">
+        <div style="font-size:11px;color:#6b7280;margin-top:4px">スタッフを選んでIDを設定すると、シフト表側の該当スタッフ（氏名・ID）に紐付き、その番号＋部門＋パスワードでログインできます。</div>
+      </div>
       <div class="form-group"><label class="form-label">新しいパスワード（変更する場合のみ）</label><input type="password" class="form-input" id="editAccPw" placeholder="空欄で変更なし"></div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="document.getElementById('editAccountModalEl').remove()">キャンセル</button>
-        <button class="btn btn-primary" onclick="updateAccount('${id}', '${name}', ${deptId})">保存する</button>
+        <button class="btn btn-primary" onclick="updateAccount('${id}')">保存する</button>
       </div>
     </div>`;
   modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
   document.body.appendChild(modal);
 }
 
-async function updateAccount(id, oldName, oldDeptId) {
+async function updateAccount(id) {
   const name = document.getElementById('editAccName').value.trim();
   const pw = document.getElementById('editAccPw').value;
   const isSelf = id === adminUser.id;
@@ -2236,6 +2255,24 @@ async function updateAccount(id, oldName, oldDeptId) {
   if (!name) { showToast('名前は必須です', 'error'); return; }
   if (pw && pw.length < 4) { showToast('パスワードは4文字以上にしてください', 'error'); return; }
 
+  // スタッフ紐付け（role=staff のときのみ）
+  const staffLinkActive = !isSelf && role === 'staff';
+  let staffId = '', staffCode = '';
+  if (staffLinkActive) {
+    staffId = document.getElementById('editAccStaffSelect').value || '';
+    const codeRaw = (document.getElementById('editAccStaffCode').value || '').trim();
+    if (staffId) {
+      if (!/^\d{1,5}$/.test(codeRaw)) { showToast('スタッフIDは数字（最大5桁）で入力してください', 'error'); return; }
+      staffCode = parseInt(codeRaw);
+      // 同部門内 staff_code 重複チェック（選択スタッフ自身は除外）
+      const dup = allStaff.find(s => s.dept_id === deptId && s.staff_code === staffCode && s.id !== staffId);
+      if (dup) { showToast(`スタッフID ${staffCode} は同部門の「${dup.name}」が使用中です`, 'error'); return; }
+    } else {
+      // 紐付けなしを選択 → 解除（空で送信）
+      staffCode = '';
+    }
+  }
+
   showLoading();
   try {
     const payload = { action: 'update', id, name };
@@ -2244,37 +2281,27 @@ async function updateAccount(id, oldName, oldDeptId) {
       payload.role = role;
       payload.deptId = deptId;
     }
+    if (staffLinkActive) {
+      payload.staffId = staffId;     // uuid or '' (解除)
+      payload.staffCode = staffCode; // 数値 or '' (解除)
+    }
     await adminApi('/api/admin-accounts', payload);
 
-    // ★ 紐づくスタッフの氏名も連動更新
-    // accounts と staff は「部門＋氏名」で実質的に紐付いているため、
-    // 氏名が変わった & 部門のあるアカウント（master以外）の場合、
-    // 同部門・旧氏名の staff を新氏名に PATCH して、シフト表／スタッフ管理側も連動させる。
-    let syncedCount = 0;
-    if (name !== oldName && oldDeptId !== null && oldDeptId !== undefined && !Number.isNaN(Number(oldDeptId))) {
-      const enc = encodeURIComponent(oldName);
-      const matched = await sb(`staff?name=eq.${enc}&dept_id=eq.${oldDeptId}&select=id`);
-      if (matched.length > 0) {
-        await sb(`staff?name=eq.${enc}&dept_id=eq.${oldDeptId}`, {
-          method: 'PATCH',
-          headers: { 'Prefer': 'return=representation' },
-          body: JSON.stringify({ name })
-        });
-        // メモリ上の allStaff も即時更新（次のシフト表／スタッフ管理描画に反映）
-        matched.forEach(m => {
-          const idx = allStaff.findIndex(s => s.id === m.id);
-          if (idx !== -1) allStaff[idx].name = name;
-        });
-        syncedCount = matched.length;
-      }
+    // 紐付け先 staff も同期：staff_code を合わせ、表示氏名もアカウント名に合わせる（uuidで確実に特定）
+    if (staffLinkActive && staffId) {
+      await sb(`staff?id=eq.${staffId}`, {
+        method: 'PATCH',
+        headers: { 'Prefer': 'return=representation' },
+        body: JSON.stringify({ staff_code: staffCode, name })
+      });
+      const idx = allStaff.findIndex(s => s.id === staffId);
+      if (idx !== -1) { allStaff[idx].staff_code = staffCode; allStaff[idx].name = name; }
     }
 
     document.getElementById('editAccountModalEl')?.remove();
     await loadAccountList();
     showToast(
-      syncedCount > 0
-        ? `アカウントを更新し、スタッフ${syncedCount}件の氏名も連動しました ✓`
-        : 'アカウントを更新しました ✓',
+      (staffLinkActive && staffId) ? 'アカウントを更新し、スタッフと紐付けました ✓' : 'アカウントを更新しました ✓',
       'success'
     );
   } catch(e) {
