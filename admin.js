@@ -1319,7 +1319,7 @@ function updateConfirmLockUI() {
       badge.style.display = 'block';
       badge.style.background = '#d1fae5';
       badge.style.color = '#065f46';
-      badge.textContent = '✅ 確定済み';
+      badge.textContent = '📢 公開中';
     } else {
       badge.style.display = 'none';
     }
