@@ -187,6 +187,18 @@
     .header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
     .header-name { font-size: 15px; font-weight: 600; color: var(--text); }
     .header-dept { font-size: 12px; color: var(--text-muted); }
+    /* ===== 名前横の金魚（タップで今日の一言） ===== */
+    .header-name-row { display: flex; align-items: center; gap: 8px; }
+    .kingyo-mini { border: none; background: transparent; padding: 0; cursor: pointer; width: 36px; height: 25px; flex-shrink: 0; line-height: 0; -webkit-tap-highlight-color: transparent; animation: kingyoSwimMini 3.4s ease-in-out infinite; }
+    .kingyo-mini:active { transform: scale(0.88); }
+    @keyframes kingyoSwimMini { 0%,100% { transform: translateX(0) rotate(-3deg); } 50% { transform: translateX(4px) rotate(3deg); } }
+    .kingyo-mini .mini-tail { transform-box: fill-box; transform-origin: right center; animation: miniTailWag 0.5s ease-in-out infinite; }
+    @keyframes miniTailWag { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } }
+    .kingyo-bubble { position: absolute; left: 16px; top: calc(env(safe-area-inset-top) + 46px); z-index: 120; max-width: calc(100% - 32px); background: #fff; color: var(--text); border: 1.5px solid var(--primary); border-radius: 14px; padding: 11px 14px 12px; box-shadow: 0 10px 28px rgba(0,0,0,0.2); font-size: 14px; line-height: 1.65; font-weight: 600; opacity: 0; transform: translateY(-6px) scale(0.98); transform-origin: top left; pointer-events: none; transition: opacity 0.18s ease, transform 0.18s ease; }
+    .kingyo-bubble.show { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+    .kingyo-bubble::before { content: ''; position: absolute; top: -9px; left: 26px; border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 9px solid var(--primary); }
+    .kingyo-bubble::after { content: ''; position: absolute; top: -7px; left: 27px; border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 8px solid #fff; }
+    .kb-label { font-size: 11px; color: var(--primary); font-weight: 800; margin-bottom: 5px; letter-spacing: 0.3px; }
     .logout-btn { background: var(--bg); border: none; border-radius: 8px; padding: 6px 12px; font-size: 12px; color: var(--text-muted); cursor: pointer; font-family: inherit; }
     .month-nav { display: flex; align-items: center; justify-content: space-between; }
     .month-title { font-size: 18px; font-weight: 700; color: var(--text); letter-spacing: -0.3px; }
@@ -361,9 +373,6 @@
         overflow: visible !important;
         padding: 0 !important;
         font-size: 9pt !important;
-        /* 8:30〜21:30 の全幅(名前列＋タイムライン≈1348px)を A4横の用紙幅に確実に収める。
-           内容幅はほぼ固定のため固定倍率で縮小（zoom はレイアウト幅を縮めるので印刷で切れない）。 */
-        zoom: 0.72;
       }
       html, body { overflow: visible !important; height: auto !important; }
     }
@@ -458,7 +467,18 @@
   <div class="app-header">
     <div class="header-top">
       <div>
-        <div class="header-name" id="headerName"></div>
+        <div class="header-name-row">
+          <div class="header-name" id="headerName"></div>
+          <button class="kingyo-mini" id="kingyoQuoteBtn" aria-label="今日の一言" title="タップで今日の一言">
+            <svg viewBox="0 0 40 28" width="36" height="25" xmlns="http://www.w3.org/2000/svg">
+              <g class="mini-tail"><path d="M10 14 Q1 5 -5 8 Q-1 14 -5 20 Q1 23 10 14 Z" fill="#fb923c"/></g>
+              <ellipse cx="23" cy="14" rx="13" ry="10" fill="#dc2626"/>
+              <path d="M17 5 Q20 -1 23 4 Q26 -1 29 5 Z" fill="#ea580c"/>
+              <circle cx="30" cy="12" r="2.4" fill="#fff"/>
+              <circle cx="30.8" cy="12" r="1.3" fill="#1f2937"/>
+            </svg>
+          </button>
+        </div>
         <div class="header-dept" id="headerDept"></div>
       </div>
       <div style="display:flex;gap:8px">
@@ -468,6 +488,8 @@
         <button class="logout-btn" id="logoutBtn">ログアウト</button>
       </div>
     </div>
+    <!-- 今日の一言 吹き出し（金魚タップで表示／日替わり） -->
+    <div class="kingyo-bubble" id="kingyoBubble"><div class="kb-label">🐠 今日の一言</div><div id="kingyoQuoteText"></div></div>
     <div class="month-nav">
       <button class="month-btn" id="prevMonthBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg></button>
       <div><div class="month-title" id="monthTitle"></div></div>
@@ -1639,6 +1661,77 @@ function closeSettingsSheet() {
 
 document.getElementById('settingsStaffBtn').addEventListener('click', openSettingsSheet);
 document.getElementById('settingsOverlay').addEventListener('click', closeSettingsSheet);
+
+// ===== 名前横の金魚：タップで「今日の一言」（日替わり） =====
+// 元気が出る言葉・ことわざ（人物への帰属は付けない＝誤帰属を避ける）。
+const DAILY_QUOTES = [
+  '今日もここに来てくれて、ありがとう。それだけで十分です。',
+  'あなたの笑顔が、誰かの不安をひとつ消しています。',
+  'できることから、ひとつずつ。焦らなくて大丈夫。',
+  '小さな「ありがとう」を、今日ひとつ言ってみよう。',
+  'うまくいかない日も、ちゃんと前に進んでいます。',
+  'あなたがいるだけで、チームの空気はやわらかくなる。',
+  '深呼吸をひとつ。あなたのペースでいきましょう。',
+  '誰かを支えるあなたを、誰かが支えています。',
+  '完璧じゃなくていい。続けていることがすごい。',
+  '今日の小さな一歩が、未来の安心をつくる。',
+  '困ったら「助けて」と言える人が、本当に強い人。',
+  'あなたの丁寧さは、ちゃんと患者さんに届いています。',
+  '比べるのは、過去の自分とだけでいい。',
+  '失敗は、学びに変わる途中の姿。',
+  '笑顔は巡り巡って、自分に返ってきます。',
+  '今日がんばった自分を、ちゃんと褒めてあげて。',
+  'ひとりで抱えないで。仲間がそばにいます。',
+  'あなたの「気づき」が、職場をよくしています。',
+  'やさしさは、いちばん伝わるスキルです。',
+  '焦る時こそ、ゆっくり。急がば回れ。',
+  '今日のあなたの仕事は、誰かの安心になっています。',
+  '小さな親切が、大きな信頼を育てます。',
+  '休むことも、立派な仕事のうち。',
+  'できた事に目を向けると、明日が軽くなる。',
+  'あなたの一言で、救われている人がいます。',
+  '朝が来れば、また新しく始められる。',
+  '機嫌よくいることは、まわりへの最高の贈り物。',
+  '迷ったら、親切な方を選ぼう。',
+  'あなたのペースが、あなたの強さ。',
+  '心がしんどい時は、立ち止まっていい。',
+  'あなたの存在が、誰かの「来てよかった」になる。',
+  '大丈夫。あなたは、よくやっています。',
+  '「ありがとう」は、言うほどに増えていく。',
+  '今日のあなたは、昨日より少しだけ前にいる。',
+  '継続は力なり。',
+  '七転び八起き。',
+  '笑う門には福来る。',
+  '塵も積もれば山となる。',
+  '思い立ったが吉日。',
+  '千里の道も一歩から。',
+  '雨垂れ石を穿つ。',
+  '案ずるより産むが易し。',
+  '情けは人の為ならず。',
+];
+function getDailyQuote() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 0);
+  const dayOfYear = Math.floor((now - start) / 86400000);
+  return DAILY_QUOTES[((dayOfYear % DAILY_QUOTES.length) + DAILY_QUOTES.length) % DAILY_QUOTES.length];
+}
+(function initKingyoQuote() {
+  const btn = document.getElementById('kingyoQuoteBtn');
+  const bubble = document.getElementById('kingyoBubble');
+  const txt = document.getElementById('kingyoQuoteText');
+  if (!btn || !bubble || !txt) return;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (bubble.classList.contains('show')) { bubble.classList.remove('show'); return; }
+    txt.textContent = getDailyQuote();
+    bubble.classList.add('show');
+  });
+  document.addEventListener('click', (e) => {
+    if (bubble.classList.contains('show') && !bubble.contains(e.target) && !btn.contains(e.target)) {
+      bubble.classList.remove('show');
+    }
+  });
+})();
 
 // トグル切替 → localStorage 保存 → 表示即時反映
 document.getElementById('laborTimeToggle').addEventListener('change', (e) => {
