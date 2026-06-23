@@ -395,6 +395,7 @@ document.getElementById('adminLoginBtn').addEventListener('click', async () => {
     const isLeader = account.role === 'leader';
     document.getElementById('staffNavItem').style.display = (isMaster || isLeader) ? 'flex' : 'none';
     document.getElementById('accountNavItem').style.display = isMaster ? 'flex' : 'none';
+    document.getElementById('kingyoNavItem').style.display = (isMaster || isLeader) ? 'flex' : 'none';
     document.getElementById('sidebarUserName').textContent = account.name;
     document.getElementById('sidebarUserRole').textContent =
       account.role === 'master' ? '管理者' :
@@ -493,7 +494,7 @@ document.querySelectorAll('.nav-item[data-page]').forEach(item => {
     item.classList.add('active');
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById(`page-${page}`).classList.add('active');
-    const titles = {dashboard:'ダッシュボード',requests:'希望一覧',shift:'シフト表',generate:'自動生成',settings:'設定',staff:'スタッフ管理',account:'アカウント管理',export:'エクスポート'};
+    const titles = {dashboard:'ダッシュボード',requests:'希望一覧',shift:'シフト表',generate:'自動生成',settings:'設定',staff:'スタッフ管理',account:'アカウント管理',export:'エクスポート',kingyo:'今日の一言'};
     document.getElementById('topbarTitle').textContent = titles[page] || page;
     refreshCurrentPage();
     // スマホ：メニュー選択後はドロワーを閉じる
@@ -525,6 +526,71 @@ function refreshCurrentPage() {
   else if (active === 'staff') loadStaffTable();
   else if (active === 'account') loadAccountPage();
   else if (active === 'export') loadExportPage();
+  else if (active === 'kingyo') loadKingyoWords();
+}
+
+// ===== 今日の一言（スタッフ投稿）のモデレーション =====
+let kingyoWordsCache = [];
+async function loadKingyoWords() {
+  const wrap = document.getElementById('kingyoWordsWrap');
+  if (wrap) wrap.innerHTML = '<div style="padding:16px;color:var(--text-muted)">読み込み中...</div>';
+  try {
+    kingyoWordsCache = await sb('kingyo_words?select=id,staff_id,name,dept_id,text,is_hidden,created_at&order=created_at.desc') || [];
+    renderKingyoWords();
+  } catch(e) {
+    console.error(e);
+    if (wrap) wrap.innerHTML = '<div style="padding:16px;color:var(--danger)">読み込みエラー（テーブル kingyo_words が未作成の可能性があります）</div>';
+  }
+}
+function renderKingyoWords() {
+  const wrap = document.getElementById('kingyoWordsWrap');
+  if (!wrap) return;
+  if (!kingyoWordsCache.length) {
+    wrap.innerHTML = '<div style="padding:16px;color:var(--text-muted)">まだ投稿がありません。</div>';
+    return;
+  }
+  const visibleCount = kingyoWordsCache.filter(w => !w.is_hidden).length;
+  const rows = kingyoWordsCache.map(w => {
+    const dept = (w.dept_id != null && DEPT_NAMES[w.dept_id]) ? DEPT_NAMES[w.dept_id] : '';
+    const hidden = w.is_hidden;
+    return `<tr style="${hidden ? 'opacity:0.5;background:#f9fafb' : ''}">
+      <td style="padding:10px 12px;border-bottom:1px solid var(--border);font-size:14px">${escapeHtml(w.text)}${hidden ? ' <span style="font-size:10px;color:#dc2626;font-weight:700">非表示中</span>' : ''}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap;color:var(--text-muted);font-size:12px">${escapeHtml(w.name || '')}${dept ? `<br><span style="font-size:11px">${dept}</span>` : ''}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap;text-align:right">
+        <button class="btn btn-outline btn-sm" onclick="toggleHideWord('${w.id}', ${hidden ? 'false' : 'true'})">${hidden ? '再表示' : '非表示にする'}</button>
+        <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="deleteKingyoWord('${w.id}')">削除</button>
+      </td>
+    </tr>`;
+  }).join('');
+  wrap.innerHTML = `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">投稿 ${kingyoWordsCache.length} 件（表示中 ${visibleCount} 件）</div>
+    <table class="data-table" style="width:100%;border-collapse:collapse">
+      <thead><tr>
+        <th style="text-align:left;padding:8px 12px;border-bottom:2px solid var(--border)">言葉</th>
+        <th style="text-align:left;padding:8px 12px;border-bottom:2px solid var(--border)">投稿者</th>
+        <th style="text-align:right;padding:8px 12px;border-bottom:2px solid var(--border)">操作</th>
+      </tr></thead><tbody>${rows}</tbody></table>`;
+}
+async function toggleHideWord(id, hide) {
+  showLoading();
+  try {
+    await sb(`kingyo_words?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ is_hidden: hide }) });
+    const w = kingyoWordsCache.find(x => x.id === id);
+    if (w) w.is_hidden = hide;
+    renderKingyoWords();
+    showToast(hide ? '非表示にしました ✓' : '再表示しました ✓', 'success');
+  } catch(e) { console.error(e); showToast('更新エラー', 'error'); }
+  hideLoading();
+}
+async function deleteKingyoWord(id) {
+  if (!confirm('この言葉を完全に削除しますか？（投稿者の編集欄からも消えます）')) return;
+  showLoading();
+  try {
+    await sb(`kingyo_words?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+    kingyoWordsCache = kingyoWordsCache.filter(x => x.id !== id);
+    renderKingyoWords();
+    showToast('削除しました ✓', 'success');
+  } catch(e) { console.error(e); showToast('削除エラー', 'error'); }
+  hideLoading();
 }
 
 // ===== DASHBOARD =====
