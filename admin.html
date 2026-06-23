@@ -12,7 +12,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
   <title>kingyo-shift 管理画面</title>
-  <link rel="stylesheet" href="admin.css?v=27">
+  <link rel="stylesheet" href="admin.css?v=28">
 </head>
 <body>
 
@@ -442,15 +442,17 @@
               </svg>
               AIに相談
             </button>
-            <div id="confirmStatusBadge" style="display:none;padding:6px 12px;border-radius:100px;font-size:12px;font-weight:600"></div>
           </div>
           <div id="print-header" style="display:none;margin-bottom:12px">
             <div style="font-size:16px;font-weight:700">やちよ総合診療クリニック シフト表</div>
             <div style="font-size:12px;color:#666" id="printHeaderSub"></div>
           </div>
-          <!-- ★ 確定ロックバナー（is_confirmed=true の月で表示）：ボタンのみのシンプル版 -->
-          <div id="confirmLockBanner" style="display:none; margin-bottom:12px">
-            <button id="unconfirmBtn" class="btn btn-outline" style="background:white; border:1.5px solid #dc2626; color:#dc2626; font-weight:700">✏️ 確定を取り消して編集する</button>
+          <!-- ★ 状況行（3行目）：公開中バッジ＋確定取消ボタン。確定済みの月で表示。スマホでは1行・横スクロール -->
+          <div class="shift-status-row" style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+            <div id="confirmStatusBadge" style="display:none;padding:6px 12px;border-radius:100px;font-size:12px;font-weight:600;white-space:nowrap"></div>
+            <div id="confirmLockBanner" style="display:none">
+              <button id="unconfirmBtn" class="btn btn-outline" style="background:white; border:1.5px solid #dc2626; color:#dc2626; font-weight:700;white-space:nowrap">✏️ 確定を取り消して編集する</button>
+            </div>
           </div>
           <!-- ★ 自動生成プレビュー承認バナー（自動生成直後に表示）-->
           <div id="aiPreviewBanner" style="display:none; position:sticky; top:0; z-index:50; background:linear-gradient(135deg,#fef3c7,#fde68a); border:2px solid #f59e0b; border-radius:12px; padding:16px; margin-bottom:12px; box-shadow:0 4px 12px rgba(245,158,11,0.3)">
