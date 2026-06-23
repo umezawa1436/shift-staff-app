@@ -475,6 +475,10 @@
          確定バナー・ツールバーは .content 内で上にスクロールして消え、作業領域が最大化される。
          スクロール容器が1つになるので「途中で止まる」ネスト競合も解消。 */
       .shift-grid-wrap { max-height:none; overflow:visible; }
+      /* スマホ：シフト表を囲む白いカード（background:white の枠）を撤去し、表をページ背景に直置きして
+         「表の後ろの白いエリア」を消す。空セルは透明なので背景色(#f0f4f8)になり白い箱が無くなる。
+         インラインの padding:12px だけ !important で上書き、他は .card より詳細度が高いので通常上書き。 */
+      #page-shift > .card { background:transparent; padding:0 !important; margin:0; border-radius:0; box-shadow:none; }
       /* スマホ：コマンド群を3行（①部署タブ ②年月〜AIに相談 ③公開中＋確定取消）それぞれ
          折り返さず1行にし、はみ出したら日付と同じく .content の横スクロールで送る。
          flex-shrink:0 で各ボタンが潰れず原寸のまま右へあふれ、.content の overflow:auto がスクロールを担う。
