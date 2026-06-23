@@ -190,8 +190,8 @@
     /* ===== 金魚の遊泳レーン（ヘッダ全幅を泳ぐ・タップで今日の一言） ===== */
     .header-name-row { display: flex; align-items: center; gap: 8px; }
     .kingyo-lane { position: relative; height: 28px; margin-top: 10px; cursor: pointer; overflow: visible; -webkit-tap-highlight-color: transparent; }
-    .kingyo-mini { position: absolute; left: 0; top: 1px; width: 36px; height: 25px; border: none; background: transparent; padding: 0; line-height: 0; pointer-events: none; animation: kingyoSwimAcross var(--swim-dur, 11s) linear infinite; }
-    .kingyo-lane.paused .kingyo-mini, .kingyo-lane.paused .lane-bubble { animation-play-state: paused; }
+    .kingyo-mini { position: absolute; left: 0; top: 1px; width: 36px; height: 25px; border: none; background: transparent; padding: 0; line-height: 0; pointer-events: none; animation: kingyoSwimAcross var(--swim-dur, 20s) linear infinite; }
+    .kingyo-lane.paused .kingyo-mini, .kingyo-lane.paused .mini-tail, .kingyo-lane.paused .fish-bubble { animation-play-state: paused; }
     @keyframes kingyoSwimAcross {
       0%   { transform: translate(0, 0) scaleX(1); }
       25%  { transform: translate(calc(var(--swim-x, 300px) * 0.5), -2px) scaleX(1); }
@@ -201,15 +201,14 @@
       97%  { transform: translate(0, 0) scaleX(-1); }
       100% { transform: translate(0, 0) scaleX(1); }
     }
-    .kingyo-mini .mini-tail { transform-box: fill-box; transform-origin: right center; animation: miniTailWag 0.5s ease-in-out infinite; }
+    .kingyo-mini .mini-tail { transform-box: fill-box; transform-origin: right center; animation: miniTailWag 0.7s ease-in-out infinite; }
     @keyframes miniTailWag { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } }
-    /* 泡（時々ふわっと上る） */
-    .lane-bubble { position: absolute; bottom: 3px; width: 5px; height: 5px; border-radius: 50%; background: rgba(0,180,216,0.35); border: 1px solid rgba(0,180,216,0.5); opacity: 0; animation: laneBubbleUp 4.5s ease-in infinite; pointer-events: none; }
-    @keyframes laneBubbleUp { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 0.8; } 80% { opacity: 0.4; } 100% { transform: translateY(-22px); opacity: 0; } }
-    .lb1 { left: 22%; animation-delay: 0s; }
-    .lb2 { left: 52%; width: 4px; height: 4px; animation-delay: 1.7s; }
-    .lb3 { left: 78%; width: 6px; height: 6px; animation-delay: 3s; }
-    .kingyo-lane.energy-high .lane-bubble { animation-duration: 2.6s; }
+    /* 泡（金魚の口元から出る・金魚と一緒に動く） */
+    .kingyo-mini .fish-bubble { position: absolute; left: 30px; top: 8px; width: 4px; height: 4px; border-radius: 50%; background: rgba(0,180,216,0.4); border: 1px solid rgba(0,180,216,0.55); opacity: 0; animation: fishBubbleUp 3.6s ease-in infinite; }
+    @keyframes fishBubbleUp { 0% { transform: translate(0,0); opacity: 0; } 15% { opacity: 0.85; } 70% { opacity: 0.4; } 100% { transform: translate(3px,-18px); opacity: 0; } }
+    .fb1 { animation-delay: 0s; }
+    .fb2 { left: 31px; top: 6px; width: 3px; height: 3px; animation-delay: 1.9s; }
+    .kingyo-lane.energy-high .fish-bubble { animation-duration: 2.4s; }
     /* 吹き出し（レーンの下に表示） */
     .kingyo-bubble { position: absolute; left: 16px; top: calc(100% - 4px); z-index: 120; max-width: calc(100% - 32px); background: #fff; color: var(--text); border: 1.5px solid var(--primary); border-radius: 14px; padding: 11px 14px 12px; box-shadow: 0 10px 28px rgba(0,0,0,0.2); font-size: 14px; line-height: 1.65; font-weight: 600; opacity: 0; transform: translateY(-6px) scale(0.98); transform-origin: top left; pointer-events: none; transition: opacity 0.18s ease, transform 0.18s ease; }
     .kingyo-bubble.show { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
@@ -503,9 +502,6 @@
     </div>
     <!-- 金魚の遊泳レーン（ヘッダ全幅をゆったり泳ぐ・タップで今日の一言／登録語が増えるほど元気に泳ぐ） -->
     <div class="kingyo-lane" id="kingyoLane" title="タップで今日の一言">
-      <span class="lane-bubble lb1"></span>
-      <span class="lane-bubble lb2"></span>
-      <span class="lane-bubble lb3"></span>
       <button class="kingyo-mini" id="kingyoQuoteBtn" aria-hidden="true" tabindex="-1">
         <svg viewBox="0 0 40 28" width="36" height="25" xmlns="http://www.w3.org/2000/svg">
           <g class="mini-tail"><path d="M10 14 Q1 5 -5 8 Q-1 14 -5 20 Q1 23 10 14 Z" fill="#fb923c"/></g>
@@ -514,6 +510,8 @@
           <circle cx="30" cy="12" r="2.4" fill="#fff"/>
           <circle cx="30.8" cy="12" r="1.3" fill="#1f2937"/>
         </svg>
+        <span class="fish-bubble fb1"></span>
+        <span class="fish-bubble fb2"></span>
       </button>
     </div>
     <!-- 今日の一言 吹き出し（金魚タップで表示／日替わり） -->
@@ -1771,7 +1769,7 @@ function updateKingyoEnergy() {
   const dist = Math.max(40, lane.clientWidth - 36); // レーン幅 − 金魚幅
   lane.style.setProperty('--swim-x', dist + 'px');
   const n = getMyQuotes().length;
-  const dur = Math.max(6, 12 - n * 1.2); // 言葉が増えるほど速く（元気に）泳ぐ。0語=12s, 5語以上=6s
+  const dur = Math.max(13, 22 - n * 1.5); // 言葉が増えるほど速く（元気に）泳ぐ。0語=22s, 6語以上=13s（全体的にゆっくり）
   lane.style.setProperty('--swim-dur', dur.toFixed(1) + 's');
   lane.classList.toggle('energy-high', n >= 5);
 }
