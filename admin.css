@@ -475,6 +475,16 @@
          確定バナー・ツールバーは .content 内で上にスクロールして消え、作業領域が最大化される。
          スクロール容器が1つになるので「途中で止まる」ネスト競合も解消。 */
       .shift-grid-wrap { max-height:none; overflow:visible; }
+      /* スマホ：コマンド群を3行（①部署タブ ②年月〜AIに相談 ③公開中＋確定取消）それぞれ
+         折り返さず1行にし、はみ出したら日付と同じく .content の横スクロールで送る。
+         flex-shrink:0 で各ボタンが潰れず原寸のまま右へあふれ、.content の overflow:auto がスクロールを担う。
+         position:sticky を使わないので以前のカクツキは発生しない。 */
+      #page-shift > .dept-tabs,
+      #page-shift > .month-nav,
+      #page-shift > .shift-status-row { flex-wrap:nowrap; }
+      #page-shift > .dept-tabs > *,
+      #page-shift > .month-nav > *,
+      #page-shift > .shift-status-row > * { flex-shrink:0; }
       /* コマンド群・確定取消バナーは通常フロー（縦横とも普通にスクロールして流れて消える）。
          横スクロールで左上固定する案は描画が重くカクつくため、ひとまず不採用。 */
     }
