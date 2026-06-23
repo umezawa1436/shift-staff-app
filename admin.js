@@ -535,7 +535,8 @@ async function loadKingyoWords() {
   const wrap = document.getElementById('kingyoWordsWrap');
   if (wrap) wrap.innerHTML = '<div style="padding:16px;color:var(--text-muted)">読み込み中...</div>';
   try {
-    kingyoWordsCache = await sb('kingyo_words?select=id,staff_id,name,dept_id,text,is_hidden,is_anonymous,created_at&order=created_at.desc') || [];
+    const r = await adminApi('/api/kingyo', { action: 'list-admin' });
+    kingyoWordsCache = r.words || [];
     renderKingyoWords();
   } catch(e) {
     console.error(e);
@@ -573,7 +574,7 @@ function renderKingyoWords() {
 async function toggleHideWord(id, hide) {
   showLoading();
   try {
-    await sb(`kingyo_words?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ is_hidden: hide }) });
+    await adminApi('/api/kingyo', { action: 'moderate', id, op: hide ? 'hide' : 'show' });
     const w = kingyoWordsCache.find(x => x.id === id);
     if (w) w.is_hidden = hide;
     renderKingyoWords();
@@ -585,7 +586,7 @@ async function deleteKingyoWord(id) {
   if (!confirm('この言葉を完全に削除しますか？（投稿者の編集欄からも消えます）')) return;
   showLoading();
   try {
-    await sb(`kingyo_words?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+    await adminApi('/api/kingyo', { action: 'moderate', id, op: 'delete' });
     kingyoWordsCache = kingyoWordsCache.filter(x => x.id !== id);
     renderKingyoWords();
     showToast('削除しました ✓', 'success');
