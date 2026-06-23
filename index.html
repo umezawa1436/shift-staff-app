@@ -637,7 +637,7 @@
     </div>
     <div style="padding:14px;border:1.5px solid var(--border);border-radius:12px;margin-bottom:16px">
       <div style="font-size:14px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:6px">好きな言葉</div>
-      <div style="font-size:11px;color:var(--text-muted);margin:2px 0 8px">金魚の「今日の一言」で時々この言葉を言ってくれます。1行に1つ、複数登録できます。<b style="color:var(--primary)">登録するほど金魚が元気に泳ぎます。</b></div>
+      <div style="font-size:11px;color:var(--text-muted);margin:2px 0 8px">ここに書いた言葉は金魚の「今日の一言」で<b style="color:var(--primary)">差出人の名前付きでみんなに表示</b>されます。読んだ人が元気になれる言葉を書きましょう。1行に1つ、複数OK。みんなの言葉が増えるほど金魚が元気に泳ぎます。</div>
       <textarea id="myQuotesInput" rows="3" placeholder="例：今日もいい一日になる&#10;一歩ずつ前へ" style="width:100%;padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);outline:none;resize:vertical;box-sizing:border-box"></textarea>
       <button class="btn-submit" id="saveMyQuotesBtn" style="margin-top:8px">好きな言葉を保存</button>
       <div id="myQuotesSaved" style="font-size:12px;color:#10b981;font-weight:600;margin-top:6px;display:none">保存しました ✓</div>
@@ -1183,6 +1183,7 @@ async function showApp() {
   document.getElementById('appScreen').style.display = 'flex';
   document.getElementById('headerName').textContent = currentUser.name;
   document.getElementById('headerDept').textContent = currentUser.deptName;
+  await loadSharedWords();
   updateKingyoEnergy();
   await loadShiftTypesFromDB();
   await loadAppSettings();
@@ -1679,12 +1680,13 @@ function syncReqLimitToggleUI() {
 function openSettingsSheet() {
   syncLaborToggleUI();
   syncReqLimitToggleUI();
-  const mq = document.getElementById('myQuotesInput');
-  if (mq) mq.value = getMyQuotes().join('\n');
   const saved = document.getElementById('myQuotesSaved');
   if (saved) saved.style.display = 'none';
   document.getElementById('settingsOverlay').classList.add('show');
   document.getElementById('settingsSheet').classList.add('show');
+  // 自分の言葉をサーバーから読み込んで入力欄へ
+  const mq = document.getElementById('myQuotesInput');
+  if (mq) { mq.value = ''; loadMyWords().then(arr => { mq.value = arr.join('\n'); }); }
 }
 function closeSettingsSheet() {
   document.getElementById('settingsOverlay').classList.remove('show');
@@ -1742,36 +1744,58 @@ const DAILY_QUOTES = [
   '情けは人の為ならず。',
 ];
 // 自分の好きな言葉（ログインユーザー単位で localStorage 保存）
-function myQuotesKey() { return 'kingyo_my_quotes_' + (typeof currentUser !== 'undefined' && currentUser && currentUser.id ? currentUser.id : 'guest'); }
-function getMyQuotes() {
-  try { const raw = localStorage.getItem(myQuotesKey()); const arr = raw ? JSON.parse(raw) : []; return Array.isArray(arr) ? arr.filter(s => s && s.trim()) : []; }
-  catch(e) { return []; }
+// ===== 好きな言葉（Supabase共有・他の人の言葉も巡回） =====
+let allSharedWords = []; // [{staff_id, name, text}] 非表示を除く全員の言葉
+
+async function loadSharedWords() {
+  try {
+    allSharedWords = await supabaseRequest('kingyo_words?is_hidden=eq.false&select=staff_id,name,text&order=created_at.desc') || [];
+  } catch(e) { console.error('[loadSharedWords]', e); allSharedWords = []; }
 }
-function saveMyQuotesArr(arr) {
-  try { localStorage.setItem(myQuotesKey(), JSON.stringify(arr)); } catch(e) {}
+async function loadMyWords() {
+  if (!currentUser?.id) return [];
+  try {
+    const rows = await supabaseRequest(`kingyo_words?staff_id=eq.${currentUser.id}&select=text&order=created_at`);
+    return (rows || []).map(r => r.text).filter(Boolean);
+  } catch(e) { console.error('[loadMyWords]', e); return []; }
 }
+async function saveMyWords(arr) {
+  if (!currentUser?.id) return;
+  await supabaseRequest(`kingyo_words?staff_id=eq.${currentUser.id}`, { method: 'DELETE' });
+  if (arr.length) {
+    await supabaseRequest('kingyo_words', {
+      method: 'POST',
+      body: JSON.stringify(arr.map(t => ({ staff_id: currentUser.id, name: currentUser.name, dept_id: currentUser.deptId, text: t })))
+    });
+  }
+}
+
 function getDailyQuote() {
   const now = new Date();
   const start = new Date(now.getFullYear(), 0, 0);
-  const dayOfYear = Math.floor((now - start) / 86400000);
-  const my = getMyQuotes();
-  // 登録があれば偶数日は自分の言葉（日替わり巡回）、奇数日はキュレーション。約半分は自分の言葉が出る。
-  if (my.length && dayOfYear % 2 === 0) {
-    return my[Math.floor(dayOfYear / 2) % my.length];
+  const day = Math.floor((now - start) / 86400000);
+  // 登録された言葉があれば偶数日はみんなの言葉（日替わり巡回）、奇数日はキュレーション。半分は仲間の言葉が出る。
+  if (allSharedWords.length && day % 2 === 0) {
+    const w = allSharedWords[Math.floor(day / 2) % allSharedWords.length];
+    const by = (w.staff_id === currentUser?.id) ? null : (w.name || null); // 自分の言葉には差出人を付けない
+    return { text: w.text, by };
   }
-  return DAILY_QUOTES[((dayOfYear % DAILY_QUOTES.length) + DAILY_QUOTES.length) % DAILY_QUOTES.length];
+  const t = DAILY_QUOTES[((day % DAILY_QUOTES.length) + DAILY_QUOTES.length) % DAILY_QUOTES.length];
+  return { text: t, by: null };
 }
-// 登録した言葉の数に応じて金魚の元気さ（泳ぐ速さ・泡）を更新＋遊泳幅を計算
+
+// 金魚の元気さ：チーム全体の登録語数が増えるほど元気に泳ぐ（相互可視化の集団フィードバック）
 function updateKingyoEnergy() {
   const lane = document.getElementById('kingyoLane');
   if (!lane) return;
   const dist = Math.max(0, lane.clientWidth - 36); // レーン幅 − 金魚幅（中央の余白内に収める）
   lane.style.setProperty('--swim-x', dist + 'px');
-  const n = getMyQuotes().length;
-  const dur = Math.max(13, 22 - n * 1.5); // 言葉が増えるほど速く（元気に）泳ぐ。0語=22s, 6語以上=13s（全体的にゆっくり）
+  const n = allSharedWords.length;
+  const dur = Math.max(13, 22 - n * 0.6); // みんなの言葉が増えるほど速く（元気に）。0語=22s, 15語以上=13s
   lane.style.setProperty('--swim-dur', dur.toFixed(1) + 's');
-  lane.classList.toggle('energy-high', n >= 5);
+  lane.classList.toggle('energy-high', n >= 8);
 }
+
 (function initKingyoQuote() {
   const lane = document.getElementById('kingyoLane');
   const bubble = document.getElementById('kingyoBubble');
@@ -1781,7 +1805,8 @@ function updateKingyoEnergy() {
   lane.addEventListener('click', (e) => {
     e.stopPropagation();
     if (bubble.classList.contains('show')) { bubble.classList.remove('show'); return; }
-    txt.textContent = getDailyQuote();
+    const q = getDailyQuote();
+    txt.innerHTML = escapeHtml(q.text) + (q.by ? `<div style="font-size:11px;color:var(--text-muted);font-weight:500;margin-top:5px">— ${escapeHtml(q.by)} より</div>` : '');
     bubble.classList.add('show');
   });
   document.addEventListener('click', (e) => {
@@ -1790,18 +1815,26 @@ function updateKingyoEnergy() {
     }
   });
   window.addEventListener('resize', updateKingyoEnergy);
-  // 好きな言葉の保存
+  // 好きな言葉の保存（Supabaseへ・みんなに共有）
   const saveBtn = document.getElementById('saveMyQuotesBtn');
   if (saveBtn) {
-    saveBtn.addEventListener('click', () => {
+    saveBtn.addEventListener('click', async () => {
       const ta = document.getElementById('myQuotesInput');
       if (!ta) return;
-      const arr = ta.value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 30);
-      saveMyQuotesArr(arr);
-      ta.value = arr.join('\n');
-      const saved = document.getElementById('myQuotesSaved');
-      if (saved) { saved.style.display = 'block'; setTimeout(() => { saved.style.display = 'none'; }, 2000); }
-      updateKingyoEnergy(); // ★ 登録数に応じて金魚が元気に泳ぐ
+      const arr = ta.value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 20);
+      saveBtn.disabled = true;
+      try {
+        await saveMyWords(arr);
+        ta.value = arr.join('\n');
+        await loadSharedWords();   // 共有プールを最新化（自分の言葉も反映）
+        updateKingyoEnergy();
+        const saved = document.getElementById('myQuotesSaved');
+        if (saved) { saved.style.display = 'block'; setTimeout(() => { saved.style.display = 'none'; }, 2000); }
+      } catch(e) {
+        console.error('[saveMyWords]', e);
+        showToast('保存に失敗しました', 'error');
+      }
+      saveBtn.disabled = false;
     });
   }
 })();
