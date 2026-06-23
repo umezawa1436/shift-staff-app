@@ -629,6 +629,7 @@
     <div class="sheet-hint">表示やパスワードの設定ができます</div>
   </div>
   <div style="padding:16px">
+    <button class="btn-submit" id="openPwFromSettingsBtn" style="background:var(--bg);color:var(--text);border:1.5px solid var(--border);margin-bottom:16px">🔑 パスワードを変更する</button>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;border:1.5px solid var(--border);border-radius:12px;margin-bottom:12px">
       <div>
         <div style="font-size:14px;font-weight:600;color:var(--text)">月の上限を表示</div>
@@ -662,7 +663,6 @@
       <button class="btn-submit" id="saveMyQuotesBtn" style="margin-top:10px">好きな言葉を保存</button>
       <div id="myQuotesSaved" style="font-size:12px;color:#10b981;font-weight:600;margin-top:6px;display:none">保存しました ✓</div>
     </div>
-    <button class="btn-submit" id="openPwFromSettingsBtn" style="background:var(--bg);color:var(--text);border:1.5px solid var(--border)">🔑 パスワードを変更する</button>
   </div>
 </div>
 
@@ -1821,18 +1821,16 @@ function collectMyQuotes() {
   })).filter(x => x.text).slice(0, 20);
 }
 
-// 金魚の色ティア状態：現在の色＋次までの距離（次の色名は伏せる）
+// 金魚の色ティア状態：次の色までの距離だけ（現在色は出さない）
 function kingyoTierStatus() {
   const n = allSharedWords.length;
   const TIERS = [
     { min: 2, name: '白' }, { min: 5, name: '緑' }, { min: 10, name: '青' },
     { min: 20, name: '黒' }, { min: 35, name: '銀' }, { min: 60, name: '金' }, { min: 100, name: '虹' }
   ];
-  let cur = '赤';
-  for (const t of TIERS) { if (n >= t.min) cur = t.name; }
   const next = TIERS.find(t => t.min > n);
-  if (!next) return `今は <b>虹</b> 🌈 最高ランク達成！`;
-  return `今は <b>${cur}</b>／あと <b>${next.min - n}</b>語で次の色！`;
+  if (!next) return `🌈 最高ランク達成！`;
+  return `あと <b>${next.min - n}</b>語で次の色！`;
 }
 
 function getDailyQuote() {
@@ -1880,7 +1878,7 @@ function updateKingyoEnergy() {
     } catch(e) {}
     txt.innerHTML = escapeHtml(q.text)
       + (q.by ? `<div style="font-size:11px;color:var(--text-muted);font-weight:500;margin-top:5px">— ${escapeHtml(q.by)} より</div>` : '')
-      + `<div style="font-size:11px;color:var(--text-muted);font-weight:600;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">🐠 ${kingyoTierStatus()}</div>`
+      + `<div style="font-size:11px;color:var(--text-muted);font-weight:600;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">${kingyoTierStatus()}</div>`
       + hint;
     bubble.classList.add('show');
   });
