@@ -207,7 +207,16 @@
     @keyframes fishBubbleUp { 0% { transform: translate(0,0); opacity: 0; } 15% { opacity: 0.85; } 70% { opacity: 0.4; } 100% { transform: translate(3px,-18px); opacity: 0; } }
     .fb1 { animation-delay: 0s; }
     .fb2 { left: 31px; top: 6px; width: 3px; height: 3px; animation-delay: 1.9s; }
-    .kingyo-lane.energy-high .fish-bubble { animation-duration: 2.4s; }
+    /* みんなの登録語数で金魚の色が育つ（青→緑→白→黒→銀→金→虹）。白/銀の視認性のため輪郭を付与 */
+    .kingyo-mini svg .fish-part { stroke: rgba(0,0,0,0.22); stroke-width: 0.7; }
+    .kingyo-lane { --fish-body:#dc2626; --fish-fin:#ea580c; --fish-tail:#fb923c; }
+    .kingyo-lane.color-blue   { --fish-body:#2563eb; --fish-fin:#1d4ed8; --fish-tail:#60a5fa; }
+    .kingyo-lane.color-green  { --fish-body:#16a34a; --fish-fin:#15803d; --fish-tail:#4ade80; }
+    .kingyo-lane.color-white  { --fish-body:#f8fafc; --fish-fin:#cbd5e1; --fish-tail:#ffffff; }
+    .kingyo-lane.color-black  { --fish-body:#1f2937; --fish-fin:#0f172a; --fish-tail:#4b5563; }
+    .kingyo-lane.color-silver { --fish-body:#cbd5e1; --fish-fin:#94a3b8; --fish-tail:#e2e8f0; }
+    .kingyo-lane.color-gold   { --fish-body:#f59e0b; --fish-fin:#d97706; --fish-tail:#fbbf24; }
+    .kingyo-lane.color-rainbow { --fish-body:url(#fishRainbow); --fish-fin:url(#fishRainbow); --fish-tail:url(#fishRainbow); }
     /* 吹き出し（レーンの下に表示） */
     .kingyo-bubble { position: absolute; left: 16px; top: calc(100% - 4px); z-index: 120; max-width: calc(100% - 32px); background: #fff; color: var(--text); border: 1.5px solid var(--primary); border-radius: 14px; padding: 11px 14px 12px; box-shadow: 0 10px 28px rgba(0,0,0,0.2); font-size: 14px; line-height: 1.65; font-weight: 600; opacity: 0; transform: translateY(-6px) scale(0.98); transform-origin: top left; pointer-events: none; transition: opacity 0.18s ease, transform 0.18s ease; }
     .kingyo-bubble.show { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
@@ -491,9 +500,16 @@
       <div class="kingyo-lane" id="kingyoLane" title="タップで今日の一言">
         <button class="kingyo-mini" id="kingyoQuoteBtn" aria-hidden="true" tabindex="-1">
           <svg viewBox="0 0 40 28" width="36" height="25" xmlns="http://www.w3.org/2000/svg">
-            <g class="mini-tail"><path d="M10 14 Q1 5 -5 8 Q-1 14 -5 20 Q1 23 10 14 Z" fill="#fb923c"/></g>
-            <ellipse cx="23" cy="14" rx="13" ry="10" fill="#dc2626"/>
-            <path d="M17 5 Q20 -1 23 4 Q26 -1 29 5 Z" fill="#ea580c"/>
+            <defs>
+              <linearGradient id="fishRainbow" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#ef4444"/><stop offset="20%" stop-color="#f59e0b"/>
+                <stop offset="40%" stop-color="#eab308"/><stop offset="58%" stop-color="#22c55e"/>
+                <stop offset="76%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#a855f7"/>
+              </linearGradient>
+            </defs>
+            <g class="mini-tail"><path class="fish-part" d="M10 14 Q1 5 -5 8 Q-1 14 -5 20 Q1 23 10 14 Z" fill="var(--fish-tail,#fb923c)"/></g>
+            <ellipse class="fish-part" cx="23" cy="14" rx="13" ry="10" fill="var(--fish-body,#dc2626)"/>
+            <path class="fish-part" d="M17 5 Q20 -1 23 4 Q26 -1 29 5 Z" fill="var(--fish-fin,#ea580c)"/>
             <circle cx="30" cy="12" r="2.4" fill="#fff"/>
             <circle cx="30.8" cy="12" r="1.3" fill="#1f2937"/>
           </svg>
@@ -613,6 +629,7 @@
     <div class="sheet-hint">表示やパスワードの設定ができます</div>
   </div>
   <div style="padding:16px">
+    <button class="btn-submit" id="openPwFromSettingsBtn" style="background:var(--bg);color:var(--text);border:1.5px solid var(--border);margin-bottom:16px">🔑 パスワードを変更する</button>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;border:1.5px solid var(--border);border-radius:12px;margin-bottom:12px">
       <div>
         <div style="font-size:14px;font-weight:600;color:var(--text)">月の上限を表示</div>
@@ -637,16 +654,15 @@
     </div>
     <div style="padding:14px;border:1.5px solid var(--border);border-radius:12px;margin-bottom:16px">
       <div style="font-size:14px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:6px">好きな言葉</div>
-      <div style="font-size:11px;color:var(--text-muted);margin:2px 0 8px">ここに書いた言葉は金魚の「今日の一言」で<b style="color:var(--primary)">みんなに表示</b>されます（名前あり／匿名を選べます）。読んだ人が元気になれる言葉を書きましょう。1行に1つ、複数OK。みんなの言葉が増えるほど金魚が元気に泳ぎます。</div>
-      <textarea id="myQuotesInput" rows="3" placeholder="例：今日もいい一日になる&#10;一歩ずつ前へ" style="width:100%;padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);outline:none;resize:vertical;box-sizing:border-box"></textarea>
-      <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--text);cursor:pointer">
-        <input type="checkbox" id="myQuotesAnon" style="width:18px;height:18px;flex-shrink:0">
-        <span>名前を出さずに<b>匿名</b>で投稿する</span>
+      <div style="font-size:11px;color:var(--text-muted);margin:2px 0 8px">ここに書いた言葉は金魚の「今日の一言」で<b style="color:var(--primary)">みんなに表示</b>されます（名前あり／匿名を選べます）。読んだ人が元気になれる言葉を書きましょう。1行に1つ、複数OK。みんなの言葉が増えるほど金魚の色が育ちます。最終レア色はレインボー！？</div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);cursor:pointer;margin-bottom:8px">
+        <input type="checkbox" id="myQuotesAnonAll" style="width:16px;height:16px"> すべて匿名にする
       </label>
+      <div id="myQuotesList"></div>
+      <button type="button" id="addQuoteRowBtn" style="width:100%;padding:9px;background:var(--bg);color:var(--primary);border:1.5px dashed var(--border);border-radius:10px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;margin-top:2px">＋ 言葉を追加</button>
       <button class="btn-submit" id="saveMyQuotesBtn" style="margin-top:10px">好きな言葉を保存</button>
       <div id="myQuotesSaved" style="font-size:12px;color:#10b981;font-weight:600;margin-top:6px;display:none">保存しました ✓</div>
     </div>
-    <button class="btn-submit" id="openPwFromSettingsBtn" style="background:var(--bg);color:var(--text);border:1.5px solid var(--border)">🔑 パスワードを変更する</button>
   </div>
 </div>
 
@@ -1688,9 +1704,9 @@ function openSettingsSheet() {
   if (saved) saved.style.display = 'none';
   document.getElementById('settingsOverlay').classList.add('show');
   document.getElementById('settingsSheet').classList.add('show');
-  // 自分の言葉をサーバーから読み込んで入力欄へ
-  const mq = document.getElementById('myQuotesInput');
-  if (mq) { mq.value = ''; const anonCb = document.getElementById('myQuotesAnon'); loadMyWords().then(r => { mq.value = r.words.join('\n'); if (anonCb) anonCb.checked = r.anon; }); }
+  // 自分の言葉をサーバーから読み込んで行リストへ
+  renderMyQuotesRows([]);
+  loadMyWords().then(items => renderMyQuotesRows(items));
 }
 function closeSettingsSheet() {
   document.getElementById('settingsOverlay').classList.remove('show');
@@ -1757,21 +1773,64 @@ async function loadSharedWords() {
   } catch(e) { console.error('[loadSharedWords]', e); allSharedWords = []; }
 }
 async function loadMyWords() {
-  if (!currentUser?.id) return { words: [], anon: false };
+  if (!currentUser?.id) return [];
   try {
     const rows = await supabaseRequest(`kingyo_words?staff_id=eq.${currentUser.id}&select=text,is_anonymous&order=created_at`);
-    return { words: (rows || []).map(r => r.text).filter(Boolean), anon: !!(rows && rows[0] && rows[0].is_anonymous) };
-  } catch(e) { console.error('[loadMyWords]', e); return { words: [], anon: false }; }
+    return (rows || []).map(r => ({ text: r.text, anon: !!r.is_anonymous })).filter(x => x.text);
+  } catch(e) { console.error('[loadMyWords]', e); return []; }
 }
-async function saveMyWords(arr, anon) {
+async function saveMyWords(items) {
   if (!currentUser?.id) return;
   await supabaseRequest(`kingyo_words?staff_id=eq.${currentUser.id}`, { method: 'DELETE' });
-  if (arr.length) {
+  if (items.length) {
     await supabaseRequest('kingyo_words', {
       method: 'POST',
-      body: JSON.stringify(arr.map(t => ({ staff_id: currentUser.id, name: currentUser.name, dept_id: currentUser.deptId, text: t, is_anonymous: !!anon })))
+      body: JSON.stringify(items.map(it => ({ staff_id: currentUser.id, name: currentUser.name, dept_id: currentUser.deptId, text: it.text, is_anonymous: !!it.anon })))
     });
   }
+}
+
+// 好きな言葉の入力行（1語＝1行・行ごとに匿名/記名を選べる）
+function addQuoteRow(text, anon) {
+  const list = document.getElementById('myQuotesList');
+  if (!list) return;
+  const row = document.createElement('div');
+  row.className = 'quote-row';
+  row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:6px';
+  row.innerHTML = `
+    <input type="text" class="quote-text" value="${escapeHtml(text || '')}" placeholder="例：今日もいい一日になる" style="flex:1;min-width:0;padding:10px;border:1.5px solid var(--border);border-radius:9px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);outline:none;box-sizing:border-box">
+    <label style="display:flex;align-items:center;gap:3px;font-size:11px;color:var(--text-muted);white-space:nowrap;cursor:pointer"><input type="checkbox" class="quote-anon" ${anon ? 'checked' : ''} style="width:16px;height:16px">匿名</label>
+    <button type="button" class="quote-del" aria-label="削除" style="width:28px;height:28px;flex-shrink:0;border:none;background:transparent;color:#94a3b8;font-size:18px;cursor:pointer;line-height:1">×</button>`;
+  list.appendChild(row);
+}
+function renderMyQuotesRows(items) {
+  const list = document.getElementById('myQuotesList');
+  if (!list) return;
+  list.innerHTML = '';
+  const arr = (items && items.length) ? items : [{ text: '', anon: false }];
+  arr.forEach(it => addQuoteRow(it.text, it.anon));
+  const allCb = document.getElementById('myQuotesAnonAll');
+  if (allCb) allCb.checked = !!(items && items.length && items.every(it => it.anon));
+}
+function collectMyQuotes() {
+  const list = document.getElementById('myQuotesList');
+  if (!list) return [];
+  return [...list.querySelectorAll('.quote-row')].map(r => ({
+    text: r.querySelector('.quote-text').value.trim(),
+    anon: r.querySelector('.quote-anon').checked
+  })).filter(x => x.text).slice(0, 20);
+}
+
+// 金魚の色ティア状態：次の色までの距離だけ（現在色は出さない）
+function kingyoTierStatus() {
+  const n = allSharedWords.length;
+  const TIERS = [
+    { min: 2, name: '白' }, { min: 5, name: '緑' }, { min: 10, name: '青' },
+    { min: 20, name: '黒' }, { min: 35, name: '銀' }, { min: 60, name: '金' }, { min: 100, name: '虹' }
+  ];
+  const next = TIERS.find(t => t.min > n);
+  if (!next) return `🌈 最高ランク達成！`;
+  return `あと <b>${next.min - n}</b>語で次の色！`;
 }
 
 function getDailyQuote() {
@@ -1788,16 +1847,16 @@ function getDailyQuote() {
   return { text: t, by: null };
 }
 
-// 金魚の元気さ：チーム全体の登録語数が増えるほど元気に泳ぐ（相互可視化の集団フィードバック）
+// 金魚の見た目：チーム全体の登録語数が増えるほど色が育つ（速度は一定のゆっくり）
 function updateKingyoEnergy() {
   const lane = document.getElementById('kingyoLane');
   if (!lane) return;
-  const dist = Math.max(0, lane.clientWidth - 36); // レーン幅 − 金魚幅（中央の余白内に収める）
-  lane.style.setProperty('--swim-x', dist + 'px');
+  lane.style.setProperty('--swim-x', Math.max(0, lane.clientWidth - 36) + 'px');
   const n = allSharedWords.length;
-  const dur = Math.max(13, 22 - n * 0.6); // みんなの言葉が増えるほど速く（元気に）。0語=22s, 15語以上=13s
-  lane.style.setProperty('--swim-dur', dur.toFixed(1) + 's');
-  lane.classList.toggle('energy-high', n >= 8);
+  const color = n >= 100 ? 'rainbow' : n >= 60 ? 'gold' : n >= 35 ? 'silver'
+    : n >= 20 ? 'black' : n >= 10 ? 'blue' : n >= 5 ? 'green' : n >= 2 ? 'white' : '';
+  lane.classList.remove('color-blue','color-green','color-white','color-black','color-silver','color-gold','color-rainbow');
+  if (color) lane.classList.add('color-' + color);
 }
 
 (function initKingyoQuote() {
@@ -1810,7 +1869,17 @@ function updateKingyoEnergy() {
     e.stopPropagation();
     if (bubble.classList.contains('show')) { bubble.classList.remove('show'); return; }
     const q = getDailyQuote();
-    txt.innerHTML = escapeHtml(q.text) + (q.by ? `<div style="font-size:11px;color:var(--text-muted);font-weight:500;margin-top:5px">— ${escapeHtml(q.by)} より</div>` : '');
+    let hint = '';
+    try {
+      if (localStorage.getItem('kingyo_color_hint_seen') !== '1') {
+        hint = `<div style="font-size:11px;color:var(--primary);font-weight:600;margin-top:6px">💡 みんなで言葉を集めると、金魚の色が育つよ。</div>`;
+        localStorage.setItem('kingyo_color_hint_seen', '1');
+      }
+    } catch(e) {}
+    txt.innerHTML = escapeHtml(q.text)
+      + (q.by ? `<div style="font-size:11px;color:var(--text-muted);font-weight:500;margin-top:5px">— ${escapeHtml(q.by)} より</div>` : '')
+      + `<div style="font-size:11px;color:var(--text-muted);font-weight:600;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">${kingyoTierStatus()}</div>`
+      + hint;
     bubble.classList.add('show');
   });
   document.addEventListener('click', (e) => {
@@ -1823,14 +1892,11 @@ function updateKingyoEnergy() {
   const saveBtn = document.getElementById('saveMyQuotesBtn');
   if (saveBtn) {
     saveBtn.addEventListener('click', async () => {
-      const ta = document.getElementById('myQuotesInput');
-      if (!ta) return;
-      const arr = ta.value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 20);
+      const items = collectMyQuotes();
       saveBtn.disabled = true;
       try {
-        const anon = document.getElementById('myQuotesAnon')?.checked || false;
-        await saveMyWords(arr, anon);
-        ta.value = arr.join('\n');
+        await saveMyWords(items);
+        renderMyQuotesRows(items);
         await loadSharedWords();   // 共有プールを最新化（自分の言葉も反映）
         updateKingyoEnergy();
         const saved = document.getElementById('myQuotesSaved');
@@ -1842,6 +1908,15 @@ function updateKingyoEnergy() {
       saveBtn.disabled = false;
     });
   }
+  // 行の追加・削除／一括匿名
+  const anonAll = document.getElementById('myQuotesAnonAll');
+  document.getElementById('addQuoteRowBtn')?.addEventListener('click', () => addQuoteRow('', anonAll?.checked || false));
+  document.getElementById('myQuotesList')?.addEventListener('click', (e) => {
+    if (e.target.classList.contains('quote-del')) e.target.closest('.quote-row')?.remove();
+  });
+  anonAll?.addEventListener('change', (e) => {
+    document.querySelectorAll('#myQuotesList .quote-anon').forEach(cb => { cb.checked = e.target.checked; });
+  });
 })();
 
 // トグル切替 → localStorage 保存 → 表示即時反映
