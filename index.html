@@ -637,9 +637,13 @@
     </div>
     <div style="padding:14px;border:1.5px solid var(--border);border-radius:12px;margin-bottom:16px">
       <div style="font-size:14px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:6px">好きな言葉</div>
-      <div style="font-size:11px;color:var(--text-muted);margin:2px 0 8px">ここに書いた言葉は金魚の「今日の一言」で<b style="color:var(--primary)">差出人の名前付きでみんなに表示</b>されます。読んだ人が元気になれる言葉を書きましょう。1行に1つ、複数OK。みんなの言葉が増えるほど金魚が元気に泳ぎます。</div>
+      <div style="font-size:11px;color:var(--text-muted);margin:2px 0 8px">ここに書いた言葉は金魚の「今日の一言」で<b style="color:var(--primary)">みんなに表示</b>されます（名前あり／匿名を選べます）。読んだ人が元気になれる言葉を書きましょう。1行に1つ、複数OK。みんなの言葉が増えるほど金魚が元気に泳ぎます。</div>
       <textarea id="myQuotesInput" rows="3" placeholder="例：今日もいい一日になる&#10;一歩ずつ前へ" style="width:100%;padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);outline:none;resize:vertical;box-sizing:border-box"></textarea>
-      <button class="btn-submit" id="saveMyQuotesBtn" style="margin-top:8px">好きな言葉を保存</button>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--text);cursor:pointer">
+        <input type="checkbox" id="myQuotesAnon" style="width:18px;height:18px;flex-shrink:0">
+        <span>名前を出さずに<b>匿名</b>で投稿する</span>
+      </label>
+      <button class="btn-submit" id="saveMyQuotesBtn" style="margin-top:10px">好きな言葉を保存</button>
       <div id="myQuotesSaved" style="font-size:12px;color:#10b981;font-weight:600;margin-top:6px;display:none">保存しました ✓</div>
     </div>
     <button class="btn-submit" id="openPwFromSettingsBtn" style="background:var(--bg);color:var(--text);border:1.5px solid var(--border)">🔑 パスワードを変更する</button>
@@ -1686,7 +1690,7 @@ function openSettingsSheet() {
   document.getElementById('settingsSheet').classList.add('show');
   // 自分の言葉をサーバーから読み込んで入力欄へ
   const mq = document.getElementById('myQuotesInput');
-  if (mq) { mq.value = ''; loadMyWords().then(arr => { mq.value = arr.join('\n'); }); }
+  if (mq) { mq.value = ''; const anonCb = document.getElementById('myQuotesAnon'); loadMyWords().then(r => { mq.value = r.words.join('\n'); if (anonCb) anonCb.checked = r.anon; }); }
 }
 function closeSettingsSheet() {
   document.getElementById('settingsOverlay').classList.remove('show');
@@ -1749,23 +1753,23 @@ let allSharedWords = []; // [{staff_id, name, text}] 非表示を除く全員の
 
 async function loadSharedWords() {
   try {
-    allSharedWords = await supabaseRequest('kingyo_words?is_hidden=eq.false&select=staff_id,name,text&order=created_at.desc') || [];
+    allSharedWords = await supabaseRequest('kingyo_words?is_hidden=eq.false&select=staff_id,name,text,is_anonymous&order=created_at.desc') || [];
   } catch(e) { console.error('[loadSharedWords]', e); allSharedWords = []; }
 }
 async function loadMyWords() {
-  if (!currentUser?.id) return [];
+  if (!currentUser?.id) return { words: [], anon: false };
   try {
-    const rows = await supabaseRequest(`kingyo_words?staff_id=eq.${currentUser.id}&select=text&order=created_at`);
-    return (rows || []).map(r => r.text).filter(Boolean);
-  } catch(e) { console.error('[loadMyWords]', e); return []; }
+    const rows = await supabaseRequest(`kingyo_words?staff_id=eq.${currentUser.id}&select=text,is_anonymous&order=created_at`);
+    return { words: (rows || []).map(r => r.text).filter(Boolean), anon: !!(rows && rows[0] && rows[0].is_anonymous) };
+  } catch(e) { console.error('[loadMyWords]', e); return { words: [], anon: false }; }
 }
-async function saveMyWords(arr) {
+async function saveMyWords(arr, anon) {
   if (!currentUser?.id) return;
   await supabaseRequest(`kingyo_words?staff_id=eq.${currentUser.id}`, { method: 'DELETE' });
   if (arr.length) {
     await supabaseRequest('kingyo_words', {
       method: 'POST',
-      body: JSON.stringify(arr.map(t => ({ staff_id: currentUser.id, name: currentUser.name, dept_id: currentUser.deptId, text: t })))
+      body: JSON.stringify(arr.map(t => ({ staff_id: currentUser.id, name: currentUser.name, dept_id: currentUser.deptId, text: t, is_anonymous: !!anon })))
     });
   }
 }
@@ -1777,7 +1781,7 @@ function getDailyQuote() {
   // 登録された言葉があれば偶数日はみんなの言葉（日替わり巡回）、奇数日はキュレーション。半分は仲間の言葉が出る。
   if (allSharedWords.length && day % 2 === 0) {
     const w = allSharedWords[Math.floor(day / 2) % allSharedWords.length];
-    const by = (w.staff_id === currentUser?.id) ? null : (w.name || null); // 自分の言葉には差出人を付けない
+    const by = (w.staff_id === currentUser?.id) ? null : (w.is_anonymous ? '匿名' : (w.name || null)); // 自分の言葉には差出人を付けない／匿名投稿は「匿名」
     return { text: w.text, by };
   }
   const t = DAILY_QUOTES[((day % DAILY_QUOTES.length) + DAILY_QUOTES.length) % DAILY_QUOTES.length];
@@ -1824,7 +1828,8 @@ function updateKingyoEnergy() {
       const arr = ta.value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 20);
       saveBtn.disabled = true;
       try {
-        await saveMyWords(arr);
+        const anon = document.getElementById('myQuotesAnon')?.checked || false;
+        await saveMyWords(arr, anon);
         ta.value = arr.join('\n');
         await loadSharedWords();   // 共有プールを最新化（自分の言葉も反映）
         updateKingyoEnergy();
