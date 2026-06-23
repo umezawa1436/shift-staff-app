@@ -1765,29 +1765,35 @@ const DAILY_QUOTES = [
 ];
 // 自分の好きな言葉（ログインユーザー単位で localStorage 保存）
 // ===== 好きな言葉（Supabase共有・他の人の言葉も巡回） =====
-let allSharedWords = []; // [{staff_id, name, text}] 非表示を除く全員の言葉
+let allSharedWords = []; // [{text, name?, staff_id?, anonymous}] サーバー経由（匿名は実名/IDを含まない）
+
+// /api/kingyo 呼び出し（独自トークンで本人/権限を検証。anonキー直叩きは廃止）
+async function kingyoApi(action, body) {
+  const token = localStorage.getItem('shift_token') || '';
+  const res = await fetch('/api/kingyo', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ action, ...(body || {}) }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `API ${res.status}`);
+  return data;
+}
 
 async function loadSharedWords() {
   try {
-    allSharedWords = await supabaseRequest('kingyo_words?is_hidden=eq.false&select=staff_id,name,text,is_anonymous&order=created_at.desc') || [];
+    const r = await kingyoApi('list-shared', {});
+    allSharedWords = r.words || [];
   } catch(e) { console.error('[loadSharedWords]', e); allSharedWords = []; }
 }
 async function loadMyWords() {
-  if (!currentUser?.id) return [];
   try {
-    const rows = await supabaseRequest(`kingyo_words?staff_id=eq.${currentUser.id}&select=text,is_anonymous&order=created_at`);
-    return (rows || []).map(r => ({ text: r.text, anon: !!r.is_anonymous })).filter(x => x.text);
+    const r = await kingyoApi('list-mine', {});
+    return (r.words || []).map(w => ({ text: w.text, anon: !!w.is_anonymous })).filter(x => x.text);
   } catch(e) { console.error('[loadMyWords]', e); return []; }
 }
 async function saveMyWords(items) {
-  if (!currentUser?.id) return;
-  await supabaseRequest(`kingyo_words?staff_id=eq.${currentUser.id}`, { method: 'DELETE' });
-  if (items.length) {
-    await supabaseRequest('kingyo_words', {
-      method: 'POST',
-      body: JSON.stringify(items.map(it => ({ staff_id: currentUser.id, name: currentUser.name, dept_id: currentUser.deptId, text: it.text, is_anonymous: !!it.anon })))
-    });
-  }
+  await kingyoApi('save-mine', { items: (items || []).map(it => ({ text: it.text, anon: !!it.anon })) });
 }
 
 // 好きな言葉の入力行（1語＝1行・行ごとに匿名/記名を選べる）
@@ -1840,7 +1846,7 @@ function getDailyQuote() {
   // 登録された言葉があれば偶数日はみんなの言葉（日替わり巡回）、奇数日はキュレーション。半分は仲間の言葉が出る。
   if (allSharedWords.length && day % 2 === 0) {
     const w = allSharedWords[Math.floor(day / 2) % allSharedWords.length];
-    const by = (w.staff_id === currentUser?.id) ? null : (w.is_anonymous ? '匿名' : (w.name || null)); // 自分の言葉には差出人を付けない／匿名投稿は「匿名」
+    const by = w.anonymous ? '匿名' : ((w.staff_id === currentUser?.id) ? null : (w.name || null)); // 匿名は「匿名」、自分の言葉は無記名、それ以外は名前
     return { text: w.text, by };
   }
   const t = DAILY_QUOTES[((day % DAILY_QUOTES.length) + DAILY_QUOTES.length) % DAILY_QUOTES.length];
