@@ -2,413 +2,222 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="robots" content="noindex, nofollow">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="kingyo-shift">
-  <meta name="theme-color" content="#3b82f6">
-  <link rel="manifest" href="/manifest.json">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-title" content="管理">
+  <meta name="theme-color" content="#9333ea">
+  <link rel="manifest" href="/manifest-admin.json">
+  <link rel="apple-touch-icon" href="/apple-touch-icon-admin.png">
   <link rel="icon" type="image/png" href="/icon-favicon.png">
-  <title>kingyo-shift</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=DM+Sans:wght@300;400;500;600&display=swap');
-
-    :root {
-      --primary: #0f4c81;
-      --primary-light: #1a6bb5;
-      --accent: #00b4d8;
-      --bg: #f0f4f8;
-      --card: #ffffff;
-      --text: #1a2332;
-      --text-muted: #6b7a8d;
-      --border: #e2e8f0;
-      --success: #10b981;
-      --warning: #f59e0b;
-      --danger: #ef4444;
-      --night: #7c3aed;
-      --radius: 16px;
-      --shadow: 0 4px 24px rgba(15,76,129,0.10);
-    }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-
-    body {
-      font-family: 'Noto Sans JP', sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      min-height: 100dvh;
-      overscroll-behavior: none;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    /* PWAスタンドアロンモード時の専用調整 */
-    @media (display-mode: standalone) {
-      body {
-        /* セーフエリア下部対応のみ */
-        padding-bottom: env(safe-area-inset-bottom);
-      }
-    }
-
-    /* ===== LOGIN SCREEN ===== */
-    #loginScreen {
-      min-height: 100vh;
-      min-height: 100dvh;
-      min-height: 100svh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
-      background: linear-gradient(145deg, #0f4c81 0%, #1a6bb5 50%, #00b4d8 100%);
-      box-sizing: border-box;
-    }
-
-    .login-logo {
-      width: 72px;
-      height: 72px;
-      background: rgba(255,255,255,0.15);
-      border-radius: 20px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 20px;
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255,255,255,0.2);
-    }
-
-    .login-logo svg { width: 40px; height: 40px; }
-
-    /* ===== 金魚マスコット ===== */
-    .kingyo-tank {
-      width: 200px;
-      height: 140px;
-      position: relative;
-      margin: 0 auto 16px;
-      background: linear-gradient(180deg, rgba(0,180,216,0.15) 0%, rgba(0,180,216,0.35) 100%);
-      border-radius: 50%;
-      overflow: hidden;
-      border: 2px solid rgba(255,255,255,0.3);
-      box-shadow: 0 8px 24px rgba(0,0,0,0.15), inset 0 0 30px rgba(255,255,255,0.1);
-    }
-    /* 水面の波 */
-    .water-surface {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 8px;
-      background: linear-gradient(90deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.6) 50%, rgba(255,255,255,0.3) 100%);
-      border-radius: 50%;
-      animation: waveMove 3s ease-in-out infinite;
-    }
-    @keyframes waveMove {
-      0%, 100% { transform: translateX(-3px); }
-      50% { transform: translateX(3px); }
-    }
-    /* 金魚本体 */
-    .kingyo {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 90px;
-      height: 60px;
-      animation: swimAround 6s ease-in-out infinite;
-    }
-    @keyframes swimAround {
-      0%   { transform: translate(-50%, -50%) translateX(-30px) rotate(-5deg); }
-      25%  { transform: translate(-50%, -50%) translateX(0px) translateY(-8px) rotate(0deg); }
-      50%  { transform: translate(-50%, -50%) translateX(30px) rotate(5deg); }
-      75%  { transform: translate(-50%, -50%) translateX(0px) translateY(8px) rotate(0deg); }
-      100% { transform: translate(-50%, -50%) translateX(-30px) rotate(-5deg); }
-    }
-    /* 尾びれの揺れ */
-    .kingyo-tail {
-      transform-origin: 0 0;
-      animation: tailWag 0.6s ease-in-out infinite;
-    }
-    @keyframes tailWag {
-      0%, 100% { transform: translate(20px,30px) rotate(-6deg); }
-      50% { transform: translate(20px,30px) rotate(6deg); }
-    }
-    /* 泡 */
-    .bubble {
-      position: absolute;
-      background: rgba(255,255,255,0.7);
-      border-radius: 50%;
-      border: 1px solid rgba(255,255,255,0.9);
-      animation: bubbleUp 4s ease-in infinite;
-      opacity: 0;
-    }
-    @keyframes bubbleUp {
-      0% { transform: translateY(0) translateX(0); opacity: 0; }
-      10% { opacity: 0.9; }
-      80% { opacity: 0.6; }
-      100% { transform: translateY(-100px) translateX(8px); opacity: 0; }
-    }
-    .bubble-1 { width: 8px; height: 8px; top: 60%; left: 60%; animation-delay: 0s; }
-    .bubble-2 { width: 6px; height: 6px; top: 65%; left: 55%; animation-delay: 1.2s; }
-    .bubble-3 { width: 10px; height: 10px; top: 55%; left: 65%; animation-delay: 2.4s; }
-    .bubble-4 { width: 5px; height: 5px; top: 70%; left: 50%; animation-delay: 3s; }
-
-    .login-title { color: white; font-size: 22px; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.3px; }
-    .login-subtitle { color: rgba(255,255,255,0.7); font-size: 13px; margin-bottom: 40px; }
-
-    .login-card { background: white; border-radius: 24px; padding: 32px 24px; width: 100%; max-width: 380px; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
-
-    .form-group { margin-bottom: 16px; }
-    .form-label { display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 8px; letter-spacing: 0.5px; text-transform: uppercase; }
-
-    .form-input { width: 100%; padding: 14px 16px; border: 1.5px solid var(--border); border-radius: 12px; font-size: 16px; font-family: inherit; color: var(--text); background: var(--bg); transition: all 0.2s; outline: none; }
-    .form-input:focus { border-color: var(--primary); background: white; box-shadow: 0 0 0 3px rgba(15,76,129,0.1); }
-
-    .dept-select { width: 100%; padding: 14px 16px; border: 1.5px solid var(--border); border-radius: 12px; font-size: 15px; font-family: inherit; color: var(--text); background: var(--bg); outline: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7a8d' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; }
-
-    .btn-primary { width: 100%; padding: 16px; background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; font-family: inherit; cursor: pointer; margin-top: 8px; transition: all 0.2s; letter-spacing: 0.3px; }
-    .btn-primary:active { transform: scale(0.98); opacity: 0.9; }
-
-    .error-msg { background: #fef2f2; color: var(--danger); padding: 10px 14px; border-radius: 10px; font-size: 13px; margin-top: 12px; display: none; }
-
-    /* ===== MAIN APP ===== */
-    #appScreen { display: none; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
-
-    .app-header { 
-      background: white; 
-      padding: calc(16px + env(safe-area-inset-top)) 20px 12px; 
-      position: sticky; 
-      top: 0; 
-      z-index: 100; 
-      border-bottom: 1px solid var(--border); 
-      box-shadow: 0 2px 12px rgba(0,0,0,0.06); 
-    }
-    .header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-    .header-name { font-size: 15px; font-weight: 600; color: var(--text); }
-    .header-dept { font-size: 12px; color: var(--text-muted); }
-    /* ===== 金魚の遊泳レーン（ヘッダ全幅を泳ぐ・タップで今日の一言） ===== */
-    .header-name-row { display: flex; align-items: center; gap: 8px; }
-    .kingyo-lane { position: relative; flex: 1; min-width: 0; height: 26px; margin: 0 8px; cursor: pointer; overflow: visible; -webkit-tap-highlight-color: transparent; }
-    .kingyo-mini { position: absolute; left: 0; top: 1px; width: 36px; height: 25px; border: none; background: transparent; padding: 0; line-height: 0; pointer-events: none; animation: kingyoSwimAcross var(--swim-dur, 20s) linear infinite; }
-    @keyframes kingyoSwimAcross {
-      0%   { transform: translate(0, 0) scaleX(1); }
-      25%  { transform: translate(calc(var(--swim-x, 300px) * 0.5), -2px) scaleX(1); }
-      47%  { transform: translate(var(--swim-x, 300px), 0) scaleX(1); }
-      50%  { transform: translate(var(--swim-x, 300px), 0) scaleX(-1); }
-      72%  { transform: translate(calc(var(--swim-x, 300px) * 0.5), -2px) scaleX(-1); }
-      97%  { transform: translate(0, 0) scaleX(-1); }
-      100% { transform: translate(0, 0) scaleX(1); }
-    }
-    .kingyo-mini .mini-tail { transform-box: fill-box; transform-origin: right center; animation: miniTailWag 0.7s ease-in-out infinite; }
-    @keyframes miniTailWag { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } }
-    /* 泡（金魚の口元から出る・金魚と一緒に動く） */
-    .kingyo-mini .fish-bubble { position: absolute; left: 30px; top: 8px; width: 4px; height: 4px; border-radius: 50%; background: rgba(0,180,216,0.4); border: 1px solid rgba(0,180,216,0.55); opacity: 0; animation: fishBubbleUp 3.6s ease-in infinite; }
-    @keyframes fishBubbleUp { 0% { transform: translate(0,0); opacity: 0; } 15% { opacity: 0.85; } 70% { opacity: 0.4; } 100% { transform: translate(3px,-18px); opacity: 0; } }
-    .fb1 { animation-delay: 0s; }
-    .fb2 { left: 31px; top: 6px; width: 3px; height: 3px; animation-delay: 1.9s; }
-    .kingyo-lane.energy-high .fish-bubble { animation-duration: 2.4s; }
-    /* 吹き出し（レーンの下に表示） */
-    .kingyo-bubble { position: absolute; left: 16px; top: calc(100% - 4px); z-index: 120; max-width: calc(100% - 32px); background: #fff; color: var(--text); border: 1.5px solid var(--primary); border-radius: 14px; padding: 11px 14px 12px; box-shadow: 0 10px 28px rgba(0,0,0,0.2); font-size: 14px; line-height: 1.65; font-weight: 600; opacity: 0; transform: translateY(-6px) scale(0.98); transform-origin: top left; pointer-events: none; transition: opacity 0.18s ease, transform 0.18s ease; }
-    .kingyo-bubble.show { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
-    .kingyo-bubble::before { content: ''; position: absolute; top: -9px; left: 26px; border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 9px solid var(--primary); }
-    .kingyo-bubble::after { content: ''; position: absolute; top: -7px; left: 27px; border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 8px solid #fff; }
-    .kb-label { font-size: 11px; color: var(--primary); font-weight: 800; margin-bottom: 5px; letter-spacing: 0.3px; }
-    .logout-btn { background: var(--bg); border: none; border-radius: 8px; padding: 6px 12px; font-size: 12px; color: var(--text-muted); cursor: pointer; font-family: inherit; }
-    .month-nav { display: flex; align-items: center; justify-content: space-between; }
-    .month-title { font-size: 18px; font-weight: 700; color: var(--text); letter-spacing: -0.3px; }
-    .month-btn { width: 36px; height: 36px; border: 1.5px solid var(--border); border-radius: 10px; background: white; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s; }
-    .month-btn:active { background: var(--bg); }
-
-    /* ===== CALENDAR ===== */
-    .calendar-wrap { padding: 16px; flex: 1; }
-    .weekdays { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 8px; }
-    .weekday { text-align: center; font-size: 11px; font-weight: 600; color: var(--text-muted); padding: 4px 0; letter-spacing: 0.5px; }
-    .weekday.sun { color: #ef4444; }
-    .weekday.sat { color: #3b82f6; }
-    .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-
-    .cal-day { aspect-ratio: 1; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; transition: all 0.15s; background: white; border: 1.5px solid transparent; min-height: 44px; }
-    .cal-day:active { transform: scale(0.94); }
-    .cal-day.empty { background: transparent; cursor: default; }
-    .cal-day.empty:active { transform: none; }
-    .cal-day.today { border-color: var(--primary); background: rgba(15,76,129,0.04); }
-    .cal-day.past { opacity: 0.4; cursor: default; }
-    .cal-day.past:active { transform: none; }
-    .cal-day.clinic-closed { background: #f3f4f6 !important; cursor: not-allowed; border-color: #e5e7eb !important; }
-    .cal-day.clinic-closed:active { transform: none; }
-    .cal-day.clinic-closed .day-num { color: #9ca3af; }
-    .cal-day.clinic-closed .day-closed-label { font-size: 9px; font-weight: 600; color: #6b7280; margin-top: 2px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
-    .day-num { font-size: 14px; font-weight: 600; line-height: 1; }
-    .cal-day.sun .day-num { color: #ef4444; }
-    .cal-day.sat .day-num { color: #3b82f6; }
-    .day-shift { font-size: 9px; font-weight: 600; margin-top: 2px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
-
-    /* シフト色 */
-    .cal-day.has-shift { border-width: 2px; }
-    .shift-日勤 { background: #eff6ff; border-color: #3b82f6 !important; }
-    .shift-日勤 .day-shift { color: #1d4ed8; }
-    .shift-日勤\+ { background: #dbeafe; border-color: #2563eb !important; }
-    .shift-日勤\+ .day-shift { color: #1e40af; }
-    .shift-午前 { background: #f0fdf4; border-color: #22c55e !important; }
-    .shift-午前 .day-shift { color: #15803d; }
-    .shift-午後 { background: #fefce8; border-color: #eab308 !important; }
-    .shift-午後 .day-shift { color: #a16207; }
-    .shift-遅番 { background: #fff7ed; border-color: #f97316 !important; }
-    .shift-遅番 .day-shift { color: #c2410c; }
-    .shift-遅L { background: #fef3c7; border-color: #d97706 !important; }
-    .shift-遅L .day-shift { color: #92400e; }
-    .shift-リハ遅 { background: #fdf4ff; border-color: #a855f7 !important; }
-    .shift-リハ遅 .day-shift { color: #7e22ce; }
-    .shift-夜勤 { background: #f5f3ff; border-color: #7c3aed !important; }
-    .shift-夜勤 .day-shift { color: #5b21b6; }
-    .shift-長日 { background: #fff1f2; border-color: #f43f5e !important; }
-    .shift-長日 .day-shift { color: #be123c; }
-    .shift-中抜け { background: #f0fdfa; border-color: #14b8a6 !important; }
-    .shift-中抜け .day-shift { color: #0f766e; }
-    .shift-時短 { background: #f0fdf4; border-color: #86efac !important; }
-    .shift-時短 .day-shift { color: #166534; }
-    .shift-CC { background: #eff6ff; border-color: #60a5fa !important; }
-    .shift-CC .day-shift { color: #1d4ed8; }
-    .shift-CHO { background: #eff6ff; border-color: #93c5fd !important; }
-    .shift-CHO .day-shift { color: #1e40af; }
-    .shift-CCのみ { background: #f0f9ff; border-color: #7dd3fc !important; }
-    .shift-CCのみ .day-shift { color: #075985; }
-    .shift-休み { background: #f9fafb; border-color: #d1d5db !important; }
-    .shift-休み .day-shift { color: #6b7280; }
-    .shift-有休 { background: #fdf2f8; border-color: #e879f9 !important; }
-    .shift-有休 .day-shift { color: #86198f; }
-    .shift-半有休 { background: #fdf4ff; border-color: #d946ef !important; }
-    .shift-半有休 .day-shift { color: #7e22ce; }
-    .shift-希望休 { background: #fff7ed; border-color: #fdba74 !important; }
-    .shift-希望休 .day-shift { color: #9a3412; }
-
-    /* ===== BOTTOM SUBMIT BAR ===== */
-    .bottom-nav { position: sticky; bottom: 0; background: white; border-top: 1px solid var(--border); display: flex; z-index: 100; padding-bottom: env(safe-area-inset-bottom); }
-    .nav-tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 10px 8px; border: none; background: white; color: var(--text-muted); font-size: 11px; font-family: inherit; cursor: pointer; transition: all 0.15s; border-top: 2px solid transparent; }
-    .nav-tab.active { color: var(--primary); border-top-color: var(--primary); font-weight: 600; }
-
-    .submit-bar { background: white; padding: 16px 20px; padding-bottom: calc(16px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); box-shadow: 0 -4px 20px rgba(0,0,0,0.08); }
-    .submit-info { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-    .submit-count { font-size: 13px; color: var(--text-muted); }
-    .submit-count span { font-weight: 700; color: var(--primary); font-size: 16px; }
-    .btn-submit { width: 100%; padding: 16px; background: linear-gradient(135deg, var(--success), #059669); color: white; border: none; border-radius: 14px; font-size: 16px; font-weight: 700; font-family: inherit; cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px; }
-    .btn-submit:active { transform: scale(0.98); }
-    .btn-submit:disabled { background: #d1d5db; cursor: not-allowed; transform: none; }
-
-    /* ===== BOTTOM SHEET ===== */
-    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200; display: none; backdrop-filter: blur(2px); }
-    .overlay.show { display: block; }
-
-    .bottom-sheet { position: fixed; bottom: 0; left: 0; right: 0; background: white; border-radius: 24px 24px 0 0; z-index: 300; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1); max-height: 80vh; overflow-y: auto; padding-bottom: env(safe-area-inset-bottom); }
-    .bottom-sheet.show { transform: translateY(0); }
-    .sheet-handle { width: 40px; height: 4px; background: var(--border); border-radius: 2px; margin: 12px auto 0; }
-    .sheet-header { padding: 16px 20px 12px; border-bottom: 1px solid var(--border); }
-    .sheet-date { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
-    .sheet-hint { font-size: 12px; color: var(--text-muted); }
-
-    .shift-list { padding: 12px 16px; }
-    .shift-category { font-size: 11px; font-weight: 700; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; padding: 8px 4px 6px; }
-    .shift-option { display: flex; align-items: center; padding: 12px 14px; border-radius: 12px; margin-bottom: 4px; cursor: pointer; transition: all 0.15s; border: 1.5px solid transparent; }
-    .shift-option:active { transform: scale(0.98); }
-    .shift-option.selected { border-color: var(--primary); background: rgba(15,76,129,0.06); }
-    .shift-dot { width: 10px; height: 10px; border-radius: 50%; margin-right: 12px; flex-shrink: 0; }
-    .shift-name { font-size: 15px; font-weight: 500; flex: 1; }
-    .shift-time { font-size: 12px; color: var(--text-muted); }
-
-    .clear-btn { margin: 4px 16px 16px; padding: 12px; background: #fef2f2; color: var(--danger); border: none; border-radius: 12px; font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; width: calc(100% - 32px); transition: all 0.15s; }
-    .clear-btn:active { opacity: 0.8; }
-
-    /* ===== LOADING ===== */
-    .loading { position: fixed; inset: 0; background: rgba(255,255,255,0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 999; display: none; }
-    .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 16px; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .loading-text { font-size: 14px; color: var(--text-muted); }
-
-    /* ===== TOAST ===== */
-    .toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--text); color: white; padding: 12px 24px; border-radius: 100px; font-size: 14px; font-weight: 500; z-index: 999; opacity: 0; transition: all 0.3s; white-space: nowrap; }
-    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-    .toast.success { background: var(--success); }
-    .toast.error { background: var(--danger); }
-
-    /* ===== バーチカル表示モーダル ===== */
-    .vertical-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 400; display: none; backdrop-filter: blur(2px); }
-    .vertical-overlay.show { display: block; }
-    .vertical-modal { position: fixed; top: 5%; left: 2%; right: 2%; bottom: 5%; background: white; border-radius: 16px; z-index: 500; display: none; flex-direction: column; overflow: hidden; }
-    .vertical-modal.show { display: flex; }
-    .vertical-header { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .vertical-title { font-size: 14px; font-weight: 700; color: var(--text); }
-    .vertical-close { background: var(--bg); border: none; border-radius: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; font-family: inherit; }
-    .vertical-content { flex: 1; overflow: auto; padding: 8px; }
-    .v-row { display: flex; align-items: stretch; border-bottom: 1px solid #e2e8f0; }
-    .v-row.is-self { background: #fef3c7; box-shadow: inset 3px 0 0 #f59e0b; }
-    .v-name { min-width: 100px; padding: 8px 10px; background: #f8fafc; border-right: 1px solid #e2e8f0; display: flex; align-items: center; font-size: 12px; font-weight: 600; white-space: nowrap; }
-    .v-row.is-self .v-name { background: #fde68a; }
-    .v-bar-area { position: relative; height: 44px; background: #fafafa; }
-
-    /* ===== 印刷用CSS（バーチカル表示） ===== */
-    @media print {
-      @page {
-        size: A4 landscape;
-        margin: 5mm;
-      }
-      /* 背景色・帯の色を強制的に印刷する */
-      * {
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-        color-adjust: exact !important;
-      }
-      body * { visibility: hidden; }
-      #verticalModal, #verticalModal * { visibility: visible; }
-      #verticalModal {
-        position: absolute !important;
-        left: 0 !important;
-        top: 0 !important;
-        right: auto !important;
-        bottom: auto !important;
-        width: 100% !important;
-        background: white !important;
-        box-shadow: none !important;
-        border: none !important;
-        border-radius: 0 !important;
-      }
-      .vertical-overlay { display: none !important; }
-      .vertical-header {
-        border-bottom: 1px solid #888 !important;
-        padding: 8px 0 !important;
-      }
-      .vertical-title {
-        font-size: 14pt !important;
-        text-align: center !important;
-        width: 100%;
-      }
-      .vertical-close, #verticalPrintBtn { display: none !important; }
-      .vertical-content {
-        max-height: none !important;
-        overflow: visible !important;
-        padding: 0 !important;
-        font-size: 9pt !important;
-      }
-      html, body { overflow: visible !important; height: auto !important; }
-    }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <title>kingyo-shift 管理画面</title>
+  <link rel="stylesheet" href="admin.css?v=29">
 </head>
 <body>
 
-<div class="loading" id="loading"><div class="spinner"></div><div class="loading-text">読み込み中...</div></div>
+<div class="loading" id="loading"><div class="spinner"></div><div style="font-size:14px;color:var(--text-muted)">処理中...</div></div>
+<!-- 招待リンク発行モーダル -->
+<div class="modal-overlay" id="inviteLinkModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
+  <div class="modal-content" style="background:white;border-radius:16px;padding:24px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;margin-top:20px">
+    <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <span style="font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px">🔗 招待リンクを発行</span>
+      <button class="btn btn-outline" id="closeInviteModal" style="padding:6px 12px">✕</button>
+    </div>
+
+    <div id="inviteGenerating" style="text-align:center;padding:30px">
+      <div style="display:inline-block;width:36px;height:36px;border:3px solid #e5e7eb;border-top-color:#a855f7;border-radius:50%;animation:spin 0.8s linear infinite"></div>
+      <div style="margin-top:12px;font-size:14px;color:#6b7280">招待リンクを生成中...</div>
+    </div>
+
+    <div id="inviteResult" style="display:none">
+      <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:14px;margin-bottom:16px">
+        <div style="font-size:12px;color:#0369a1;margin-bottom:4px">招待対象</div>
+        <div style="font-size:15px;font-weight:700;color:#0c4a6e" id="inviteTargetName"></div>
+        <div style="font-size:11px;color:#0369a1;margin-top:6px" id="inviteExpiresAt"></div>
+      </div>
+
+      <div style="margin-bottom:16px">
+        <div style="font-size:13px;font-weight:600;color:#1f2937;margin-bottom:6px">招待リンク（LINEなどで送信してください）</div>
+        <textarea id="inviteUrlText" readonly style="width:100%;min-height:80px;padding:10px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:12px;font-family:monospace;resize:vertical;box-sizing:border-box;background:#f9fafb"></textarea>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="inviteCopyBtn" style="font-size:13px;flex:1">📋 リンクをコピー</button>
+        <button class="btn btn-outline" id="inviteCopyMessageBtn" style="font-size:13px;flex:1">📨 メッセージごとコピー</button>
+      </div>
+
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px;margin-top:14px;font-size:11px;color:#92400e;line-height:1.6">
+        ⚠️ <strong>注意事項</strong><br>
+        ・このリンクは <strong>7日間有効</strong>です（期限切れ後は再発行が必要）<br>
+        ・一度アカウント作成に使われると、リンクは無効になります<br>
+        ・LINEなどの安全な方法で対象スタッフに送ってください
+      </div>
+    </div>
+
+    <div id="inviteError" style="display:none;text-align:center;padding:20px">
+      <div style="font-size:32px;margin-bottom:12px">⚠️</div>
+      <div id="inviteErrorText" style="font-size:14px;color:#dc2626;margin-bottom:16px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- AI相談モーダル -->
+<div class="modal-overlay" id="aiAdviceModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
+  <div class="modal-content" style="background:white;border-radius:16px;padding:24px;width:100%;max-width:720px;max-height:90vh;overflow-y:auto;margin-top:20px">
+    <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <span style="font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px">
+        <svg width="28" height="19" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+          <g transform="translate(20, 30)">
+            <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
+            <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
+          </g>
+          <g transform="translate(50, 30)">
+            <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
+            <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
+            <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
+            <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
+            <circle cx="20" cy="-3" r="5" fill="white"/>
+            <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
+            <circle cx="22" cy="-4" r="0.8" fill="white"/>
+          </g>
+        </svg>
+        AIに相談
+      </span>
+      <button class="btn btn-outline" id="closeAiModal" style="padding:6px 12px">✕</button>
+    </div>
+
+    <!-- 用途選択 -->
+    <div id="aiStepSelect">
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:14px">現在表示中のシフト表（<span id="aiTargetMonthLabel"></span>・<span id="aiTargetDeptLabel"></span>）について相談します。</div>
+
+      <!-- メインボタン -->
+      <button class="ai-choice-btn ai-main-btn" data-mode="both" style="width:100%;padding:18px;border-radius:14px;border:none;background:linear-gradient(135deg,#9333ea,#2563eb);color:white;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:16px;box-shadow:0 4px 12px rgba(147,51,234,0.4);display:flex;align-items:center;justify-content:center;gap:10px">
+        <svg width="32" height="22" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+          <g transform="translate(20, 30)">
+            <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
+            <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
+          </g>
+          <g transform="translate(50, 30)">
+            <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
+            <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
+            <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
+            <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
+            <circle cx="20" cy="-3" r="5" fill="white"/>
+            <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
+            <circle cx="22" cy="-4" r="0.8" fill="white"/>
+          </g>
+        </svg>
+        <div style="text-align:left">
+          <div style="font-weight:700;font-size:16px">問題点と修正案を確認する</div>
+          <div style="font-size:11px;opacity:0.9;margin-top:2px">問題点を見つけて、具体的な修正案を提案します</div>
+        </div>
+      </button>
+
+      <!-- 区切り -->
+      <div style="display:flex;align-items:center;gap:12px;margin:14px 0">
+        <div style="flex:1;height:1px;background:#e5e7eb"></div>
+        <div style="font-size:11px;color:#94a3b8;font-weight:500">または</div>
+        <div style="flex:1;height:1px;background:#e5e7eb"></div>
+      </div>
+
+      <!-- 自由記入 -->
+      <div style="margin-bottom:14px">
+        <div style="font-size:13px;font-weight:600;color:#1f2937;margin-bottom:6px">📝 自由に質問・相談する</div>
+        <textarea id="aiFreeText" placeholder="例：来月から育休復帰するスタッフがいるので、シフトを軽めに調整した修正案を出してください" style="width:100%;min-height:80px;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
+        <button class="ai-choice-btn" data-mode="custom" style="margin-top:10px;width:100%;padding:12px;border-radius:10px;border:1.5px solid #a855f7;background:white;color:#7c3aed;font-weight:600;font-size:13px;cursor:pointer;transition:all 0.15s">
+          📤 送信
+        </button>
+      </div>
+
+      <div style="font-size:11px;color:#94a3b8;background:#f9fafb;padding:10px;border-radius:8px;line-height:1.6">
+        ⚠️ 個人情報保護のため、スタッフ名は「スタッフA・B・C…」に匿名化して送信されます。AIの返答は当画面でスタッフ名に戻して表示されます。
+      </div>
+    </div>
+
+    <!-- 処理中 -->
+    <div id="aiStepLoading" style="display:none;text-align:center;padding:40px 20px">
+      <div style="display:inline-block;width:40px;height:40px;border:3px solid #e5e7eb;border-top-color:#a855f7;border-radius:50%;animation:spin 0.8s linear infinite"></div>
+      <div style="margin-top:16px;font-size:14px;color:#6b7280">AIに相談しています...（5〜15秒）</div>
+    </div>
+
+    <!-- 結果（テキスト表示） -->
+    <div id="aiStepResult" style="display:none">
+      <!-- サマリー -->
+      <div id="aiSummaryBox" style="display:none;background:linear-gradient(135deg,#faf5ff,#eff6ff);border-radius:12px;padding:14px;border:1px solid #e9d5ff;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:600;color:#6b21a8;margin-bottom:4px;display:flex;align-items:center;gap:6px">
+          <svg width="20" height="14" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+            <g transform="translate(20, 30)">
+              <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
+              <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
+            </g>
+            <g transform="translate(50, 30)">
+              <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
+              <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
+              <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
+              <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
+              <circle cx="20" cy="-3" r="5" fill="white"/>
+              <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
+              <circle cx="22" cy="-4" r="0.8" fill="white"/>
+            </g>
+          </svg>
+          <span>全体所感</span>
+        </div>
+        <div id="aiSummaryText" style="font-size:13px;color:#1f2937;line-height:1.6"></div>
+      </div>
+      <!-- 提案カードリスト -->
+      <div id="aiSuggestionsList"></div>
+      <!-- テキスト返答（problems モードのみ） -->
+      <div id="aiResultTextBox" style="display:none;background:#f8fafc;border-radius:12px;padding:14px;border:1px solid #e5e7eb;margin-bottom:12px">
+        <div style="font-size:12px;font-weight:600;color:#475569;margin-bottom:6px;display:flex;align-items:center;gap:6px">
+          <svg width="20" height="14" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+            <g transform="translate(20, 30)">
+              <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
+              <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
+            </g>
+            <g transform="translate(50, 30)">
+              <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
+              <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
+              <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
+              <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
+              <circle cx="20" cy="-3" r="5" fill="white"/>
+              <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
+              <circle cx="22" cy="-4" r="0.8" fill="white"/>
+            </g>
+          </svg>
+          <span>Geminiからの指摘</span>
+        </div>
+        <div id="aiResultText" style="font-size:13px;line-height:1.7;color:#1f2937;white-space:pre-wrap"></div>
+      </div>
+      <!-- 操作ボタン -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb">
+        <button class="btn btn-outline" id="aiBackBtn" style="font-size:13px">🔄 別の相談</button>
+        <button class="btn btn-primary" id="aiCloseFinishBtn" style="font-size:13px;margin-left:auto">✓ 閉じてシフト表を確認</button>
+      </div>
+    </div>
+
+    <!-- エラー -->
+    <div id="aiStepError" style="display:none;text-align:center;padding:20px">
+      <div style="font-size:32px;margin-bottom:12px">⚠️</div>
+      <div id="aiErrorText" style="font-size:14px;color:#dc2626;margin-bottom:16px"></div>
+      <button class="btn btn-outline" id="aiErrorBackBtn" style="font-size:13px">戻る</button>
+    </div>
+  </div>
+</div>
+
+
 <div class="toast" id="toast"></div>
 
-<!-- ログイン -->
+<!-- LOGIN -->
 <div id="loginScreen">
-  <div class="kingyo-tank">
-    <div class="water-surface"></div>
-    <!-- 泡 -->
-    <div class="bubble bubble-1"></div>
-    <div class="bubble bubble-2"></div>
-    <div class="bubble bubble-3"></div>
-    <div class="bubble bubble-4"></div>
-    <!-- 金魚 -->
-    <svg class="kingyo" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg">
+  <div class="login-box">
+    <div class="kingyo-tank">
+      <div class="water-surface"></div>
+      <div class="bubble bubble-1"></div>
+      <div class="bubble bubble-2"></div>
+      <div class="bubble bubble-3"></div>
+      <div class="bubble bubble-4"></div>
+      <svg class="kingyo" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg">
       <!-- 尾びれ（パターン2の流線形・揺れる） -->
       <g class="kingyo-tail" transform="translate(20, 30)">
         <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#ea580c"/>
@@ -419,7 +228,7 @@
       <!-- 体（卵型・中央線なし） -->
       <g transform="translate(50, 30)">
         <ellipse cx="0" cy="0" rx="30" ry="23" fill="#dc2626"/>
-        <ellipse cx="0" cy="0" rx="30" ry="23" fill="url(#bodyGradHybrid)"/>
+        <ellipse cx="0" cy="0" rx="30" ry="23" fill="url(#bodyGradAdminHybrid)"/>
         <!-- エラ -->
         <path d="M 13 -8 Q 18 0, 13 9" stroke="#ea580c" stroke-width="1.3" fill="none" stroke-linecap="round"/>
         <!-- 背びれ（二段波打ち） -->
@@ -442,1714 +251,664 @@
         <path d="M 29 5 Q 31 6, 29 8" stroke="#7f1d1d" stroke-width="1.3" fill="none" stroke-linecap="round"/>
       </g>
       <defs>
-        <radialGradient id="bodyGradHybrid" cx="0.35" cy="0.3" r="0.7">
+        <radialGradient id="bodyGradAdminHybrid" cx="0.35" cy="0.3" r="0.7">
           <stop offset="0%" stop-color="#fecaca" stop-opacity="0.7"/>
           <stop offset="40%" stop-color="#dc2626" stop-opacity="0"/>
           <stop offset="100%" stop-color="#991b1b" stop-opacity="0.4"/>
         </radialGradient>
       </defs>
     </svg>
-  </div>
-  <div class="login-title">kingyo-shift</div>
-  <div class="login-subtitle">やちよ総合診療クリニック</div>
-
-  <div class="login-card">
+    </div>
+    <div class="login-title">kingyo-shift</div>
+    <div class="login-sub">管理者ログイン｜やちよ総合診療クリニック</div>
     <div class="form-group">
       <label class="form-label">部門</label>
-      <select class="dept-select" id="deptSelect">
-        <option value="">選択してください</option>
+      <select class="form-input" id="adminDeptSelect">
+        <option value="">部門を選択</option>
         <option value="0">医療事務</option>
         <option value="1">看護</option>
         <option value="2">リハビリ</option>
         <option value="3">放射線</option>
+        <option value="null">管理</option>
       </select>
     </div>
     <div class="form-group">
-      <label class="form-label">名前</label>
-      <select class="dept-select" id="staffSelect"><option value="">部門を先に選択</option></select>
+      <label class="form-label">お名前</label>
+      <select class="form-input" id="adminNameSelect" disabled>
+        <option value="">先に部門を選択してください</option>
+      </select>
     </div>
     <div class="form-group">
       <label class="form-label">パスワード</label>
-      <input type="password" class="form-input" id="passwordInput" placeholder="••••••••">
+      <input type="password" class="form-input" id="adminPassword" placeholder="••••••••" autocomplete="current-password">
     </div>
-    <button class="btn-primary" id="loginBtn">ログイン</button>
-    <div class="error-msg" id="errorMsg">パスワードが正しくありません</div>
+    <button class="btn-login" id="adminLoginBtn">ログイン</button>
+    <div class="error-box" id="adminError">名前またはパスワードが正しくありません</div>
   </div>
 </div>
 
-<!-- メインアプリ -->
+<!-- APP -->
 <div id="appScreen">
-  <div class="app-header">
-    <div class="header-top">
-      <div>
-        <div class="header-name-row">
-          <div class="header-name" id="headerName"></div>
+  <div class="layout">
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+    <div class="sidebar">
+      <div class="sidebar-logo">
+        <div class="sidebar-logo-title">やちよ総合診療<br>クリニック</div>
+        <div class="sidebar-logo-sub">シフト管理システム</div>
+      </div>
+      <div class="sidebar-nav">
+        <div class="nav-section">メニュー</div>
+        <div class="nav-item active" data-page="shift">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          <span>シフト表</span>
         </div>
-        <div class="header-dept" id="headerDept"></div>
+        <div class="nav-item" data-page="generate">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+          <span>自動生成</span>
+        </div>
+        <div class="nav-item" data-page="export">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+          <span>エクスポート</span>
+        </div>
+        <div class="nav-item" data-page="dashboard">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          <span>ダッシュボード</span>
+        </div>
+        <div class="nav-item" data-page="requests">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="m9 12 2 2 4-4"/></svg>
+          <span>希望一覧</span>
+        </div>
+        <div class="nav-item" data-page="settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>設定</span>
+        </div>
+        <div class="nav-item" id="staffNavItem" data-page="staff">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span>スタッフ管理</span>
+        </div>
+        <div class="nav-item" id="accountNavItem" data-page="account">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/><path d="M16 11l2 2 4-4"/></svg>
+          <span>アカウント管理</span>
+        </div>
+        <div class="nav-item" id="kingyoNavItem" data-page="kingyo">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span>今日の一言</span>
+        </div>
       </div>
-      <!-- 金魚の遊泳レーン（名前と設定ボタンの間を泳ぐ・タップで今日の一言） -->
-      <div class="kingyo-lane" id="kingyoLane" title="タップで今日の一言">
-        <button class="kingyo-mini" id="kingyoQuoteBtn" aria-hidden="true" tabindex="-1">
-          <svg viewBox="0 0 40 28" width="36" height="25" xmlns="http://www.w3.org/2000/svg">
-            <g class="mini-tail"><path d="M10 14 Q1 5 -5 8 Q-1 14 -5 20 Q1 23 10 14 Z" fill="#fb923c"/></g>
-            <ellipse cx="23" cy="14" rx="13" ry="10" fill="#dc2626"/>
-            <path d="M17 5 Q20 -1 23 4 Q26 -1 29 5 Z" fill="#ea580c"/>
-            <circle cx="30" cy="12" r="2.4" fill="#fff"/>
-            <circle cx="30.8" cy="12" r="1.3" fill="#1f2937"/>
-          </svg>
-          <span class="fish-bubble fb1"></span>
-          <span class="fish-bubble fb2"></span>
+      <div class="sidebar-footer">
+        <div class="user-info" id="sidebarUserName"></div>
+        <div class="user-role" id="sidebarUserRole"></div>
+        <button class="btn-logout" id="adminLogoutBtn">ログアウト</button>
+      </div>
+    </div>
+
+    <div class="main">
+      <div class="topbar">
+        <button class="sidebar-toggle" id="sidebarToggle" aria-label="メニュー">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
         </button>
+        <div>
+          <div class="page-title" id="topbarTitle">シフト表</div>
+          <div class="page-sub" id="topbarSub"></div>
+        </div>
+        <div class="goldfish-tank" id="topbarGoldfish" title="🐟">
+          <div class="bubble" style="bottom:0;left:30px"></div>
+          <div class="bubble" style="bottom:0"></div>
+          <div class="bubble" style="bottom:0"></div>
+          <div class="bubble" style="bottom:0"></div>
+          <div class="goldfish-swimmer">
+            <svg width="36" height="24" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg">
+              <g transform="translate(20, 30)">
+                <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
+                <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
+              </g>
+              <g transform="translate(50, 30)">
+                <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
+                <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
+                <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
+                <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
+                <circle cx="20" cy="-3" r="5" fill="white"/>
+                <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
+                <circle cx="22" cy="-4" r="0.8" fill="white"/>
+              </g>
+            </svg>
+          </div>
+        </div>
       </div>
-      <div style="display:flex;gap:8px">
-        <button class="logout-btn" id="settingsStaffBtn" aria-label="設定" title="設定" style="display:flex;align-items:center;justify-content:center;padding:6px 10px">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        </button>
-        <button class="logout-btn" id="logoutBtn">ログアウト</button>
+
+      <div class="content">
+
+        <!-- DASHBOARD -->
+        <div class="page" id="page-dashboard">
+          <div class="month-nav">
+            <button class="btn-nav" id="dashPrevMonth">◀</button>
+            <div class="month-nav-title" id="dashMonthTitle"></div>
+            <button class="btn-nav" id="dashNextMonth">▶</button>
+          </div>
+          <div class="stats-grid" id="statsGrid"></div>
+          <div class="card">
+            <div class="card-title">今月の提出状況</div>
+            <div id="recentSubmissions">読み込み中...</div>
+          </div>
+        </div>
+
+        <!-- REQUESTS -->
+        <div class="page" id="page-requests">
+          <div class="dept-tabs" id="requestDeptTabs"></div>
+          <div class="month-nav">
+            <button class="btn-nav" id="reqPrevMonth">◀</button>
+            <div class="month-nav-title" id="reqMonthTitle"></div>
+            <button class="btn-nav" id="reqNextMonth">▶</button>
+          </div>
+          <div class="card">
+            <div class="table-wrap">
+              <table class="data-table" id="requestsTable">
+                <thead><tr><th>スタッフ名</th><th>部門</th><th>最終提出日</th><th>入力日数</th><th>状況</th><th>詳細</th></tr></thead>
+                <tbody id="requestsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- SHIFT -->
+        <div class="page active" id="page-shift">
+          <div class="dept-tabs" id="shiftDeptTabs"></div>
+          <div class="month-nav">
+            <button class="btn-nav" id="shiftPrevMonth">◀</button>
+            <div class="month-nav-title" id="shiftMonthTitle"></div>
+            <button class="btn-nav" id="shiftNextMonth">▶</button>
+            <button class="btn btn-success" id="saveShiftBtn">💾 保存</button>
+            <button class="btn btn-outline" id="undoBtn" title="一つ戻る（元に戻す / Ctrl+Z）" style="background:white;border:1.5px solid #d1d5db;color:#374151;padding:8px 10px;display:inline-flex;align-items:center">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 5 5 5 5 0 0 1-5 5h-3"/></svg>
+            </button>
+            <button class="btn btn-outline" id="redoBtn" title="一つ進む（やり直す / Ctrl+Y）" style="background:white;border:1.5px solid #d1d5db;color:#374151;padding:8px 10px;display:inline-flex;align-items:center">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0-5 5 5 5 0 0 0 5 5h3"/></svg>
+            </button>
+            <button class="btn btn-outline" id="reloadShiftBtn" title="希望をリロード（スタッフ提出の最新の希望を取り込みます。未保存の編集は保持されます）" style="background:white;border:1.5px solid #06b6d4;color:#0e7490;padding:8px 10px;display:inline-flex;align-items:center">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v5h-5"/></svg>
+            </button>
+            <button class="btn btn-primary" id="confirmShiftBtn">✅ 確定する</button>
+            <button class="btn btn-outline" id="aiAdviceBtn" style="background:linear-gradient(135deg,#a855f7,#3b82f6);color:white;border:none;display:inline-flex;align-items:center;gap:6px">
+              <svg width="20" height="14" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+                <g transform="translate(20, 30)">
+                  <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
+                  <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
+                </g>
+                <g transform="translate(50, 30)">
+                  <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
+                  <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
+                  <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
+                  <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
+                  <circle cx="20" cy="-3" r="5" fill="white"/>
+                  <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
+                  <circle cx="22" cy="-4" r="0.8" fill="white"/>
+                </g>
+              </svg>
+              AIに相談
+            </button>
+          </div>
+          <div id="print-header" style="display:none;margin-bottom:12px">
+            <div style="font-size:16px;font-weight:700">やちよ総合診療クリニック シフト表</div>
+            <div style="font-size:12px;color:#666" id="printHeaderSub"></div>
+          </div>
+          <!-- ★ 状況行（3行目）：公開中バッジ＋確定取消ボタン。確定済みの月で表示。スマホでは1行・横スクロール -->
+          <div class="shift-status-row" style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+            <div id="confirmStatusBadge" style="display:none;padding:6px 12px;border-radius:100px;font-size:12px;font-weight:600;white-space:nowrap"></div>
+            <div id="confirmLockBanner" style="display:none">
+              <button id="unconfirmBtn" class="btn btn-outline" style="background:white; border:1.5px solid #dc2626; color:#dc2626; font-weight:700;white-space:nowrap">✏️ 確定を取り消して編集する</button>
+            </div>
+          </div>
+          <!-- ★ 自動生成プレビュー承認バナー（自動生成直後に表示）-->
+          <div id="aiPreviewBanner" style="display:none; position:sticky; top:0; z-index:50; background:linear-gradient(135deg,#fef3c7,#fde68a); border:2px solid #f59e0b; border-radius:12px; padding:16px; margin-bottom:12px; box-shadow:0 4px 12px rgba(245,158,11,0.3)">
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px">
+              <div style="flex:1; min-width:200px; display:flex; align-items:flex-start; gap:10px">
+                <svg width="32" height="22" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0; margin-top:2px">
+                  <g transform="translate(20, 30)">
+                    <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
+                    <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
+                  </g>
+                  <g transform="translate(50, 30)">
+                    <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
+                    <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
+                    <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
+                    <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
+                    <circle cx="20" cy="-3" r="5" fill="white"/>
+                    <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
+                    <circle cx="22" cy="-4" r="0.8" fill="white"/>
+                  </g>
+                </svg>
+                <div>
+                  <div style="font-size:15px; font-weight:700; color:#92400e; margin-bottom:4px">自動生成結果を表示中（まだ保存されていません）</div>
+                  <div style="font-size:12px; color:#78350f">内容を確認のうえ、「確定」または「生成前に戻す」を選択してください</div>
+                </div>
+              </div>
+              <div style="display:flex; gap:8px">
+                <button id="aiPreviewApproveBtn" class="btn btn-success" style="font-weight:700">✓ この内容で確定する</button>
+                <button id="aiPreviewDiscardBtn" class="btn btn-outline" style="background:white; border:1.5px solid #dc2626; color:#dc2626; font-weight:700">↩ 生成前に戻す</button>
+              </div>
+            </div>
+          </div>
+          <div class="card" style="padding:12px">
+            <div class="shift-grid-wrap">
+              <table class="shift-grid" id="shiftGrid"></table>
+            </div>
+          </div>
+        </div>
+
+        <!-- GENERATE -->
+        <!-- EXPORT -->
+        <div class="page" id="page-export">
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;max-width:640px">
+            <h2 style="font-size:18px;font-weight:700;margin:0 0 4px">エクスポート</h2>
+            <p style="font-size:13px;color:#6b7280;margin:0 0 16px;line-height:1.7">「シフト表」で選択中の部署・月を出力します。対象を変えるには、先に「シフト表」で部署・月を切り替えてください。印刷を押すとシフト表の表示に切り替わります。</p>
+            <div style="font-size:14px;font-weight:600;margin-bottom:18px">出力対象：<span id="exportContextLabel" style="color:#0e7490">―</span></div>
+            <div style="display:flex;gap:12px;flex-wrap:wrap">
+              <button class="btn btn-outline" id="exportCsvBtn">📊 CSV出力</button>
+              <button class="btn btn-outline" id="printShiftBtn">🖨️ 印刷</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="page" id="page-generate">
+          <div class="dept-tabs" id="genDeptTabs"></div>
+          <div class="month-nav">
+            <button class="btn-nav" id="genPrevMonth">◀</button>
+            <div class="month-nav-title" id="genMonthTitle"></div>
+            <button class="btn-nav" id="genNextMonth">▶</button>
+          </div>
+
+          <!-- 自動生成パネル -->
+          <div class="generate-panel">
+            <div class="generate-title">⚡ シフト自動生成</div>
+            <div class="generate-sub">希望データをもとに、制約条件を満たすシフトを自動で生成します</div>
+            <div class="generate-options">
+              <div class="gen-option">
+                <label><input type="checkbox" id="optNoConsecWeekend" checked> 土日連勤なし</label>
+              </div>
+            </div>
+            <!-- 以下は常時ON固定（UI非表示） -->
+            <input type="hidden" id="optRespectRequest" value="on" data-checked="true">
+            <input type="hidden" id="optRespectHours" value="on" data-checked="true">
+            <input type="hidden" id="optRespectNight" value="on" data-checked="true">
+            <input type="hidden" id="optKeepLocked" value="on" data-checked="true">
+            <input type="hidden" id="optFillRequired" value="on" data-checked="true">
+
+            <!-- シフトパターン選択 -->
+            <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
+              <div style="font-size:13px;font-weight:700;margin-bottom:10px">
+                📋 使用シフトパターン
+              </div>
+              <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">チェックしたシフトのみ自動生成に使用します（部門ごとに自動保存）</div>
+              <div id="shiftPatternOptions" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+            </div>
+
+            <button class="btn-generate" id="generateBtn" style="margin-top:24px">🚀 シフトを自動生成する</button>
+          </div>
+
+          <!-- 生成結果プレビュー -->
+          <div class="card" id="previewCard" style="display:none">
+            <div class="card-title">生成結果プレビュー</div>
+            <div class="shift-grid-wrap">
+              <table class="shift-grid" id="previewGrid"></table>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:16px">
+              <button class="btn btn-success" id="applyGenerateBtn">✓ シフト表に適用する</button>
+              <button class="btn btn-outline" id="discardGenerateBtn">✕ 破棄する</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- SETTINGS -->
+        <div class="page" id="page-settings">
+          <div class="card">
+            <div class="card-title">月間所定労働時間</div>
+            <div id="monthlyHoursGrid"></div>
+            <button class="btn btn-primary" style="margin-top:16px" id="saveHoursBtn">保存</button>
+            <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+              <div style="font-size:13px;color:var(--text-muted);margin-bottom:8px">個別所定時間のリセット：特定スタッフに個別設定された所定時間を削除し、上記の基準値に統一します。基準値を変更しても反映されない場合に使用してください。</div>
+              <button class="btn btn-outline" id="clearStaffHoursBtn" style="border:1.5px solid #f59e0b;color:#92400e">⚠️ この部署・指定月の個別所定時間をクリア</button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">必要人数設定</div>
+            <div class="dept-tabs" id="reqDeptTabs"></div>
+            <div id="requirementsGrid"></div>
+            <button class="btn btn-primary" style="margin-top:16px" id="saveRequirementsBtn">保存</button>
+          </div>
+          <!-- 月別設定：祝日・木曜・水曜（全部署共通・1つの月ナビで連動）-->
+          <div class="card">
+            <div class="card-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+              月別の診療日設定（祝日・木曜・水曜）
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">下記の祝日・木曜・水曜の設定はすべて全部署共通です。月を切り替えると3つすべてが連動します。</div>
+            <div class="month-nav" style="margin-bottom:20px">
+              <button class="btn-nav" id="specialPrevMonth">◀</button>
+              <div class="month-nav-title" id="specialMonthTitle"></div>
+              <button class="btn-nav" id="specialNextMonth">▶</button>
+            </div>
+
+            <!-- 祝日・特殊日 -->
+            <div style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--primary)">📅 祝日・特殊日</div>
+            <div id="specialDaysGrid"></div>
+
+            <!-- 任意休診日 -->
+            <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
+              <div style="font-size:14px;font-weight:600;margin-bottom:8px">クリニック休診日（任意）</div>
+              <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
+                祝日・木曜以外でクリニックが休診と定める日を追加します。スタッフのシフト希望提出画面で休診表示されます。
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+                <select id="customClosedDaySelect" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:white;font-family:inherit"></select>
+                <input type="text" id="customClosedLabelInput" placeholder="ラベル（例：お盆休み）" maxlength="20" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;flex:1;min-width:160px;font-family:inherit">
+                <button id="addCustomClosedBtn" class="btn btn-primary" style="padding:8px 16px;font-size:13px">追加</button>
+              </div>
+              <div id="customClosedList"></div>
+            </div>
+
+            <!-- 木曜日 -->
+            <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
+              <div style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--primary)">📅 木曜日の設定</div>
+              <div id="thursdayGrid"></div>
+            </div>
+
+            <!-- 水曜日 -->
+            <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
+              <div style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--primary)">📅 水曜日の種別設定</div>
+              <div id="wedGrid"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">🔰 初心者上限設定</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">1日の時間帯ごとに🔰スタッフが入れる最大人数を設定します。空欄＝制限なし</div>
+            <div class="dept-tabs" id="beginnerDeptTabs"></div>
+            <div id="beginnerLimitsGrid"></div>
+            <button class="btn btn-primary" style="margin-top:16px" id="saveBeginnerLimitsBtn">保存</button>
+          </div>
+
+          <!-- 希望シフト上限 -->
+          <div class="card">
+            <div class="card-title" style="display:flex;align-items:center;gap:8px">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2zM17 4h-2a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM5 19v.01M11 16v.01M19 16v.01M19 12v.01"/></svg>
+              希望シフト上限
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">部門ごとに「希望休／有休／その他」の月上限を設定できます。一度設定すれば毎月自動的に適用されます。空欄＝制限なし。</div>
+            <div class="dept-tabs" id="reqLimitDeptTabs"></div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:16px">
+              <div style="padding:16px;background:#fff7ed;border-radius:12px;border:1px solid #fed7aa">
+                <div style="font-size:13px;font-weight:600;color:#9a3412;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+                  <span style="width:12px;height:12px;background:#fdba74;border-radius:3px"></span>
+                  希望休の月上限
+                </div>
+                <input type="number" class="form-input" id="limitKibouKyu" min="0" max="31" placeholder="空欄=制限なし" style="font-size:14px">
+                <div style="font-size:11px;color:#9a3412;margin-top:4px">日 / 月</div>
+              </div>
+              <div style="padding:16px;background:#fdf4ff;border-radius:12px;border:1px solid #f5d0fe">
+                <div style="font-size:13px;font-weight:600;color:#86198f;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+                  <span style="width:12px;height:12px;background:#e879f9;border-radius:3px"></span>
+                  有休の月上限
+                </div>
+                <input type="number" class="form-input" id="limitYukyu" min="0" max="31" placeholder="空欄=制限なし" style="font-size:14px">
+                <div style="font-size:11px;color:#86198f;margin-top:4px">日 / 月</div>
+              </div>
+              <div style="padding:16px;background:#f0f9ff;border-radius:12px;border:1px solid #bae6fd">
+                <div style="font-size:13px;font-weight:600;color:#075985;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+                  <span style="width:12px;height:12px;background:#7dd3fc;border-radius:3px"></span>
+                  その他の月上限
+                </div>
+                <input type="number" class="form-input" id="limitOther" min="0" max="31" placeholder="空欄=制限なし" style="font-size:14px">
+                <div style="font-size:11px;color:#075985;margin-top:4px">日 / 月（休み・希望休・有休以外）</div>
+              </div>
+            </div>
+            <button class="btn btn-primary" style="margin-top:16px" id="saveReqLimitsBtn">保存</button>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:8px">💡 設定すると、全ての月の希望提出に自動適用されます。値を変更したい場合はここを編集してください。</div>
+          </div>
+
+          <!-- 希望提出期限 -->
+          <div class="card" id="deadlineCard" style="display:none">
+            <div class="card-title" style="display:flex;align-items:center;gap:8px">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              希望提出期限
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">部門ごとに「毎月X日まで」のルールを設定します。一度設定すれば毎月自動的に適用されます。期限を過ぎるとスタッフは編集できなくなります。</div>
+            <div class="dept-tabs" id="deadlineDeptTabs"></div>
+            
+            <div style="margin-top:16px;padding:16px;background:#fef3c7;border-radius:12px;border:1px solid #fcd34d">
+              <div style="font-size:13px;font-weight:600;color:#92400e;margin-bottom:12px">📅 提出期限ルール（毎月適用）</div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px">
+                <select class="form-select" id="deadlineMonthsBefore" style="width:auto;font-size:14px;background:white">
+                  <option value="1">1ヶ月前（前月）</option>
+                  <option value="2">2ヶ月前</option>
+                  <option value="3">3ヶ月前</option>
+                </select>
+                <span style="color:#92400e">の</span>
+                <input type="number" class="form-input" id="deadlineDay" min="1" max="31" placeholder="10" style="width:70px;font-size:14px">
+                <span style="color:#92400e">日</span>
+                <input type="time" class="form-input" id="deadlineTime" value="23:59" style="width:130px;font-size:14px">
+                <span style="color:#92400e">まで</span>
+              </div>
+              <div style="font-size:11px;color:#92400e;margin-top:8px" id="deadlineExampleText">例：「1ヶ月前の10日 23:59」=5月分シフトの提出期限は4/10 23:59</div>
+              <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+                <button class="btn btn-primary" id="saveDeadlineRuleBtn" style="font-size:13px;padding:8px 16px">保存</button>
+                <button class="btn btn-outline" id="clearDeadlineRuleBtn" style="font-size:13px;padding:8px 16px;color:#dc2626">ルールを解除</button>
+              </div>
+            </div>
+
+            <div id="deadlineEffective" style="margin-top:16px;padding:12px;background:#f1f5f9;border-radius:10px;font-size:13px"></div>
+          </div>
+
+          <!-- シフトパターン管理 -->
+          <div class="card">
+            <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+              <span style="display:flex;align-items:center;gap:8px">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                シフトパターン管理
+              </span>
+              <button class="btn btn-primary" id="addCustomShiftBtn" style="font-size:13px;padding:8px 16px">＋ カスタム追加</button>
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">既定シフト（14種）に加えて、カスタムシフトを自由に追加できます。既定シフトは編集・削除できません。</div>
+            <div id="shiftPatternsList" style="overflow-x:auto"></div>
+          </div>
+        </div>
+
+        <!-- ACCOUNT -->
+        <div class="page" id="page-account">
+          <div class="card">
+            <div class="card-title">パスワード変更</div>
+            <div style="max-width:400px">
+              <div class="form-group" style="margin-bottom:16px">
+                <label class="form-label">現在のパスワード</label>
+                <input type="password" class="form-input" id="currentPw" placeholder="••••••••">
+              </div>
+              <div class="form-group" style="margin-bottom:16px">
+                <label class="form-label">新しいパスワード</label>
+                <input type="password" class="form-input" id="newPw" placeholder="4文字以上">
+              </div>
+              <div class="form-group" style="margin-bottom:20px">
+                <label class="form-label">新しいパスワード（確認）</label>
+                <input type="password" class="form-input" id="newPwConfirm" placeholder="もう一度入力">
+              </div>
+              <button class="btn btn-primary" id="changePwBtn">パスワードを変更する</button>
+            </div>
+          </div>
+          <div class="card" id="accountListCard" style="display:none">
+            <div class="card-title">アカウント一覧（管理のみ）</div>
+            <div class="action-row">
+              <button class="btn btn-primary" id="addAccountBtn">＋ アカウント追加</button>
+              <button class="btn btn-outline" id="inviteLinkBtn" style="color:#7c3aed;border-color:#a855f7;font-weight:600">🔗 招待リンクを発行</button>
+            </div>
+            <table class="data-table" id="accountTable">
+              <thead><tr><th>名前</th><th>権限</th><th>部門</th><th>状態</th><th>操作</th></tr></thead>
+              <tbody id="accountBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- STAFF -->
+        <div class="page" id="page-staff">
+          <div class="action-row">
+            <div class="dept-tabs" id="staffDeptTabs"></div>
+            <button class="btn btn-primary" id="addStaffBtn">＋ スタッフ追加</button>
+          </div>
+          <div class="card" style="padding:0;overflow:hidden">
+            <div id="staffListWrap"></div>
+          </div>
+        </div>
+
+        <div class="page" id="page-kingyo">
+          <div class="card">
+            <div class="card-title">今日の一言（スタッフ投稿のモデレーション）</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">スタッフが登録した言葉の一覧です。元気が出ない・不適切な言葉は「非表示」にすると、金魚の「今日の一言」に出なくなります（投稿者本人の編集欄には残ります）。</div>
+            <div id="kingyoWordsWrap"></div>
+          </div>
+        </div>
+
       </div>
     </div>
-    <div class="month-nav">
-      <button class="month-btn" id="prevMonthBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg></button>
-      <div><div class="month-title" id="monthTitle"></div></div>
-      <button class="month-btn" id="nextMonthBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg></button>
+  </div>
+</div>
+
+<!-- MODALS -->
+<!-- カスタムシフト追加・編集モーダル -->
+<div class="modal-overlay" id="customShiftModal">
+  <div class="modal">
+    <div class="modal-title" id="customShiftModalTitle">カスタムシフト追加</div>
+    <input type="hidden" id="customShiftEditId" value="">
+    <div class="form-group">
+      <label class="form-label">シフト名（10文字以内）<span style="color:#dc2626">*</span></label>
+      <input type="text" class="form-input" id="customShiftName" placeholder="例：早番" maxlength="10">
     </div>
-    <!-- 今日の一言 吹き出し（金魚タップで表示／日替わり） -->
-    <div class="kingyo-bubble" id="kingyoBubble"><div class="kb-label">今日の一言</div><div id="kingyoQuoteText"></div></div>
-  </div>
-
-  <div id="confirmedWrap" style="display:none;padding:16px;flex:1;overflow-y:auto">
-    <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center">
-      <button class="month-btn" id="confPrevMonth"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg></button>
-      <div style="font-size:18px;font-weight:700" id="confMonthTitle"></div>
-      <button class="month-btn" id="confNextMonth"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg></button>
-    </div>
-    <div id="confirmedGrid"></div>
-  </div>
-
-  <div class="calendar-wrap" id="calendarWrap">
-    <div class="weekdays">
-      <div class="weekday sun">日</div><div class="weekday">月</div><div class="weekday">火</div><div class="weekday">水</div><div class="weekday">木</div><div class="weekday">金</div><div class="weekday sat">土</div>
-    </div>
-    <div class="calendar-grid" id="calendarGrid"></div>
-  </div>
-
-  <div class="bottom-nav">
-    <button class="nav-tab active" id="tabRequest" onclick="switchTab('request')">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>
-      <span>希望提出</span>
-    </button>
-    <button class="nav-tab" id="tabConfirmed" onclick="switchTab('confirmed')">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 14h8M8 18h5"/></svg>
-      <span>確定シフト</span>
-    </button>
-  </div>
-
-  <div class="submit-bar" id="submitBar">
-    <div class="submit-info"><div class="submit-count">入力済み <span id="inputCount">0</span> 日</div></div>
-    <!-- 提出期限表示 -->
-    <div id="deadlineInfo" style="display:none;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px"></div>
-    <!-- 月の上限表示 -->
-    <div id="reqLimitInfo" style="display:none;background:#f8fafc;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px">
-      <div style="font-weight:600;color:#475569;margin-bottom:6px;display:flex;align-items:center;gap:6px">
-        <span style="font-size:13px">📊</span> 月の上限
+    <div class="form-group" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <label class="form-label">開始時間 <span style="color:#dc2626">*</span></label>
+        <input type="time" class="form-input" id="customShiftStart">
       </div>
-      <div id="reqLimitDetails" style="display:flex;flex-wrap:wrap;gap:10px;font-size:12px"></div>
+      <div>
+        <label class="form-label">終了時間 <span style="color:#dc2626">*</span></label>
+        <input type="time" class="form-input" id="customShiftEnd">
+      </div>
     </div>
-    <!-- 月トータル希望労働時間（設定でオン時のみ表示） -->
-    <div id="laborTimeInfo" style="display:none;background:#f8fafc;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px"></div>
-    <div id="reqLimitWarning" style="display:none;background:#fef2f2;color:#dc2626;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;font-weight:500"></div>
-    <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-bottom:8px">💾 入力内容は自動保存されます（提出ボタンを押すまで管理者には届きません）</div>
-    <button class="btn-submit" id="submitBtn">希望を提出する</button>
+    <div class="form-group">
+      <label class="form-label">実働時間（H）<span style="color:#dc2626">*</span></label>
+      <input type="number" class="form-input" id="customShiftHours" min="0" max="24" step="0.5" placeholder="例：8.0">
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">休憩時間を除いた実働時間</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">カバーする時間帯</label>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customCoverMorning"> 午前</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customCoverAfternoon"> 午後</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customCoverEvening"> 夜間</label>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">必要人数の充足判定で使われます</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">分類フラグ（月間上限のカウント対象）</label>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customIsNight"> 夜勤</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customIsLate"> 遅番</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customIsLong"> 長日</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customIsMidBreak"> 中抜け</label>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">スタッフごとの月間上限（夜勤上限など）にカウントされます</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('customShiftModal')">キャンセル</button>
+      <button class="btn btn-primary" id="saveCustomShiftBtn">保存</button>
+    </div>
   </div>
 </div>
 
 <!-- バーチカル表示モーダル -->
-<div class="vertical-overlay" id="verticalOverlay"></div>
-<div class="vertical-modal" id="verticalModal">
-  <div class="vertical-header">
-    <div class="vertical-title" id="verticalTitle">バーチカル表示</div>
-    <div style="display:flex;gap:8px">
-      <button class="vertical-close" id="verticalPrintBtn" style="background:#dbeafe;color:#1d4ed8">🖨 印刷</button>
-      <button class="vertical-close" id="verticalCloseBtn">閉じる</button>
-    </div>
-  </div>
-  <div class="vertical-content" id="verticalContent"></div>
-</div>
-
-<div class="overlay" id="overlay"></div>
-
-<!-- パスワード変更 -->
-<div class="overlay" id="pwOverlay" style="z-index:400"></div>
-<div class="bottom-sheet" id="pwSheet" style="z-index:500">
-  <div class="sheet-handle"></div>
-  <div class="sheet-header">
-    <div class="sheet-date">パスワード変更</div>
-    <div class="sheet-hint">新しいパスワードを設定してください（4文字以上）</div>
-  </div>
-  <div style="padding:16px">
-    <div style="margin-bottom:12px">
-      <label style="font-size:12px;color:#6b7a8d;font-weight:500;display:block;margin-bottom:6px">現在のパスワード</label>
-      <input type="password" id="staffCurrentPw" class="form-input" placeholder="••••••••">
-    </div>
-    <div style="margin-bottom:12px">
-      <label style="font-size:12px;color:#6b7a8d;font-weight:500;display:block;margin-bottom:6px">新しいパスワード</label>
-      <input type="password" id="staffNewPw" class="form-input" placeholder="4文字以上">
-    </div>
-    <div style="margin-bottom:20px">
-      <label style="font-size:12px;color:#6b7a8d;font-weight:500;display:block;margin-bottom:6px">新しいパスワード（確認）</label>
-      <input type="password" id="staffNewPwConfirm" class="form-input" placeholder="もう一度入力">
-    </div>
-    <button class="btn-submit" id="staffChangePwBtn">パスワードを変更する</button>
-    <div id="pwErrorMsg" style="color:#ef4444;font-size:13px;margin-top:10px;display:none"></div>
-  </div>
-</div>
-
-<!-- 設定シート -->
-<div class="overlay" id="settingsOverlay" style="z-index:400"></div>
-<div class="bottom-sheet" id="settingsSheet" style="z-index:500">
-  <div class="sheet-handle"></div>
-  <div class="sheet-header">
-    <div class="sheet-date">設定</div>
-    <div class="sheet-hint">表示やパスワードの設定ができます</div>
-  </div>
-  <div style="padding:16px">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;border:1.5px solid var(--border);border-radius:12px;margin-bottom:12px">
-      <div>
-        <div style="font-size:14px;font-weight:600;color:var(--text)">月の上限を表示</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">希望休・有休・その他の月間上限の欄を表示します</div>
+<div class="modal-overlay" id="verticalViewModal">
+  <div class="modal" style="max-width:1400px;width:95vw">
+    <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+      <span id="verticalViewTitle">バーチカル表示</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-outline" id="verticalPrevDay" style="padding:4px 12px">◀ 前日</button>
+        <button class="btn btn-outline" id="verticalNextDay" style="padding:4px 12px">翌日 ▶</button>
       </div>
-      <label style="position:relative;display:inline-block;width:48px;height:28px;flex-shrink:0;cursor:pointer">
-        <input type="checkbox" id="reqLimitToggle" style="opacity:0;width:0;height:0;position:absolute">
-        <span id="reqLimitToggleTrack" style="position:absolute;inset:0;background:#cbd5e1;border-radius:28px;transition:0.2s"></span>
-        <span id="reqLimitToggleKnob" style="position:absolute;left:3px;top:3px;width:22px;height:22px;background:white;border-radius:50%;transition:0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2)"></span>
+    </div>
+    <div id="verticalViewContent" style="overflow:auto;max-height:70vh"></div>
+    <div class="modal-footer" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div style="font-size:12px;color:var(--text-muted)">
+        💡 帯クリックで休憩追加・編集
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline" onclick="closeModal('verticalViewModal')">閉じる</button>
+        <button class="btn btn-outline" id="verticalPrintBtn">🖨 印刷</button>
+        <button class="btn btn-primary" id="saveBreaksBtn">休憩保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 休憩編集モーダル -->
+<div class="modal-overlay" id="breakEditModal">
+  <div class="modal">
+    <div class="modal-title" id="breakEditTitle">休憩時間を編集</div>
+    <div id="breakEditList"></div>
+    <button class="btn btn-outline" id="addBreakBtn" style="width:100%;margin-top:12px">＋ 休憩を追加</button>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('breakEditModal')">キャンセル</button>
+      <button class="btn btn-primary" id="applyBreakEditBtn">適用</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="requestDetailModal">
+  <div class="modal modal-lg">
+    <div class="modal-title" id="requestDetailTitle"></div>
+    <div id="requestDetailContent"></div>
+    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal('requestDetailModal')">閉じる</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="addStaffModal">
+  <div class="modal">
+    <div class="modal-title">スタッフ追加</div>
+    <div class="form-group"><label class="form-label">部門</label>
+      <select class="form-select" id="newStaffDept"><option value="0">医療事務</option><option value="1">看護</option><option value="2">リハビリ</option><option value="3">放射線</option></select></div>
+    <div class="form-group"><label class="form-label">名前</label><input type="text" class="form-input" id="newStaffName" placeholder="山田 太郎"></div>
+    <div class="form-group"><label class="form-label">雇用形態</label>
+      <select class="form-select" id="newStaffEmpType"><option value="full">常勤</option><option value="part">パート</option><option value="short">時短</option></select></div>
+    <div class="form-group"><label class="form-label">夜勤</label>
+      <select class="form-select" id="newStaffNoNight"><option value="false">あり</option><option value="true">なし</option></select></div>
+    <!-- アカウント作成セクション -->
+    <div style="margin:16px 0 12px;padding:12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px">
+        <input type="checkbox" id="newStaffCreateAccount" checked>
+        <span style="font-weight:600;font-size:13px;color:#0c4a6e">🔑 ログインアカウントも作成する</span>
       </label>
-    </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;border:1.5px solid var(--border);border-radius:12px;margin-bottom:16px">
-      <div>
-        <div style="font-size:14px;font-weight:600;color:var(--text)">月トータル労働時間を表示</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">希望シフト（休み以外）の合計時間と所定との差を表示します</div>
+      <div id="newStaffAccountFields">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" style="font-size:12px">初期パスワード（4文字以上）</label>
+          <input type="text" class="form-input" id="newStaffPassword" placeholder="後で本人が変更可能">
+        </div>
+        <div style="font-size:11px;color:#0369a1;margin-top:6px;line-height:1.5">
+          ※ ロールは「スタッフ」、部門は上で選択した部門が自動設定されます
+        </div>
       </div>
-      <label style="position:relative;display:inline-block;width:48px;height:28px;flex-shrink:0;cursor:pointer">
-        <input type="checkbox" id="laborTimeToggle" style="opacity:0;width:0;height:0;position:absolute">
-        <span id="laborTimeToggleTrack" style="position:absolute;inset:0;background:#cbd5e1;border-radius:28px;transition:0.2s"></span>
-        <span id="laborTimeToggleKnob" style="position:absolute;left:3px;top:3px;width:22px;height:22px;background:white;border-radius:50%;transition:0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2)"></span>
-      </label>
     </div>
-    <div style="padding:14px;border:1.5px solid var(--border);border-radius:12px;margin-bottom:16px">
-      <div style="font-size:14px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:6px">好きな言葉</div>
-      <div style="font-size:11px;color:var(--text-muted);margin:2px 0 8px">ここに書いた言葉は金魚の「今日の一言」で<b style="color:var(--primary)">差出人の名前付きでみんなに表示</b>されます。読んだ人が元気になれる言葉を書きましょう。1行に1つ、複数OK。みんなの言葉が増えるほど金魚が元気に泳ぎます。</div>
-      <textarea id="myQuotesInput" rows="3" placeholder="例：今日もいい一日になる&#10;一歩ずつ前へ" style="width:100%;padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);outline:none;resize:vertical;box-sizing:border-box"></textarea>
-      <button class="btn-submit" id="saveMyQuotesBtn" style="margin-top:8px">好きな言葉を保存</button>
-      <div id="myQuotesSaved" style="font-size:12px;color:#10b981;font-weight:600;margin-top:6px;display:none">保存しました ✓</div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('addStaffModal')">キャンセル</button>
+      <button class="btn btn-primary" id="saveNewStaffBtn">追加する</button>
     </div>
-    <button class="btn-submit" id="openPwFromSettingsBtn" style="background:var(--bg);color:var(--text);border:1.5px solid var(--border)">🔑 パスワードを変更する</button>
   </div>
 </div>
 
-<!-- シフト選択ボトムシート -->
-<div class="bottom-sheet" id="bottomSheet">
-  <div class="sheet-handle"></div>
-  <div class="sheet-header">
-    <div class="sheet-date" id="sheetDate"></div>
-    <div class="sheet-hint">希望するシフトを選んでください</div>
+<div class="modal-overlay" id="shiftEditModal">
+  <div class="modal">
+    <div class="modal-title" id="shiftEditTitle"></div>
+    <div id="shiftEditOptions" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;align-items:stretch"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline btn-danger" id="clearShiftBtn">クリア</button>
+      <button class="btn btn-outline" onclick="closeModal('shiftEditModal')">閉じる</button>
+    </div>
   </div>
-  <div class="shift-list" id="shiftList"></div>
-  <button class="clear-btn" id="clearBtn">この日の希望をクリア</button>
 </div>
 
-<script>
-// ===== CONFIG =====
-const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
-
-async function sha256(message) {
-  const msgBuffer = new TextEncoder().encode(message);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-let currentUser = null;
-let currentYear = new Date().getFullYear();
-let currentMonth = new Date().getMonth() + 1;
-let clinicClosedDays = {}; // {day: label} — special_daysでis_closed=trueの日
-let thursdayOpenDays = new Set(); // 木曜だが診療日として設定された日
-let requests = {};
-let hasDraft = false; // 未提出の下書きがあるか
-let selectedDay = null;
-let shiftTypesAll = [];
-let shiftTypesMap = {};
-
-// ===== 月トータル希望労働時間（新機能・設定でオン時のみ表示） =====
-let staffPlannedHours = 0;       // この月の所定労働時間
-let staffEmpTypeCache = null;    // emp_type（初回のみ取得してキャッシュ）
-
-// ★ 所定算出の定数（DB app_settings で一元管理。admin側と同一ソース。未設定時は従来値）
-let APP_SHORT_RATIO = 0.75;
-let APP_DEFAULT_PLAN_HOURS = 171.4;
-async function loadAppSettings() {
-  try {
-    const rows = await supabaseRequest('app_settings?select=key,value');
-    (rows || []).forEach(r => {
-      if (r.key === 'short_ratio' && r.value != null) APP_SHORT_RATIO = parseFloat(r.value);
-      if (r.key === 'default_planned_hours' && r.value != null) APP_DEFAULT_PLAN_HOURS = parseFloat(r.value);
-    });
-  } catch(e) {
-    console.warn('app_settings 読み込みスキップ（デフォルト値を使用）:', e);
-  }
-}
-
-// 祝日（admin.js と同一の2026マップ。有給の土日祝判定に使用）
-function getJpHolidaysStaff(year, month) {
-  const map = {
-    '2026-1':[1],'2026-2':[11,23],'2026-3':[20],'2026-4':[29],
-    '2026-5':[3,4,5,6],'2026-7':[20],'2026-8':[11],'2026-9':[21,22],
-    '2026-10':[12],'2026-11':[3,23],'2026-12':[]
-  };
-  return new Set(map[`${year}-${month}`] || []);
-}
-// 有給類の加算時間（admin.js と同一ルール：有休/個夏休=土日祝9H・平日8.5H、半有休=5H）
-const PAID_LEAVE_SHIFTS_STAFF = ['有休','個夏休'];
-function getRestShiftHoursStaff(shift, dow, isHoliday) {
-  if (PAID_LEAVE_SHIFTS_STAFF.includes(shift)) return (dow === 0 || dow === 6 || isHoliday) ? 9 : 8.5;
-  if (shift === '半有休') return 5;
-  return 0;
-}
-// 月のシフトから「シフト時間（有給込み）」と「実働時間（勤務のみ）」を算出
-//   shiftByDay: { day(数値文字列): shiftTypeId }
-function calcHours(year, month, shiftByDay) {
-  const holidays = getJpHolidaysStaff(year, month);
-  let work = 0, shiftTime = 0;
-  Object.keys(shiftByDay).forEach(dayKey => {
-    const sh = shiftByDay[dayKey];
-    const st = shiftTypesMap[sh];
-    const day = parseInt(dayKey, 10);
-    const dow = new Date(year, month - 1, day).getDay();
-    const isHol = holidays.has(day);
-    if (st && !st.is_off) {
-      const w = parseFloat(st.work_hours) || 0;
-      work += w;        // 実働（実際に勤務）
-      shiftTime += w;   // シフト時間にも加算
-    } else {
-      shiftTime += getRestShiftHoursStaff(sh, dow, isHol); // 有給類はシフト時間のみ
-    }
-  });
-  return { work: Math.round(work * 10) / 10, shiftTime: Math.round(shiftTime * 10) / 10 };
-}
-
-// 所定労働時間を取得（admin側のロジックと一致：個別設定 > emp_type別デフォルト）
-async function loadPlannedHours() {
-  try {
-    if (!currentUser?.id) { staffPlannedHours = 0; return; }
-    const [monthlyHoursData, staffSettingData, staffRow] = await Promise.all([
-      supabaseRequest(`monthly_hours?month=eq.${currentMonth}&year=eq.${currentYear}&dept_id=is.null&select=hours`),
-      supabaseRequest(`staff_settings?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}&select=planned_hours`),
-      staffEmpTypeCache != null ? Promise.resolve(null) : supabaseRequest(`staff?id=eq.${currentUser.id}&select=emp_type`)
-    ]);
-    if (staffRow) staffEmpTypeCache = staffRow[0]?.emp_type || 'full';
-    const baseHours = (monthlyHoursData && monthlyHoursData.length) ? parseFloat(monthlyHoursData[0].hours) : APP_DEFAULT_PLAN_HOURS;
-    const individual = (staffSettingData && staffSettingData.length) ? staffSettingData[0].planned_hours : null;
-    staffPlannedHours = (individual != null)
-      ? parseFloat(individual)
-      : (staffEmpTypeCache === 'full' ? baseHours
-         : staffEmpTypeCache === 'short' ? Math.round(baseHours * APP_SHORT_RATIO * 10) / 10
-         : 0);
-  } catch(e) {
-    console.error('所定時間の取得エラー:', e);
-    staffPlannedHours = 0;
-  }
-}
-
-// 月トータルの表示更新（シフト時間=有給込み / 実働時間=勤務のみ / 所定との差）
-function updateLaborTimeDisplay() {
-  const el = document.getElementById('laborTimeInfo');
-  if (!el) return;
-  const show = localStorage.getItem('kingyo_showLaborTime') === '1';
-  if (!show) { el.style.display = 'none'; return; }
-
-  const prefix = `${currentYear}-${currentMonth}-`;
-  const shiftByDay = {};
-  Object.keys(requests).forEach(k => {
-    if (k.startsWith(prefix)) shiftByDay[k.slice(prefix.length)] = requests[k];
-  });
-  const { work, shiftTime } = calcHours(currentYear, currentMonth, shiftByDay);
-  const planned = Math.round(staffPlannedHours * 10) / 10;
-  const diff = Math.round((shiftTime - planned) * 10) / 10;
-  const diffStr = diff >= 0 ? `+${diff}` : `${diff}`;
-  const color = planned <= 0 ? '#6b7280'
-    : Math.abs(diff) <= 10 ? '#10b981'
-    : diff > 10 ? '#f97316' : '#ef4444';
-
-  el.style.display = 'block';
-  el.innerHTML = `
-    <div style="font-weight:600;color:#475569;margin-bottom:6px;display:flex;align-items:center;gap:6px">
-      <span style="font-size:13px">⏱</span> 希望シフトの月トータル
-    </div>
-    <div style="display:flex;gap:18px;align-items:baseline;flex-wrap:wrap">
-      <div>
-        <div style="font-size:10px;color:#64748b">シフト時間（有給込み）</div>
-        <div style="font-size:18px;font-weight:700;color:${color}">${shiftTime}H
-          <span style="font-size:11px;color:#94a3b8;font-weight:500">/ ${planned}H（${diffStr}H）</span></div>
-      </div>
-      <div>
-        <div style="font-size:10px;color:#64748b">実働時間（勤務のみ）</div>
-        <div style="font-size:16px;font-weight:700;color:#10b981">${work}H</div>
-      </div>
-    </div>`;
-}
-
-let SHIFTS = [
-  { category: '休み・有給', items: [
-    { id: '希望休', color: '#fdba74', time: '' },
-    { id: '有休', color: '#e879f9', time: '平日+8.5H / 土日祝+9H' },
-    { id: '半有休', color: '#d946ef', time: '所定+5H' },
-    { id: '個夏休', color: '#06b6d4', time: '平日+8.5H / 土日祝+9H' },
-    { id: '休み', color: '#d1d5db', time: '' },
-  ]},
-  { category: '日勤系', items: [
-    { id: '日勤', color: '#3b82f6', time: '08:30-18:00 (8.5H)' },
-    { id: '日勤+', color: '#2563eb', time: '08:30-18:30 (9H)' },
-    { id: '長日', color: '#f43f5e', time: '08:30-21:30 (11H)' },
-    { id: '中抜け', color: '#14b8a6', time: '08:30-21:30 (8H)' },
-  ]},
-  { category: '半日系', items: [
-    { id: '午前', color: '#22c55e', time: '08:30-13:30 (5H)' },
-    { id: '午後', color: '#eab308', time: '13:00-18:30 (5H)' },
-    { id: '時短', color: '#86efac', time: '08:30-14:30 (6H)' },
-  ]},
-  { category: '遅番・夜勤系', items: [
-    { id: '遅番', color: '#f97316', time: '13:00-21:30 (7.5H)' },
-    { id: '遅L', color: '#d97706', time: '12:00-21:30 (8.5H)' },
-    { id: 'リハ遅', color: '#a855f7', time: '12:00-21:00 (8H)' },
-    { id: '夜勤', color: '#7c3aed', time: '17:30-21:30 (4H)' },
-  ]},
-  { category: 'CC系', items: [
-    { id: 'CC', color: '#60a5fa', time: '08:30-17:00 (8H)' },
-    { id: 'CHO', color: '#93c5fd', time: '08:30-16:30 (7H)' },
-    { id: 'CCのみ', color: '#7dd3fc', time: '14:00-17:00 (3H)' },
-  ]},
-];
-
-async function supabaseRequest(path, options = {}) {
-  const url = `${SUPABASE_URL}/rest/v1/${path}`;
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      'apikey': SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'return=representation',
-      ...options.headers,
-    },
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(err);
-  }
-  const text = await res.text();
-  return text ? JSON.parse(text) : [];
-}
-
-// ===== shift_types ロード =====
-async function loadShiftTypesFromDB() {
-  try {
-    const types = await supabaseRequest('shift_types?order=display_order,id&select=*');
-    shiftTypesAll = types;
-    shiftTypesMap = {};
-    types.forEach(s => { shiftTypesMap[s.id] = s; });
-
-    // カスタムシフトをSHIFTSに追加
-    const defaults = ['日勤','日勤+','午前','午後','遅番','遅L','リハ遅','夜勤','長日','中抜け','時短','CC','CHO','CCのみ','休み','有休','半有休','個夏休','希望休'];
-    const customs = types.filter(s => !defaults.includes(s.id));
-    if (customs.length > 0) {
-      const customCategory = {
-        category: 'カスタム',
-        items: customs.map(s => ({
-          id: s.id,
-          color: '#94a3b8',
-          time: (s.start_time && s.end_time) ? `${s.start_time}-${s.end_time} (${parseFloat(s.work_hours)||0}H)` : ''
-        }))
-      };
-      // カスタムは末尾に追加（最下部に表示）
-      SHIFTS.push(customCategory);
-    }
-    console.log('[shift_types] ロード完了', { 総数: types.length, カスタム: customs.length });
-  } catch(e) {
-    console.error('[shift_types] ロードエラー、ハードコード値を使用', e);
-  }
-}
-
-// スタッフ一覧はDBから動的に取得する（admin側で追加した新スタッフを反映するため）
-let STAFF_DATA = {};
-
-async function loadStaffData() {
-  try {
-    const staffList = await supabaseRequest(
-      `staff?select=id,staff_code,name,dept_id&order=dept_id,display_order.asc.nullslast,staff_code`
-    );
-    const grouped = {};
-    (staffList || []).forEach(s => {
-      if (s.dept_id == null || s.staff_code == null) return;
-      if (!grouped[s.dept_id]) grouped[s.dept_id] = [];
-      grouped[s.dept_id].push({ code: s.staff_code, name: s.name });
-    });
-    STAFF_DATA = grouped;
-  } catch (e) {
-    console.error('スタッフ一覧の取得に失敗:', e);
-    STAFF_DATA = {};
-  }
-}
-
-const DEPT_NAMES = { 0: '医療事務', 1: '看護', 2: 'リハビリ', 3: '放射線' };
-
-function showLoading() { document.getElementById('loading').style.display = 'flex'; }
-function hideLoading() { document.getElementById('loading').style.display = 'none'; }
-
-function showToast(msg, type = '') {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = `toast ${type} show`;
-  setTimeout(() => { t.className = 'toast'; }, 3000);
-}
-
-function openSheet() {
-  document.getElementById('overlay').classList.add('show');
-  document.getElementById('bottomSheet').classList.add('show');
-}
-function closeSheet() {
-  document.getElementById('overlay').classList.remove('show');
-  document.getElementById('bottomSheet').classList.remove('show');
-}
-
-function escapeHtml(str) {
-  if (str == null) return '';
-  return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
-function timeStrToMin(t) {
-  if (!t || typeof t !== 'string') return 0;
-  const [h, m] = t.split(':').map(Number);
-  return (h || 0) * 60 + (m || 0);
-}
-
-function minToTimeStr(min) {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-}
-
-// ===== バーチカル表示 =====
-async function openVerticalView(year, month, day) {
-  showLoading();
-  try {
-    const allDeptShifts = await supabaseRequest(
-      `shifts?year=eq.${year}&month=eq.${month}&day=eq.${day}&is_confirmed=eq.true&select=staff_id,shift_type_id`
-    );
-
-    // ★ 確定シフトが無い場合、調整中の可能性をチェック
-    //   レース条件：ユーザーがカレンダーを開いた後に管理者が確定取り消しすると発生する
-    if (allDeptShifts.length === 0) {
-      const unconfirmedExists = await supabaseRequest(
-        `shifts?year=eq.${year}&month=eq.${month}&day=eq.${day}&is_confirmed=eq.false&select=staff_id&limit=1`
-      );
-      hideLoading();
-      if (unconfirmedExists.length > 0) {
-        showToast('この日のシフトは現在調整中です', 'info');
-      } else {
-        showToast('この日の確定シフトがありません', 'info');
-      }
-      return;
-    }
-
-    const allDeptStaff = await supabaseRequest(
-      `staff?dept_id=eq.${currentUser.deptId}&select=id,name,emp_type&order=display_order.asc.nullslast,staff_code`
-    );
-    const breaksData = await supabaseRequest(
-      `shift_breaks?year=eq.${year}&month=eq.${month}&day=eq.${day}&order=staff_id,display_order&select=staff_id,break_start,break_end`
-    );
-    const breaksMap = {};
-    breaksData.forEach(b => {
-      if (!breaksMap[b.staff_id]) breaksMap[b.staff_id] = [];
-      breaksMap[b.staff_id].push(b);
-    });
-
-    const shiftMap = {};
-    allDeptShifts.forEach(s => { shiftMap[s.staff_id] = s.shift_type_id; });
-
-    const workingStaff = allDeptStaff.filter(s => {
-      const sh = shiftMap[s.id];
-      if (!sh) return false;
-      const st = shiftTypesMap[sh];
-      if (!st) return false;
-      if (st.is_off) return false;
-      if (!st.start_time || !st.end_time) return false;
-      return true;
-    });
-
-    renderVerticalView(year, month, day, workingStaff, shiftMap, breaksMap);
-    document.getElementById('verticalOverlay').classList.add('show');
-    document.getElementById('verticalModal').classList.add('show');
-  } catch(e) {
-    console.error(e);
-    showToast('読み込みエラー', 'error');
-  }
-  hideLoading();
-}
-
-function renderVerticalView(year, month, day, workingStaff, shiftMap, breaksMap) {
-  const dow = new Date(year, month-1, day).getDay();
-  const dowJp = ['日','月','火','水','木','金','土'][dow];
-  document.getElementById('verticalTitle').textContent = 
-    `${year}/${month}/${day}(${dowJp}) ${currentUser.deptName}`;
-
-  if (workingStaff.length === 0) {
-    document.getElementById('verticalContent').innerHTML = 
-      '<div style="padding:40px;text-align:center;color:var(--text-muted)">この日に勤務するスタッフはいません</div>';
-    return;
-  }
-
-  const startMin = 8 * 60 + 30;
-  const endMin = 21 * 60 + 30;
-  const totalMinutes = endMin - startMin;
-  const pixelsPerMin = 1.6;
-  const timelineWidth = totalMinutes * pixelsPerMin;
-  
-  let timelineHeader = `<div style="position:relative;height:32px;width:${timelineWidth}px;border-bottom:2px solid var(--border);background:#f8fafc">`;
-  for (let m = startMin; m <= endMin; m += 10) {
-    const left = (m - startMin) * pixelsPerMin;
-    const isHalf = (m % 30 === 0);
-    const isHour = (m % 60 === 0);
-    if (isHour) {
-      timelineHeader += `<div style="position:absolute;left:${left}px;top:0;height:100%;border-left:1px solid #94a3b8"></div>`;
-    } else if (isHalf) {
-      timelineHeader += `<div style="position:absolute;left:${left}px;top:0;height:100%;border-left:1px solid #cbd5e1"></div>`;
-    } else {
-      timelineHeader += `<div style="position:absolute;left:${left}px;bottom:0;height:6px;border-left:1px solid #e2e8f0"></div>`;
-    }
-    if (isHalf) {
-      timelineHeader += `<div style="position:absolute;left:${left+2}px;top:6px;font-size:10px;color:${isHour?'#475569':'#94a3b8'};font-weight:${isHour?'700':'500'}">${minToTimeStr(m)}</div>`;
-    }
-  }
-  timelineHeader += '</div>';
-
-  // シフト色マップ（admin.htmlと同じ色を使用）
-  const SHIFT_BG_COLORS = {
-    '日勤':'#dbeafe','日勤+':'#bfdbfe','午前':'#dcfce7','午後':'#fef9c3',
-    '遅番':'#ffedd5','遅L':'#fef3c7','リハ遅':'#f3e8ff','夜勤':'#ede9fe',
-    '長日':'#ffe4e6','中抜け':'#ccfbf1','時短':'#dcfce7','CC':'#dbeafe',
-    'CHO':'#e0f2fe','CCのみ':'#e0f9ff'
-  };
-  const SHIFT_TX_COLORS = {
-    '日勤':'#1d4ed8','日勤+':'#1e40af','午前':'#15803d','午後':'#a16207',
-    '遅番':'#c2410c','遅L':'#92400e','リハ遅':'#7e22ce','夜勤':'#5b21b6',
-    '長日':'#be123c','中抜け':'#0f766e','時短':'#166534','CC':'#1d4ed8',
-    'CHO':'#075985','CCのみ':'#0e7490'
-  };
-
-  let rows = '';
-  workingStaff.forEach(staff => {
-    const sh = shiftMap[staff.id];
-    const st = shiftTypesMap[sh];
-    const shiftStart = timeStrToMin(st.start_time);
-    const shiftEnd = timeStrToMin(st.end_time);
-    if (shiftEnd <= startMin || shiftStart >= endMin) return;
-    
-    const barStart = Math.max(shiftStart, startMin);
-    const barEnd = Math.min(shiftEnd, endMin);
-    const barLeft = (barStart - startMin) * pixelsPerMin;
-    const barWidth = (barEnd - barStart) * pixelsPerMin;
-    
-    const barBg = SHIFT_BG_COLORS[sh] || '#f1f5f9';
-    const barColor = SHIFT_TX_COLORS[sh] || '#475569';
-
-    const breaks = breaksMap[staff.id] || [];
-    let breaksHtml = '';
-    breaks.forEach(b => {
-      const bs = timeStrToMin(b.break_start);
-      const be = timeStrToMin(b.break_end);
-      if (be <= barStart || bs >= barEnd) return;
-      const bsClamp = Math.max(bs, barStart);
-      const beClamp = Math.min(be, barEnd);
-      const bLeft = (bsClamp - startMin) * pixelsPerMin;
-      const bWidth = (beClamp - bsClamp) * pixelsPerMin;
-      let breakContent = '';
-      if (bWidth >= 80) {
-        breakContent = `<div style="font-size:9px;line-height:1.2;text-align:center"><div>休憩</div><div style="font-size:8px;font-weight:600">${b.break_start}-${b.break_end}</div></div>`;
-      } else if (bWidth >= 40) {
-        breakContent = `<div style="font-size:8px;font-weight:600;line-height:1">${b.break_start}<br><span style="opacity:0.7">-${b.break_end}</span></div>`;
-      }
-      breaksHtml += `<div style="position:absolute;left:${bLeft}px;top:0;width:${bWidth}px;height:100%;background:white;border-left:1px dashed #94a3b8;border-right:1px dashed #94a3b8;display:flex;align-items:center;justify-content:center;color:#64748b;pointer-events:none;overflow:hidden">${breakContent}</div>`;
-    });
-
-    const isSelf = staff.id === currentUser.id;
-    const empBadge = staff.emp_type === 'short' ? '<span style="font-size:9px;color:#0f766e;background:#ccfbf1;padding:1px 4px;border-radius:3px;margin-left:4px">時短</span>' 
-      : staff.emp_type === 'part' ? '<span style="font-size:9px;color:#6b7280;background:#f3f4f6;padding:1px 4px;border-radius:3px;margin-left:4px">パート</span>' : '';
-
-    rows += `<div class="v-row${isSelf?' is-self':''}">
-      <div class="v-name">
-        ${escapeHtml(staff.name)}${isSelf?' <span style="font-size:9px;color:#92400e;background:#fef3c7;padding:1px 4px;border-radius:3px;margin-left:2px">自分</span>':''}${empBadge}
-      </div>
-      <div class="v-bar-area" style="width:${timelineWidth}px">
-        <div style="position:absolute;left:${barLeft}px;top:6px;width:${barWidth}px;height:32px;background:${barBg};color:${barColor};border-radius:6px;display:flex;align-items:center;justify-content:flex-start;padding-left:8px;font-size:11px;font-weight:700;border:1px solid rgba(0,0,0,0.1);box-shadow:0 1px 2px rgba(0,0,0,0.06);overflow:hidden;white-space:nowrap" title="${escapeHtml(sh)} ${st.start_time}-${st.end_time}">${escapeHtml(sh)} ${st.start_time}-${st.end_time}</div>
-        ${breaksHtml}
-      </div>
-    </div>`;
-  });
-
-  document.getElementById('verticalContent').innerHTML = 
-    `<div style="display:inline-block;min-width:100%">
-      <div style="display:flex">
-        <div style="min-width:100px;background:#e0e7ff;border-right:1px solid #94a3b8;border-bottom:2px solid var(--border);padding:6px 10px;font-size:12px;font-weight:700;color:#3730a3;display:flex;align-items:center">スタッフ</div>
-        ${timelineHeader}
-      </div>
-      ${rows}
-    </div>`;
-}
-
-document.getElementById('verticalCloseBtn').addEventListener('click', () => {
-  document.getElementById('verticalOverlay').classList.remove('show');
-  document.getElementById('verticalModal').classList.remove('show');
-});
-document.getElementById('verticalPrintBtn')?.addEventListener('click', () => {
-  window.print();
-});
-document.getElementById('verticalOverlay').addEventListener('click', () => {
-  document.getElementById('verticalOverlay').classList.remove('show');
-  document.getElementById('verticalModal').classList.remove('show');
-});
-
-// ===== LOGIN =====
-document.getElementById('deptSelect').addEventListener('change', function() {
-  const deptId = parseInt(this.value);
-  const staffSel = document.getElementById('staffSelect');
-  staffSel.innerHTML = '<option value="">選択してください</option>';
-  if (STAFF_DATA[deptId]) {
-    STAFF_DATA[deptId].forEach(s => {
-      staffSel.innerHTML += `<option value="${s.code}">${s.name}</option>`;
-    });
-  }
-});
-
-document.getElementById('loginBtn').addEventListener('click', async () => {
-  const deptId = document.getElementById('deptSelect').value;
-  const staffCode = document.getElementById('staffSelect').value;
-  const password = document.getElementById('passwordInput').value;
-  const errEl = document.getElementById('errorMsg');
-
-  if (!deptId || !staffCode || !password) {
-    errEl.style.display = 'block';
-    errEl.textContent = 'すべて入力してください';
-    return;
-  }
-
-  showLoading();
-  try {
-    const r = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'staff-login', deptId, staffCode, password }),
-    });
-    const data = await r.json();
-
-    if (!r.ok) {
-      errEl.style.display = 'block';
-      errEl.textContent = data.error || 'ログインに失敗しました';
-      hideLoading();
-      return;
-    }
-
-    currentUser = {
-      id: data.user.id,
-      accountId: data.user.accountId,
-      staffCode: data.user.staffCode,
-      name: data.user.name,
-      deptId: data.user.deptId,
-      deptName: DEPT_NAMES[data.user.deptId] || '不明',
-    };
-
-    errEl.style.display = 'none';
-    localStorage.setItem('shift_user', JSON.stringify(currentUser));
-    localStorage.setItem('shift_token', data.token);
-    await showApp();
-  } catch(e) {
-    console.error(e);
-    showToast('接続エラーが発生しました', 'error');
-  }
-  hideLoading();
-});
-
-async function showApp() {
-  document.getElementById('loginScreen').style.display = 'none';
-  document.getElementById('appScreen').style.display = 'flex';
-  document.getElementById('headerName').textContent = currentUser.name;
-  document.getElementById('headerDept').textContent = currentUser.deptName;
-  await loadSharedWords();
-  updateKingyoEnergy();
-  await loadShiftTypesFromDB();
-  await loadAppSettings();
-  await loadRequests();
-  await loadClinicSettings();
-  await loadReqLimitsForStaff();
-  await loadDeadlineForStaff();
-  renderDeadlineInfo();
-  renderCalendar();
-  // 期限前日のリマインダーをトーストで
-  if (deadlineWarning) {
-    setTimeout(() => showToast('⚠️ 希望提出の期限が24時間以内です', 'error'), 800);
-  }
-}
-
-async function loadRequests() {
-  if (!currentUser?.id) return;
-  try {
-    // ★ まず下書き（自動保存）を読み込む。提出前の入力もここから復元される。
-    const draftData = await supabaseRequest(
-      `shift_request_drafts?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}&select=day,request_type`
-    );
-    requests = {};
-    if (draftData && draftData.length > 0) {
-      // 下書きがあればそれを使う（最新の作業状態）
-      draftData.forEach(r => { requests[`${currentYear}-${currentMonth}-${r.day}`] = r.request_type; });
-      hasDraft = true;
-    } else {
-      // 下書きが無ければ提出済みを読み込む（初回や下書き未作成の場合）
-      const data = await supabaseRequest(
-        `shift_requests?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}&select=day,request_type`
-      );
-      data.forEach(r => { requests[`${currentYear}-${currentMonth}-${r.day}`] = r.request_type; });
-      hasDraft = false;
-    }
-  } catch(e) {
-    console.error('[loadRequests]', e);
-    // 下書きテーブルが未作成などのエラー時は、従来通り提出済みを読む（フォールバック）
-    try {
-      const data = await supabaseRequest(
-        `shift_requests?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}&select=day,request_type`
-      );
-      requests = {};
-      data.forEach(r => { requests[`${currentYear}-${currentMonth}-${r.day}`] = r.request_type; });
-    } catch(e2) { console.error(e2); }
-  }
-}
-
-// ★ 下書きを1日分だけ自動保存（選択のたびに呼ばれる・その人のアカウント専用）
-async function saveDraftDay(day, requestType) {
-  if (!currentUser?.id) return;
-  try {
-    await supabaseRequest(
-      `shift_request_drafts?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}&day=eq.${day}`,
-      { method: 'DELETE' }
-    );
-    await supabaseRequest('shift_request_drafts', {
-      method: 'POST',
-      body: JSON.stringify([{
-        staff_id: currentUser.id, year: currentYear, month: currentMonth, day, request_type: requestType
-      }])
-    });
-  } catch(e) { console.error('[saveDraftDay]', e); }
-}
-
-// ★ 下書きを1日分だけ削除（クリア時）
-async function deleteDraftDay(day) {
-  if (!currentUser?.id) return;
-  try {
-    await supabaseRequest(
-      `shift_request_drafts?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}&day=eq.${day}`,
-      { method: 'DELETE' }
-    );
-  } catch(e) { console.error('[deleteDraftDay]', e); }
-}
-
-// クリニック休診日の読み込み（木曜デフォルト休診 + special_daysのis_closed=true）
-async function loadClinicSettings() {
-  try {
-    const [specialData, thursdayData] = await Promise.all([
-      supabaseRequest(`special_days?year=eq.${currentYear}&month=eq.${currentMonth}&select=day,is_closed,label`),
-      supabaseRequest(`thursday_types?year=eq.${currentYear}&month=eq.${currentMonth}&select=day,is_open`)
-    ]);
-    clinicClosedDays = {};
-    specialData.forEach(s => {
-      if (s.is_closed) clinicClosedDays[s.day] = s.label || '休診';
-    });
-    thursdayOpenDays = new Set();
-    thursdayData.forEach(t => {
-      if (t.is_open) thursdayOpenDays.add(t.day);
-    });
-    // 月トータル労働時間表示用に所定時間も取得
-    await loadPlannedHours();
-  } catch(e) {
-    console.error('クリニック設定の読み込みエラー:', e);
-    clinicClosedDays = {};
-    thursdayOpenDays = new Set();
-  }
-}
-
-// 指定日が休診かどうか判定
-function isClinicClosed(day) {
-  // special_daysで休診指定された日（祝日・任意休診日問わず）
-  if (clinicClosedDays[day]) return { closed: true, label: clinicClosedDays[day] };
-  // 木曜：診療日として明示的に設定されていない限り休診
-  const dow = new Date(currentYear, currentMonth - 1, day).getDay();
-  if (dow === 4 && !thursdayOpenDays.has(day)) return { closed: true, label: '休診' };
-  return { closed: false };
-}
-
-function renderCalendar() {
-  const grid = document.getElementById('calendarGrid');
-  grid.innerHTML = '';
-
-  const today = new Date();
-  const firstDay = new Date(currentYear, currentMonth - 1, 1).getDay();
-  const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
-
-  document.getElementById('monthTitle').textContent = `${currentYear}年${currentMonth}月`;
-
-  for (let i = 0; i < firstDay; i++) {
-    const empty = document.createElement('div');
-    empty.className = 'cal-day empty';
-    grid.appendChild(empty);
-  }
-
-  for (let d = 1; d <= daysInMonth; d++) {
-    const date = new Date(currentYear, currentMonth - 1, d);
-    const dow = date.getDay();
-    const key = `${currentYear}-${currentMonth}-${d}`;
-    const shift = requests[key];
-
-    const isPast = date < new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const isToday = date.toDateString() === today.toDateString();
-    const closedInfo = isClinicClosed(d);
-
-    const cell = document.createElement('div');
-    cell.className = `cal-day${isPast ? ' past' : ''}${isToday ? ' today' : ''}${dow === 0 ? ' sun' : ''}${dow === 6 ? ' sat' : ''}${closedInfo.closed ? ' clinic-closed' : ''}`;
-
-    if (shift && !closedInfo.closed) cell.classList.add('has-shift', `shift-${shift}`);
-
-    if (closedInfo.closed) {
-      cell.innerHTML = `<div class="day-num">${d}</div><div class="day-closed-label">${closedInfo.label}</div>`;
-    } else {
-      cell.innerHTML = `<div class="day-num">${d}</div>${shift ? `<div class="day-shift">${shift}</div>` : ''}`;
-    }
-
-    if (!isPast && !deadlinePassed && !closedInfo.closed) cell.addEventListener('click', () => openDaySheet(d, shift));
-    else if (deadlinePassed && !isPast && !closedInfo.closed) cell.style.opacity = '0.7';
-
-    grid.appendChild(cell);
-  }
-
-  updateCount();
-}
-
-function openDaySheet(day, currentShift) {
-  selectedDay = day;
-  const date = new Date(currentYear, currentMonth - 1, day);
-  const days = ['日', '月', '火', '水', '木', '金', '土'];
-  document.getElementById('sheetDate').textContent = `${currentMonth}月${day}日（${days[date.getDay()]}）`;
-
-  const list = document.getElementById('shiftList');
-  list.innerHTML = '';
-
-  SHIFTS.forEach(cat => {
-    const catEl = document.createElement('div');
-    catEl.className = 'shift-category';
-    catEl.textContent = cat.category;
-    list.appendChild(catEl);
-
-    cat.items.forEach(shift => {
-      const opt = document.createElement('div');
-      opt.className = `shift-option${currentShift === shift.id ? ' selected' : ''}`;
-      opt.innerHTML = `
-        <div class="shift-dot" style="background:${shift.color}"></div>
-        <div class="shift-name">${shift.id}</div>
-        ${shift.time ? `<div class="shift-time">${shift.time}</div>` : ''}
-      `;
-      opt.addEventListener('click', () => selectShift(shift.id));
-      list.appendChild(opt);
-    });
-  });
-
-  openSheet();
-}
-
-async function selectShift(shiftId) {
-  const key = `${currentYear}-${currentMonth}-${selectedDay}`;
-  requests[key] = shiftId;
-  hasDraft = true;
-  const day = selectedDay;
-  closeSheet();
-  renderCalendar();
-  // ★ 下書きを自動保存（提出前でもアカウントに残る）
-  saveDraftDay(day, shiftId);
-}
-
-document.getElementById('clearBtn').addEventListener('click', () => {
-  const key = `${currentYear}-${currentMonth}-${selectedDay}`;
-  const day = selectedDay;
-  delete requests[key];
-  hasDraft = true;
-  closeSheet();
-  renderCalendar();
-  // ★ 下書きからもこの日を削除
-  deleteDraftDay(day);
-});
-
-// 提出期限のキャッシュ
-let deadlineCache = null;  // Date型 or null
-let deadlinePassed = false;
-let deadlineWarning = false; // 期限の前日
-
-async function loadDeadlineForStaff() {
-  if (!currentUser) return;
-  deadlineCache = null;
-  deadlinePassed = false;
-  deadlineWarning = false;
-  try {
-    // 「毎月X日」ルールから対象月の期限を計算
-    const rules = await supabaseRequest(
-      `shift_request_deadline_rules?dept_id=eq.${currentUser.deptId}&select=*`
-    );
-    if (rules && rules.length > 0) {
-      const r = rules[0];
-      if (r.days_before != null) {
-        // days_before カラムを「日」、months_before カラムを「何ヶ月前」として使う
-        const mb = r.months_before || 1;
-        // 対象月から mb ヶ月前を計算
-        let py = currentYear, pm = currentMonth - mb;
-        while (pm < 1) { pm += 12; py--; }
-        const lastDay = new Date(py, pm, 0).getDate();
-        const d = Math.min(r.days_before, lastDay);
-        deadlineCache = new Date(py, pm - 1, d, r.hour || 23, r.minute || 59, 59, 0);
-      }
-    }
-    // 判定
-    if (deadlineCache) {
-      const now = new Date();
-      deadlinePassed = now > deadlineCache;
-      // 残り24時間以内かチェック（前日警告）
-      const remaining = deadlineCache - now;
-      deadlineWarning = !deadlinePassed && remaining > 0 && remaining <= 24 * 60 * 60 * 1000;
-    }
-  } catch(e) {
-    console.error('期限取得エラー', e);
-  }
-}
-
-function renderDeadlineInfo() {
-  const el = document.getElementById('deadlineInfo');
-  if (!deadlineCache) {
-    el.style.display = 'none';
-    return;
-  }
-  const fmt = (d) => {
-    const yy = d.getFullYear();
-    const mm = String(d.getMonth()+1).padStart(2,'0');
-    const dd = String(d.getDate()).padStart(2,'0');
-    const hh = String(d.getHours()).padStart(2,'0');
-    const mi = String(d.getMinutes()).padStart(2,'0');
-    return `${yy}/${mm}/${dd} ${hh}:${mi}`;
-  };
-  el.style.display = 'block';
-  if (deadlinePassed) {
-    el.style.background = '#fef2f2';
-    el.style.color = '#dc2626';
-    el.style.border = '1.5px solid #fecaca';
-    el.innerHTML = `<div style="font-weight:700">⏰ 提出期限を過ぎました</div>
-      <div style="font-size:11px;margin-top:4px;font-weight:500">${fmt(deadlineCache)} までが期限でした<br>変更したい場合は管理者にご連絡ください</div>`;
-  } else if (deadlineWarning) {
-    el.style.background = '#fef3c7';
-    el.style.color = '#92400e';
-    el.style.border = '1.5px solid #fcd34d';
-    el.innerHTML = `<div style="font-weight:700">⚠️ 提出期限が迫っています</div>
-      <div style="font-size:11px;margin-top:4px;font-weight:500">${fmt(deadlineCache)} まで（24時間以内）</div>`;
-  } else {
-    el.style.background = '#f0f9ff';
-    el.style.color = '#075985';
-    el.style.border = '1.5px solid #bae6fd';
-    el.innerHTML = `<div style="font-weight:600">📅 提出期限：${fmt(deadlineCache)}</div>`;
-  }
-}
-
-// 希望シフト上限のキャッシュ
-let reqLimitCache = null; // {limit_kibou_kyu, limit_yukyu, limit_other}
-
-async function loadReqLimitsForStaff() {
-  if (!currentUser) return;
-  try {
-    // デフォルトテーブルから取得
-    const data = await supabaseRequest(
-      `shift_request_limits_default?dept_id=eq.${currentUser.deptId}&select=*`
-    );
-    reqLimitCache = data[0] || null;
-  } catch(e) {
-    console.error('上限取得エラー', e);
-    reqLimitCache = null;
-  }
-}
-
-// 希望シフトを3カテゴリにカウント
-function countRequests() {
-  const monthKeys = Object.keys(requests).filter(k => k.startsWith(`${currentYear}-${currentMonth}-`));
-  let kibouKyu = 0, yukyu = 0, other = 0, off = 0;
-  monthKeys.forEach(k => {
-    const sh = requests[k];
-    if (sh === '希望休') kibouKyu++;
-    else if (sh === '有休' || sh === '半有休') yukyu++;
-    else if (sh === '休み') off++;
-    else if (sh === '個夏休') { /* 月間上限カウント対象外（自由に請求可能） */ }
-    else other++;
-  });
-  return { kibouKyu, yukyu, other, off, total: monthKeys.length };
-}
-
-function updateCount() {
-  const counts = countRequests();
-  document.getElementById('inputCount').textContent = counts.total;
-
-  // 上限表示（常に表示）
-  const infoEl = document.getElementById('reqLimitInfo');
-  const detailsEl = document.getElementById('reqLimitDetails');
-  const warnEl = document.getElementById('reqLimitWarning');
-
-  let isOver = false;
-  let warnings = [];
-
-  const items = [];
-  const renderItem = (label, used, limit, color) => {
-    if (limit == null) {
-      return `<div><span style="color:${color};font-weight:600">${label}</span> <span style="color:#94a3b8">${used}日（制限なし）</span></div>`;
-    }
-    const over = used > limit;
-    if (over) { isOver = true; warnings.push(`${label}が上限を超えています（${used}/${limit}日）`); }
-    const color2 = over ? '#dc2626' : (used === limit ? '#d97706' : color);
-    const fontWeight = over ? '700' : '500';
-    return `<div><span style="color:${color};font-weight:600">${label}</span> <span style="color:${color2};font-weight:${fontWeight}">${used}/${limit}日</span></div>`;
-  };
-  items.push(renderItem('希望休', counts.kibouKyu, reqLimitCache?.limit_kibou_kyu, '#9a3412'));
-  items.push(renderItem('有休', counts.yukyu, reqLimitCache?.limit_yukyu, '#86198f'));
-  items.push(renderItem('その他', counts.other, reqLimitCache?.limit_other, '#075985'));
-  detailsEl.innerHTML = items.join('');
-  // 月の上限欄の表示は設定トグルで制御（既定ON。未設定なら表示）
-  const showReqLimit = localStorage.getItem('kingyo_showReqLimit') !== '0';
-  infoEl.style.display = showReqLimit ? 'block' : 'none';
-
-  // 警告表示
-  if (warnings.length > 0) {
-    warnEl.style.display = 'block';
-    warnEl.innerHTML = '⚠️ ' + warnings.join('<br>⚠️ ') + '<div style="margin-top:4px;font-weight:400">該当する日のシフトを変更してください</div>';
-  } else {
-    warnEl.style.display = 'none';
-  }
-
-  // 期限切れの場合は提出不可
-  // 提出ボタンの有効/無効
-  document.getElementById('submitBtn').disabled = counts.total === 0 || isOver || deadlinePassed;
-
-  // 月トータル希望労働時間の表示を更新（設定オン時のみ）
-  updateLaborTimeDisplay();
-}
-
-document.getElementById('submitBtn').addEventListener('click', async () => {
-  if (!currentUser?.id) {
-    showToast('ログインし直してください', 'error');
-    return;
-  }
-  // 期限チェック
-  if (deadlinePassed) {
-    showToast('提出期限を過ぎています。管理者にご連絡ください', 'error');
-    return;
-  }
-  // 念のための最終チェック
-  const counts = countRequests();
-  if (reqLimitCache) {
-    const violations = [];
-    if (reqLimitCache.limit_kibou_kyu != null && counts.kibouKyu > reqLimitCache.limit_kibou_kyu) violations.push(`希望休（${counts.kibouKyu}/${reqLimitCache.limit_kibou_kyu}日）`);
-    if (reqLimitCache.limit_yukyu != null && counts.yukyu > reqLimitCache.limit_yukyu) violations.push(`有休（${counts.yukyu}/${reqLimitCache.limit_yukyu}日）`);
-    if (reqLimitCache.limit_other != null && counts.other > reqLimitCache.limit_other) violations.push(`その他（${counts.other}/${reqLimitCache.limit_other}日）`);
-    if (violations.length > 0) {
-      showToast('上限超過：' + violations.join('、'), 'error');
-      return;
-    }
-  }
-
-  showLoading();
-  try {
-    const monthKeys = Object.keys(requests).filter(k => k.startsWith(`${currentYear}-${currentMonth}-`));
-
-    await supabaseRequest(
-      `shift_requests?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}`,
-      { method: 'DELETE' }
-    );
-
-    const inserts = monthKeys.map(k => {
-      const day = parseInt(k.split('-')[2]);
-      return {
-        staff_id: currentUser.id,
-        year: currentYear,
-        month: currentMonth,
-        day: day,
-        request_type: requests[k],
-      };
-    });
-
-    if (inserts.length > 0) {
-      await supabaseRequest('shift_requests', {
-        method: 'POST',
-        body: JSON.stringify(inserts),
-      });
-    }
-
-    // ★ 提出後、下書きテーブルも提出内容に同期（下書き＝提出済みの状態にする）
-    try {
-      await supabaseRequest(
-        `shift_request_drafts?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}`,
-        { method: 'DELETE' }
-      );
-      if (inserts.length > 0) {
-        await supabaseRequest('shift_request_drafts', {
-          method: 'POST',
-          body: JSON.stringify(inserts),
-        });
-      }
-      hasDraft = false;
-    } catch(e) { console.error('[draft sync after submit]', e); }
-
-    showToast(`${currentMonth}月の希望を提出しました ✓`, 'success');
-  } catch(e) {
-    console.error(e);
-    showToast('送信エラーが発生しました', 'error');
-  }
-  hideLoading();
-});
-
-document.getElementById('prevMonthBtn').addEventListener('click', async () => {
-  currentMonth--;
-  if (currentMonth < 1) { currentMonth = 12; currentYear--; }
-  await loadRequests();
-  await loadClinicSettings();
-  await loadReqLimitsForStaff();
-  await loadDeadlineForStaff();
-  renderDeadlineInfo();
-  renderCalendar();
-});
-
-document.getElementById('nextMonthBtn').addEventListener('click', async () => {
-  currentMonth++;
-  if (currentMonth > 12) { currentMonth = 1; currentYear++; }
-  await loadRequests();
-  await loadClinicSettings();
-  await loadReqLimitsForStaff();
-  await loadDeadlineForStaff();
-  renderDeadlineInfo();
-  renderCalendar();
-});
-
-document.getElementById('logoutBtn').addEventListener('click', () => {
-  currentUser = null;
-  requests = {};
-  localStorage.removeItem('shift_user');
-  localStorage.removeItem('shift_token');
-  document.getElementById('appScreen').style.display = 'none';
-  document.getElementById('loginScreen').style.display = 'flex';
-  document.getElementById('passwordInput').value = '';
-});
-
-document.getElementById('overlay').addEventListener('click', closeSheet);
-
-// 設定シートのトグル見た目を状態に同期
-function syncLaborToggleUI() {
-  const on = localStorage.getItem('kingyo_showLaborTime') === '1';
-  const cb = document.getElementById('laborTimeToggle');
-  const track = document.getElementById('laborTimeToggleTrack');
-  const knob = document.getElementById('laborTimeToggleKnob');
-  if (cb) cb.checked = on;
-  if (track) track.style.background = on ? 'var(--primary)' : '#cbd5e1';
-  if (knob) knob.style.left = on ? '23px' : '3px';
-}
-
-// 月の上限トグルの見た目を状態に同期（既定ON）
-function syncReqLimitToggleUI() {
-  const on = localStorage.getItem('kingyo_showReqLimit') !== '0';
-  const cb = document.getElementById('reqLimitToggle');
-  const track = document.getElementById('reqLimitToggleTrack');
-  const knob = document.getElementById('reqLimitToggleKnob');
-  if (cb) cb.checked = on;
-  if (track) track.style.background = on ? 'var(--primary)' : '#cbd5e1';
-  if (knob) knob.style.left = on ? '23px' : '3px';
-}
-
-function openSettingsSheet() {
-  syncLaborToggleUI();
-  syncReqLimitToggleUI();
-  const saved = document.getElementById('myQuotesSaved');
-  if (saved) saved.style.display = 'none';
-  document.getElementById('settingsOverlay').classList.add('show');
-  document.getElementById('settingsSheet').classList.add('show');
-  // 自分の言葉をサーバーから読み込んで入力欄へ
-  const mq = document.getElementById('myQuotesInput');
-  if (mq) { mq.value = ''; loadMyWords().then(arr => { mq.value = arr.join('\n'); }); }
-}
-function closeSettingsSheet() {
-  document.getElementById('settingsOverlay').classList.remove('show');
-  document.getElementById('settingsSheet').classList.remove('show');
-}
-
-document.getElementById('settingsStaffBtn').addEventListener('click', openSettingsSheet);
-document.getElementById('settingsOverlay').addEventListener('click', closeSettingsSheet);
-
-// ===== 名前横の金魚：タップで「今日の一言」（日替わり） =====
-// 元気が出る言葉・ことわざ（人物への帰属は付けない＝誤帰属を避ける）。
-const DAILY_QUOTES = [
-  '今日もここに来てくれて、ありがとう。それだけで十分です。',
-  'あなたの笑顔が、誰かの不安をひとつ消しています。',
-  'できることから、ひとつずつ。焦らなくて大丈夫。',
-  '小さな「ありがとう」を、今日ひとつ言ってみよう。',
-  'うまくいかない日も、ちゃんと前に進んでいます。',
-  'あなたがいるだけで、チームの空気はやわらかくなる。',
-  '深呼吸をひとつ。あなたのペースでいきましょう。',
-  '誰かを支えるあなたを、誰かが支えています。',
-  '完璧じゃなくていい。続けていることがすごい。',
-  '今日の小さな一歩が、未来の安心をつくる。',
-  '困ったら「助けて」と言える人が、本当に強い人。',
-  'あなたの丁寧さは、ちゃんと患者さんに届いています。',
-  '比べるのは、過去の自分とだけでいい。',
-  '失敗は、学びに変わる途中の姿。',
-  '笑顔は巡り巡って、自分に返ってきます。',
-  '今日がんばった自分を、ちゃんと褒めてあげて。',
-  'ひとりで抱えないで。仲間がそばにいます。',
-  'あなたの「気づき」が、職場をよくしています。',
-  'やさしさは、いちばん伝わるスキルです。',
-  '焦る時こそ、ゆっくり。急がば回れ。',
-  '今日のあなたの仕事は、誰かの安心になっています。',
-  '小さな親切が、大きな信頼を育てます。',
-  '休むことも、立派な仕事のうち。',
-  'できた事に目を向けると、明日が軽くなる。',
-  'あなたの一言で、救われている人がいます。',
-  '朝が来れば、また新しく始められる。',
-  '機嫌よくいることは、まわりへの最高の贈り物。',
-  '迷ったら、親切な方を選ぼう。',
-  'あなたのペースが、あなたの強さ。',
-  '心がしんどい時は、立ち止まっていい。',
-  'あなたの存在が、誰かの「来てよかった」になる。',
-  '大丈夫。あなたは、よくやっています。',
-  '「ありがとう」は、言うほどに増えていく。',
-  '今日のあなたは、昨日より少しだけ前にいる。',
-  '継続は力なり。',
-  '七転び八起き。',
-  '笑う門には福来る。',
-  '塵も積もれば山となる。',
-  '思い立ったが吉日。',
-  '千里の道も一歩から。',
-  '雨垂れ石を穿つ。',
-  '案ずるより産むが易し。',
-  '情けは人の為ならず。',
-];
-// 自分の好きな言葉（ログインユーザー単位で localStorage 保存）
-// ===== 好きな言葉（Supabase共有・他の人の言葉も巡回） =====
-let allSharedWords = []; // [{staff_id, name, text}] 非表示を除く全員の言葉
-
-async function loadSharedWords() {
-  try {
-    allSharedWords = await supabaseRequest('kingyo_words?is_hidden=eq.false&select=staff_id,name,text&order=created_at.desc') || [];
-  } catch(e) { console.error('[loadSharedWords]', e); allSharedWords = []; }
-}
-async function loadMyWords() {
-  if (!currentUser?.id) return [];
-  try {
-    const rows = await supabaseRequest(`kingyo_words?staff_id=eq.${currentUser.id}&select=text&order=created_at`);
-    return (rows || []).map(r => r.text).filter(Boolean);
-  } catch(e) { console.error('[loadMyWords]', e); return []; }
-}
-async function saveMyWords(arr) {
-  if (!currentUser?.id) return;
-  await supabaseRequest(`kingyo_words?staff_id=eq.${currentUser.id}`, { method: 'DELETE' });
-  if (arr.length) {
-    await supabaseRequest('kingyo_words', {
-      method: 'POST',
-      body: JSON.stringify(arr.map(t => ({ staff_id: currentUser.id, name: currentUser.name, dept_id: currentUser.deptId, text: t })))
-    });
-  }
-}
-
-function getDailyQuote() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), 0, 0);
-  const day = Math.floor((now - start) / 86400000);
-  // 登録された言葉があれば偶数日はみんなの言葉（日替わり巡回）、奇数日はキュレーション。半分は仲間の言葉が出る。
-  if (allSharedWords.length && day % 2 === 0) {
-    const w = allSharedWords[Math.floor(day / 2) % allSharedWords.length];
-    const by = (w.staff_id === currentUser?.id) ? null : (w.name || null); // 自分の言葉には差出人を付けない
-    return { text: w.text, by };
-  }
-  const t = DAILY_QUOTES[((day % DAILY_QUOTES.length) + DAILY_QUOTES.length) % DAILY_QUOTES.length];
-  return { text: t, by: null };
-}
-
-// 金魚の元気さ：チーム全体の登録語数が増えるほど元気に泳ぐ（相互可視化の集団フィードバック）
-function updateKingyoEnergy() {
-  const lane = document.getElementById('kingyoLane');
-  if (!lane) return;
-  const dist = Math.max(0, lane.clientWidth - 36); // レーン幅 − 金魚幅（中央の余白内に収める）
-  lane.style.setProperty('--swim-x', dist + 'px');
-  const n = allSharedWords.length;
-  const dur = Math.max(13, 22 - n * 0.6); // みんなの言葉が増えるほど速く（元気に）。0語=22s, 15語以上=13s
-  lane.style.setProperty('--swim-dur', dur.toFixed(1) + 's');
-  lane.classList.toggle('energy-high', n >= 8);
-}
-
-(function initKingyoQuote() {
-  const lane = document.getElementById('kingyoLane');
-  const bubble = document.getElementById('kingyoBubble');
-  const txt = document.getElementById('kingyoQuoteText');
-  if (!lane || !bubble || !txt) return;
-  // レーンをタップ → 今日の一言を表示（金魚は止めずに泳いだまま）
-  lane.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (bubble.classList.contains('show')) { bubble.classList.remove('show'); return; }
-    const q = getDailyQuote();
-    txt.innerHTML = escapeHtml(q.text) + (q.by ? `<div style="font-size:11px;color:var(--text-muted);font-weight:500;margin-top:5px">— ${escapeHtml(q.by)} より</div>` : '');
-    bubble.classList.add('show');
-  });
-  document.addEventListener('click', (e) => {
-    if (bubble.classList.contains('show') && !bubble.contains(e.target) && !lane.contains(e.target)) {
-      bubble.classList.remove('show');
-    }
-  });
-  window.addEventListener('resize', updateKingyoEnergy);
-  // 好きな言葉の保存（Supabaseへ・みんなに共有）
-  const saveBtn = document.getElementById('saveMyQuotesBtn');
-  if (saveBtn) {
-    saveBtn.addEventListener('click', async () => {
-      const ta = document.getElementById('myQuotesInput');
-      if (!ta) return;
-      const arr = ta.value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 20);
-      saveBtn.disabled = true;
-      try {
-        await saveMyWords(arr);
-        ta.value = arr.join('\n');
-        await loadSharedWords();   // 共有プールを最新化（自分の言葉も反映）
-        updateKingyoEnergy();
-        const saved = document.getElementById('myQuotesSaved');
-        if (saved) { saved.style.display = 'block'; setTimeout(() => { saved.style.display = 'none'; }, 2000); }
-      } catch(e) {
-        console.error('[saveMyWords]', e);
-        showToast('保存に失敗しました', 'error');
-      }
-      saveBtn.disabled = false;
-    });
-  }
-})();
-
-// トグル切替 → localStorage 保存 → 表示即時反映
-document.getElementById('laborTimeToggle').addEventListener('change', (e) => {
-  localStorage.setItem('kingyo_showLaborTime', e.target.checked ? '1' : '0');
-  syncLaborToggleUI();
-  updateLaborTimeDisplay();
-});
-
-// 月の上限トグル切替 → localStorage 保存 → 上限欄の表示を即時反映
-document.getElementById('reqLimitToggle').addEventListener('change', (e) => {
-  localStorage.setItem('kingyo_showReqLimit', e.target.checked ? '1' : '0');
-  syncReqLimitToggleUI();
-  updateCount();
-});
-
-// 設定シートから「パスワードを変更する」を押したらパスワードシートへ
-document.getElementById('openPwFromSettingsBtn').addEventListener('click', () => {
-  closeSettingsSheet();
-  document.getElementById('pwOverlay').classList.add('show');
-  document.getElementById('pwSheet').classList.add('show');
-});
-
-document.getElementById('pwOverlay').addEventListener('click', () => {
-  document.getElementById('pwOverlay').classList.remove('show');
-  document.getElementById('pwSheet').classList.remove('show');
-});
-
-document.getElementById('staffChangePwBtn').addEventListener('click', async () => {
-  const currentPw = document.getElementById('staffCurrentPw').value;
-  const newPw = document.getElementById('staffNewPw').value;
-  const newPwConfirm = document.getElementById('staffNewPwConfirm').value;
-  const errEl = document.getElementById('pwErrorMsg');
-
-  errEl.style.display = 'none';
-
-  if (!currentPw || !newPw || !newPwConfirm) {
-    errEl.style.display = 'block'; errEl.textContent = 'すべて入力してください'; return;
-  }
-  if (newPw.length < 4) {
-    errEl.style.display = 'block'; errEl.textContent = 'パスワードは4文字以上にしてください'; return;
-  }
-  if (newPw !== newPwConfirm) {
-    errEl.style.display = 'block'; errEl.textContent = '新しいパスワードが一致しません'; return;
-  }
-
-  showLoading();
-  try {
-    const token = localStorage.getItem('shift_token') || '';
-    const r = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ action: 'change-password', currentPassword: currentPw, newPassword: newPw }),
-    });
-    const data = await r.json();
-    if (!r.ok) {
-      errEl.style.display = 'block'; errEl.textContent = data.error || 'エラーが発生しました';
-      hideLoading(); return;
-    }
-    document.getElementById('staffCurrentPw').value = '';
-    document.getElementById('staffNewPw').value = '';
-    document.getElementById('staffNewPwConfirm').value = '';
-    document.getElementById('pwOverlay').classList.remove('show');
-    document.getElementById('pwSheet').classList.remove('show');
-    showToast('パスワードを変更しました ✓', 'success');
-  } catch(e) {
-    errEl.style.display = 'block'; errEl.textContent = 'エラーが発生しました';
-  }
-  hideLoading();
-});
-
-let confYear = new Date().getFullYear();
-let confMonth = new Date().getMonth() + 1;
-let currentTab = 'request';
-
-function switchTab(tab) {
-  currentTab = tab;
-  const tabReq = document.getElementById('tabRequest');
-  const tabConf = document.getElementById('tabConfirmed');
-  const calWrap = document.getElementById('calendarWrap');
-  const subBar = document.getElementById('submitBar');
-  const confWrap = document.getElementById('confirmedWrap');
-
-  if (tabReq) tabReq.classList.toggle('active', tab === 'request');
-  if (tabConf) tabConf.classList.toggle('active', tab === 'confirmed');
-  if (calWrap) calWrap.style.display = tab === 'request' ? 'block' : 'none';
-  if (subBar) subBar.style.display = tab === 'request' ? 'block' : 'none';
-  if (confWrap) confWrap.style.display = tab === 'confirmed' ? 'block' : 'none';
-
-  if (tab === 'confirmed') {
-    confYear = currentYear;
-    confMonth = currentMonth;
-    updateConfMonthTitle();
-    loadConfirmedShifts();
-  }
-}
-
-function updateConfMonthTitle() {
-  document.getElementById('confMonthTitle').textContent = `${confYear}年${confMonth}月`;
-}
-
-async function loadConfirmedShifts() {
-  if (!currentUser?.id) return;
-  const grid = document.getElementById('confirmedGrid');
-  grid.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:20px">読み込み中...</div>';
-
-  try {
-    const shifts = await supabaseRequest(
-      `shifts?staff_id=eq.${currentUser.id}&year=eq.${confYear}&month=eq.${confMonth}&is_confirmed=eq.true&select=day,shift_type_id&order=day`
-    );
-
-    const daysInMonth = new Date(confYear, confMonth, 0).getDate();
-    const shiftMap = {};
-    shifts.forEach(s => { shiftMap[s.day] = s.shift_type_id; });
-
-    const SHIFT_COLORS_MAP = {
-      '日勤':'#dbeafe','日勤+':'#bfdbfe','午前':'#dcfce7','午後':'#fef9c3',
-      '遅番':'#ffedd5','遅L':'#fef3c7','リハ遅':'#f3e8ff','夜勤':'#ede9fe',
-      '長日':'#ffe4e6','中抜け':'#ccfbf1','時短':'#dcfce7','CC':'#dbeafe',
-      'CHO':'#e0f2fe','CCのみ':'#e0f9ff',
-      '休み':'#f3f4f6','有休':'#fdf4ff','半有休':'#fce7f3','個夏休':'#ecfeff','希望休':'#fff7ed'
-    };
-    const SHIFT_TEXT_COLORS = {
-      '日勤':'#1d4ed8','日勤+':'#1e40af','午前':'#15803d','午後':'#a16207',
-      '遅番':'#c2410c','遅L':'#92400e','リハ遅':'#7e22ce','夜勤':'#5b21b6',
-      '長日':'#be123c','中抜け':'#0f766e','時短':'#166534','CC':'#1d4ed8',
-      'CHO':'#075985','CCのみ':'#0e7490',
-      '休み':'#6b7280','有休':'#86198f','半有休':'#9d174d','個夏休':'#155e75','希望休':'#9a3412'
-    };
-
-    if (shifts.length === 0) {
-      // ★ 確定シフトがない場合、未確定なのか「調整中」なのかを判別する
-      //   調整中 = 過去に確定されたが、管理者が編集のため一時的に取り消した状態
-      //   この時 shifts テーブルには is_confirmed=false のレコードが残っている
-      const unconfirmedExists = await supabaseRequest(
-        `shifts?staff_id=eq.${currentUser.id}&year=eq.${confYear}&month=eq.${confMonth}&is_confirmed=eq.false&select=day&limit=1`
-      );
-
-      if (unconfirmedExists.length > 0) {
-        // 調整中：管理者が確定を取り消して編集中
-        grid.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted)">
-          <div style="font-size:40px;margin-bottom:12px">🔧</div>
-          <div style="font-size:15px;font-weight:600;color:#1e40af">シフト調整中</div>
-          <div style="font-size:13px;margin-top:6px">管理者が再確定するまでお待ちください</div>
-          <div style="font-size:11px;margin-top:8px;color:var(--text-muted)">※ 再確定されると自動で表示されます</div>
-        </div>`;
-      } else {
-        // 未確定：そもそもシフトが作成されていない
-        grid.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted)">
-          <div style="font-size:40px;margin-bottom:12px">📋</div>
-          <div style="font-size:15px;font-weight:600">確定シフトがまだありません</div>
-          <div style="font-size:13px;margin-top:6px">管理者がシフトを確定すると表示されます</div>
-        </div>`;
-      }
-      return;
-    }
-
-    const firstDow = new Date(confYear, confMonth-1, 1).getDay();
-    let html = '<div style="font-size:11px;color:var(--text-muted);text-align:center;margin-bottom:8px">📊 日付タップでバーチカル表示</div>';
-    html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:16px">';
-
-    ['日','月','火','水','木','金','土'].forEach((d,i) => {
-      html += `<div style="text-align:center;font-size:11px;font-weight:600;color:${i===0?'#ef4444':i===6?'#3b82f6':'var(--text-muted)'};padding:4px 0">${d}</div>`;
-    });
-
-    for (let i = 0; i < firstDow; i++) html += '<div></div>';
-
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dow = new Date(confYear, confMonth-1, d).getDay();
-      const shift = shiftMap[d] || '';
-      let bg = SHIFT_COLORS_MAP[shift] || (shift ? '#f1f5f9' : 'white');
-      let color = SHIFT_TEXT_COLORS[shift] || (shift ? '#475569' : 'var(--text-muted)');
-      const dowColor = dow===0?'#ef4444':dow===6?'#3b82f6':'var(--text)';
-
-      html += `<div data-day="${d}" class="conf-day-cell" style="border-radius:10px;padding:6px 4px;text-align:center;background:${bg};border:1.5px solid ${shift?color+'40':'var(--border)'};cursor:pointer">
-        <div style="font-size:12px;font-weight:600;color:${dowColor}">${d}</div>
-        <div style="font-size:10px;font-weight:700;color:${color};margin-top:2px">${shift||'―'}</div>
-      </div>`;
-    }
-    html += '</div>';
-
-    let totalHours = 0;   // 実働時間（勤務のみ）
-    let shiftHours = 0;   // シフト時間（有給込み・管理画面の労働予定時間と一致）
-    let workCount = 0;
-    let restCount = 0;
-    const confHolidays = getJpHolidaysStaff(confYear, confMonth);
-    shifts.forEach(s => {
-      const st = shiftTypesMap[s.shift_type_id];
-      const h = st ? (parseFloat(st.work_hours) || 0) : 0;
-      const dow = new Date(confYear, confMonth - 1, s.day).getDay();
-      const isHol = confHolidays.has(s.day);
-      if (st && !st.is_off) {
-        totalHours += h;
-        shiftHours += h;
-        if (h > 0) workCount++;
-      } else {
-        shiftHours += getRestShiftHoursStaff(s.shift_type_id, dow, isHol);
-        if (st?.is_off) restCount++;
-      }
-    });
-
-    html += `<div style="background:var(--bg);border-radius:14px;padding:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;text-align:center">
-      <div>
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">勤務日数</div>
-        <div style="font-size:22px;font-weight:700;color:var(--primary)">${workCount}<span style="font-size:12px">日</span></div>
-      </div>
-      <div>
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">休日数</div>
-        <div style="font-size:22px;font-weight:700;color:#6b7280">${restCount}<span style="font-size:12px">日</span></div>
-      </div>
-      <div>
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">実働時間</div>
-        <div style="font-size:22px;font-weight:700;color:#10b981">${Math.round(totalHours*10)/10}<span style="font-size:12px">H</span></div>
-        <div style="font-size:10px;color:#94a3b8;margin-top:3px;font-weight:600">シフト時間 ${Math.round(shiftHours*10)/10}H</div>
-      </div>
-    </div>`;
-
-    grid.innerHTML = html;
-
-    // 日付セルクリック → バーチカル表示
-    grid.querySelectorAll('.conf-day-cell').forEach(cell => {
-      cell.addEventListener('click', () => {
-        const day = parseInt(cell.dataset.day, 10);
-        openVerticalView(confYear, confMonth, day);
-      });
-    });
-
-  } catch(e) {
-    console.error(e);
-    grid.innerHTML = '<div style="text-align:center;color:var(--danger);padding:20px">読み込みエラーが発生しました</div>';
-  }
-}
-
-document.getElementById('confPrevMonth')?.addEventListener('click', () => {
-  confMonth--; if(confMonth<1){confMonth=12;confYear--;}
-  updateConfMonthTitle();
-  loadConfirmedShifts();
-});
-document.getElementById('confNextMonth')?.addEventListener('click', () => {
-  confMonth++; if(confMonth>12){confMonth=1;confYear++;}
-  updateConfMonthTitle();
-  loadConfirmedShifts();
-});
-
-window.addEventListener('load', async () => {
-  // スタッフ一覧をDBから取得（ログイン画面のドロップダウン用）
-  await loadStaffData();
-
-  const saved = localStorage.getItem('shift_user');
-  if (saved) {
-    try {
-      const user = JSON.parse(saved);
-      if (user && user.accountId && user.id) {
-        currentUser = user;
-        await showApp();
-      } else {
-        localStorage.removeItem('shift_user');
-      }
-    } catch(e) {
-      localStorage.removeItem('shift_user');
-    }
-  }
-});
-</script>
-<script>
-// PWA Service Worker 登録
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW登録失敗:', err));
-  });
-}
-
-// PWA起動時の不要なスクロール・キーボード起動を防止
-(function() {
-  // 起動直後にスクロール位置をリセット
-  window.addEventListener('DOMContentLoaded', () => {
-    window.scrollTo(0, 0);
-    // フォーカスがどこかに入っていたら外す（キーボード起動防止）
-    if (document.activeElement && document.activeElement !== document.body) {
-      document.activeElement.blur();
-    }
-  });
-
-  // PWAモード時、最初の表示完了時のみスクロールリセット（以降は不要）
-  let _initialScrollDone = false;
-  window.addEventListener('load', () => {
-    if (_initialScrollDone) return;
-    _initialScrollDone = true;
-    setTimeout(() => {
-      window.scrollTo(0, 0);
-      if (document.activeElement && document.activeElement !== document.body) {
-        document.activeElement.blur();
-      }
-    }, 100);
-  });
-
-  // iOSキーボード閉じた後のレイアウト崩れ防止（入力欄から外れた時のみ）
-  document.addEventListener('focusout', (e) => {
-    // 入力欄（input, textarea, select）からフォーカスが外れた時のみ処理
-    const target = e.target;
-    if (!target || !target.tagName) return;
-    const tag = target.tagName.toUpperCase();
-    if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') return;
-    // フォーカスが他の入力欄に移っただけなら何もしない
-    setTimeout(() => {
-      const newFocus = document.activeElement;
-      if (newFocus && (newFocus.tagName === 'INPUT' || newFocus.tagName === 'TEXTAREA' || newFocus.tagName === 'SELECT')) {
-        return;
-      }
-      // 入力欄からボタンや他の要素に移ったケース：スクロール位置はそのまま、何もしない
-    }, 100);
-  });
-})();
-</script>
+<script src="admin.js?v=19"></script>
+<script src="admin-generate.js?v=3"></script>
 </body>
 </html>
