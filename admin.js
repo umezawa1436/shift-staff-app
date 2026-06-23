@@ -28,6 +28,8 @@ let genYear = new Date().getFullYear(), genMonth = new Date().getMonth() + 1;
 let allStaff = [], shiftData = {}, lockedCells = {}, wedTypes = {}, generatedShifts = {};
 // ★ シフト表セル内のロックアイコン🔒の表示/非表示（コーナーのボタンで切替。ロック状態自体は保持）
 let hideLockIcons = false;
+// 遅番系(遅番+遅L)・長日の月間回数カウント列の表示フラグ（医療事務のみ・localStorage永続）
+let showLateLongCount = (typeof localStorage !== 'undefined' && localStorage.getItem('shift_late_long_count') === '1');
 // ★ AI 生成プレビュー用：生成前の状態スナップショット（破棄時の復元用）
 let preAIGenerationSnapshot = null;
 // ★ 確定ロック：現在表示中の月が確定済みかどうか
@@ -753,6 +755,8 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
   const grid = document.getElementById(gridId);
   const holidays = getJapaneseHolidays(year, month);
   const wt = wedTypesMap || wedTypes || {};
+  // 遅番系(遅番+遅L)・長日カウント列：編集グリッド かつ トグルON かつ 医療事務(dept0) のときのみ表示
+  const showLateLong = editable && showLateLongCount && currentDept === 0;
 
   function getShiftDayType(d) {
     const dow = new Date(year, month-1, d).getDay();
@@ -800,6 +804,9 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
         ? `<button id="lockIconToggleBtn" onclick="toggleLockIcons()" title="氏名欄の行ロック鍵マーク🔒/🔓の表示/非表示を切り替えます（ロック状態自体は変わりません）" style="font-size:8px;padding:2px 5px;border:1px solid #cbd5e1;border-radius:4px;background:white;cursor:pointer;font-family:inherit;line-height:1.2;white-space:nowrap">🔒 ${hideLockIcons ? 'OFF' : 'ON'}</button>`
         : `<div style="font-size:9px">🔓=ロック</div>`}
     </div>
+    ${editable && currentDept === 0
+      ? `<div style="border-top:1px solid #e2e8f0;background:#f8fafc;padding:2px"><button onclick="toggleLateLongCount()" title="遅番系(遅番+遅L)と長日の月間回数を右端に表示します（医療事務のみ）" style="font-size:8px;padding:2px 5px;border:1px solid #cbd5e1;border-radius:4px;background:${showLateLongCount ? '#dbeafe' : 'white'};cursor:pointer;font-family:inherit;line-height:1.2;white-space:nowrap">遅長 ${showLateLongCount ? 'ON' : 'OFF'}</button></div>`
+      : ''}
   </th>`;
   for (let d = 1; d <= daysInMonth; d++) {
     const dow = new Date(year, month-1, d).getDay();
@@ -837,12 +844,14 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
     }
   }
   if (editable) html += '<th style="min-width:160px;text-align:center;cursor:pointer" onclick="showMonthlyHoursEditor()">実働/所定 <span style="font-size:10px;opacity:0.6">✏️</span></th>';
+  if (showLateLong) html += '<th style="min-width:78px;text-align:center;font-size:10px;color:#475569;line-height:1.3;white-space:nowrap">遅番系<br>/長日</th>';
   html += '</tr></thead><tbody>';
 
   // スタッフ行
   const staffTotalHours = {};
   deptStaff.forEach(staff => {
     let totalH = 0;
+    let lateCnt = 0, longCnt = 0; // 遅番系(遅番+遅L)・長日の月間回数
     // 行ロック状態チェック
     const rowLocked = editable && Array.from({length:daysInMonth},(_,i)=>i+1).every(d => lockedCells[`${staff.id}|${d}`]);
 
@@ -864,6 +873,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
     for (let d = 1; d <= daysInMonth; d++) {
       const key = `${staff.id}|${d}`;
       const confirmedShift = shifts[key] || '';
+      if (confirmedShift === '遅番' || confirmedShift === '遅L') lateCnt++; else if (confirmedShift === '長日') longCnt++;
       const requestedShift = reqMap[key] || '';
       const dispShift = confirmedShift || (editable ? '' : requestedShift);
       const isLocked = locked[key];
@@ -941,6 +951,9 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
         <span style="font-size:10px;color:var(--text-muted)">${workDays}日 / ${planDays}日</span>
       </td>`;
     }
+    if (showLateLong) {
+      html += `<td style="text-align:center;white-space:nowrap;padding:4px 6px;font-size:12px;font-weight:700;line-height:1.4"><span style="color:#2563eb">遅 ${lateCnt}</span><br><span style="color:#b45309">長 ${longCnt}</span></td>`;
+    }
     html += '</tr>';
   });
 
@@ -970,7 +983,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
           </div>
         </td>`;
       }
-      html += '<td></td></tr>';
+      html += showLateLong ? '<td></td><td></td></tr>' : '<td></td></tr>';
     });
   }
 
@@ -987,6 +1000,13 @@ function toggleLockIcons() {
   if (grid) grid.classList.toggle('hide-lock-icons', hideLockIcons);
   const btn = document.getElementById('lockIconToggleBtn');
   if (btn) btn.textContent = `🔒 ${hideLockIcons ? 'OFF' : 'ON'}`;
+}
+
+// 遅番系(遅番+遅L)・長日の月間回数カウント列の表示トグル（医療事務のみ）。localStorageに永続化し再描画。
+function toggleLateLongCount() {
+  showLateLongCount = !showLateLongCount;
+  try { localStorage.setItem('shift_late_long_count', showLateLongCount ? '1' : '0'); } catch(e) {}
+  rerenderShiftGridFromMemory();
 }
 
 
