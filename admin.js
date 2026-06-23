@@ -535,7 +535,7 @@ async function loadKingyoWords() {
   const wrap = document.getElementById('kingyoWordsWrap');
   if (wrap) wrap.innerHTML = '<div style="padding:16px;color:var(--text-muted)">読み込み中...</div>';
   try {
-    kingyoWordsCache = await sb('kingyo_words?select=id,staff_id,name,dept_id,text,is_hidden,created_at&order=created_at.desc') || [];
+    kingyoWordsCache = await sb('kingyo_words?select=id,staff_id,name,dept_id,text,is_hidden,is_anonymous,created_at&order=created_at.desc') || [];
     renderKingyoWords();
   } catch(e) {
     console.error(e);
@@ -555,7 +555,7 @@ function renderKingyoWords() {
     const hidden = w.is_hidden;
     return `<tr style="${hidden ? 'opacity:0.5;background:#f9fafb' : ''}">
       <td style="padding:10px 12px;border-bottom:1px solid var(--border);font-size:14px">${escapeHtml(w.text)}${hidden ? ' <span style="font-size:10px;color:#dc2626;font-weight:700">非表示中</span>' : ''}</td>
-      <td style="padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap;color:var(--text-muted);font-size:12px">${escapeHtml(w.name || '')}${dept ? `<br><span style="font-size:11px">${dept}</span>` : ''}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap;color:var(--text-muted);font-size:12px">${escapeHtml(w.name || '')}${w.is_anonymous ? ' <span style="font-size:10px;color:#7c3aed;background:#f5f3ff;padding:1px 5px;border-radius:4px;font-weight:700">匿名で公開</span>' : ''}${dept ? `<br><span style="font-size:11px">${dept}</span>` : ''}</td>
       <td style="padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap;text-align:right">
         <button class="btn btn-outline btn-sm" onclick="toggleHideWord('${w.id}', ${hidden ? 'false' : 'true'})">${hidden ? '再表示' : '非表示にする'}</button>
         <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="deleteKingyoWord('${w.id}')">削除</button>
