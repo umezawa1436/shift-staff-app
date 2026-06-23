@@ -189,9 +189,17 @@
     .header-dept { font-size: 12px; color: var(--text-muted); }
     /* ===== 名前横の金魚（タップで今日の一言） ===== */
     .header-name-row { display: flex; align-items: center; gap: 8px; }
-    .kingyo-mini { border: none; background: transparent; padding: 0; cursor: pointer; width: 36px; height: 25px; flex-shrink: 0; line-height: 0; -webkit-tap-highlight-color: transparent; animation: kingyoSwimMini 3.4s ease-in-out infinite; }
-    .kingyo-mini:active { transform: scale(0.88); }
-    @keyframes kingyoSwimMini { 0%,100% { transform: translateX(0) rotate(-3deg); } 50% { transform: translateX(4px) rotate(3deg); } }
+    .kingyo-mini { border: none; background: transparent; padding: 0; cursor: pointer; width: 36px; height: 25px; flex-shrink: 0; line-height: 0; -webkit-tap-highlight-color: transparent; animation: kingyoSwimMini 5s ease-in-out infinite; }
+    .kingyo-mini:active { opacity: 0.55; }
+    @keyframes kingyoSwimMini {
+      0%   { transform: translate(0,0) scaleX(1); }
+      10%  { transform: translate(6px,-2px) scaleX(1); }
+      44%  { transform: translate(46px,2px) scaleX(1); }
+      50%  { transform: translate(48px,0) scaleX(-1); }
+      56%  { transform: translate(44px,-2px) scaleX(-1); }
+      90%  { transform: translate(4px,2px) scaleX(-1); }
+      100% { transform: translate(0,0) scaleX(1); }
+    }
     .kingyo-mini .mini-tail { transform-box: fill-box; transform-origin: right center; animation: miniTailWag 0.5s ease-in-out infinite; }
     @keyframes miniTailWag { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } }
     .kingyo-bubble { position: absolute; left: 16px; top: calc(env(safe-area-inset-top) + 46px); z-index: 120; max-width: calc(100% - 32px); background: #fff; color: var(--text); border: 1.5px solid var(--primary); border-radius: 14px; padding: 11px 14px 12px; box-shadow: 0 10px 28px rgba(0,0,0,0.2); font-size: 14px; line-height: 1.65; font-weight: 600; opacity: 0; transform: translateY(-6px) scale(0.98); transform-origin: top left; pointer-events: none; transition: opacity 0.18s ease, transform 0.18s ease; }
@@ -614,6 +622,13 @@
         <span id="laborTimeToggleTrack" style="position:absolute;inset:0;background:#cbd5e1;border-radius:28px;transition:0.2s"></span>
         <span id="laborTimeToggleKnob" style="position:absolute;left:3px;top:3px;width:22px;height:22px;background:white;border-radius:50%;transition:0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2)"></span>
       </label>
+    </div>
+    <div style="padding:14px;border:1.5px solid var(--border);border-radius:12px;margin-bottom:16px">
+      <div style="font-size:14px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:6px">🐠 好きな言葉</div>
+      <div style="font-size:11px;color:var(--text-muted);margin:2px 0 8px">金魚の「今日の一言」で時々この言葉を言ってくれます。1行に1つ、複数登録できます。</div>
+      <textarea id="myQuotesInput" rows="3" placeholder="例：今日もいい一日になる&#10;一歩ずつ前へ" style="width:100%;padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);outline:none;resize:vertical;box-sizing:border-box"></textarea>
+      <button class="btn-submit" id="saveMyQuotesBtn" style="margin-top:8px">好きな言葉を保存</button>
+      <div id="myQuotesSaved" style="font-size:12px;color:#10b981;font-weight:600;margin-top:6px;display:none">保存しました ✓</div>
     </div>
     <button class="btn-submit" id="openPwFromSettingsBtn" style="background:var(--bg);color:var(--text);border:1.5px solid var(--border)">🔑 パスワードを変更する</button>
   </div>
@@ -1651,6 +1666,10 @@ function syncReqLimitToggleUI() {
 function openSettingsSheet() {
   syncLaborToggleUI();
   syncReqLimitToggleUI();
+  const mq = document.getElementById('myQuotesInput');
+  if (mq) mq.value = getMyQuotes().join('\n');
+  const saved = document.getElementById('myQuotesSaved');
+  if (saved) saved.style.display = 'none';
   document.getElementById('settingsOverlay').classList.add('show');
   document.getElementById('settingsSheet').classList.add('show');
 }
@@ -1709,10 +1728,24 @@ const DAILY_QUOTES = [
   '案ずるより産むが易し。',
   '情けは人の為ならず。',
 ];
+// 自分の好きな言葉（ログインユーザー単位で localStorage 保存）
+function myQuotesKey() { return 'kingyo_my_quotes_' + (typeof currentUser !== 'undefined' && currentUser && currentUser.id ? currentUser.id : 'guest'); }
+function getMyQuotes() {
+  try { const raw = localStorage.getItem(myQuotesKey()); const arr = raw ? JSON.parse(raw) : []; return Array.isArray(arr) ? arr.filter(s => s && s.trim()) : []; }
+  catch(e) { return []; }
+}
+function saveMyQuotesArr(arr) {
+  try { localStorage.setItem(myQuotesKey(), JSON.stringify(arr)); } catch(e) {}
+}
 function getDailyQuote() {
   const now = new Date();
   const start = new Date(now.getFullYear(), 0, 0);
   const dayOfYear = Math.floor((now - start) / 86400000);
+  const my = getMyQuotes();
+  // 登録があれば偶数日は自分の言葉（日替わり巡回）、奇数日はキュレーション。約半分は自分の言葉が出る。
+  if (my.length && dayOfYear % 2 === 0) {
+    return my[Math.floor(dayOfYear / 2) % my.length];
+  }
   return DAILY_QUOTES[((dayOfYear % DAILY_QUOTES.length) + DAILY_QUOTES.length) % DAILY_QUOTES.length];
 }
 (function initKingyoQuote() {
@@ -1731,6 +1764,19 @@ function getDailyQuote() {
       bubble.classList.remove('show');
     }
   });
+  // 好きな言葉の保存
+  const saveBtn = document.getElementById('saveMyQuotesBtn');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => {
+      const ta = document.getElementById('myQuotesInput');
+      if (!ta) return;
+      const arr = ta.value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 30);
+      saveMyQuotesArr(arr);
+      ta.value = arr.join('\n');
+      const saved = document.getElementById('myQuotesSaved');
+      if (saved) { saved.style.display = 'block'; setTimeout(() => { saved.style.display = 'none'; }, 2000); }
+    });
+  }
 })();
 
 // トグル切替 → localStorage 保存 → 表示即時反映
