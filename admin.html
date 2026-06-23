@@ -1,902 +1,510 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="管理">
-  <meta name="theme-color" content="#9333ea">
-  <link rel="manifest" href="/manifest-admin.json">
-  <link rel="apple-touch-icon" href="/apple-touch-icon-admin.png">
-  <link rel="icon" type="image/png" href="/icon-favicon.png">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="robots" content="noindex, nofollow">
-  <title>kingyo-shift 管理画面</title>
-  <link rel="stylesheet" href="admin.css?v=28">
-</head>
-<body>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&display=swap');
+    :root {
+      --primary: #0f4c81;--primary-light: #1a6bb5;--accent: #00b4d8;
+      --bg: #f0f4f8;--card: #ffffff;--text: #1a2332;--text-muted: #6b7a8d;
+      --border: #e2e8f0;--success: #10b981;--warning: #f59e0b;--danger: #ef4444;
+      --sidebar-w: 220px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Noto Sans JP', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
 
-<div class="loading" id="loading"><div class="spinner"></div><div style="font-size:14px;color:var(--text-muted)">処理中...</div></div>
-<!-- 招待リンク発行モーダル -->
-<div class="modal-overlay" id="inviteLinkModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
-  <div class="modal-content" style="background:white;border-radius:16px;padding:24px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;margin-top:20px">
-    <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <span style="font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px">🔗 招待リンクを発行</span>
-      <button class="btn btn-outline" id="closeInviteModal" style="padding:6px 12px">✕</button>
-    </div>
+    /* LOGIN */
+    #loginScreen { min-height:100vh;min-height:100svh;display:flex;align-items:center;justify-content:center;background:linear-gradient(145deg,#0f4c81,#1a6bb5,#00b4d8);padding:calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));box-sizing:border-box; }
+    .login-box { background:white;border-radius:20px;padding:40px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,0.2);text-align:center; }
+    /* ===== 金魚マスコット ===== */
+    .kingyo-tank { width:200px;height:140px;position:relative;margin:0 auto 20px;background:linear-gradient(180deg,rgba(0,180,216,0.15) 0%,rgba(0,180,216,0.35) 100%);border-radius:50%;overflow:hidden;border:2px solid rgba(15,76,129,0.15);box-shadow:0 4px 16px rgba(0,0,0,0.08),inset 0 0 30px rgba(255,255,255,0.3); }
+    .water-surface { position:absolute;top:0;left:0;right:0;height:8px;background:linear-gradient(90deg,rgba(255,255,255,0.4) 0%,rgba(255,255,255,0.7) 50%,rgba(255,255,255,0.4) 100%);border-radius:50%;animation:waveMove 3s ease-in-out infinite; }
+    @keyframes waveMove { 0%,100%{transform:translateX(-3px);} 50%{transform:translateX(3px);} }
+    /* ★ 画面右上の金魚アニメーション */
+    @keyframes swimAcross {
+      0%   { transform: translateX(0)    translateY(0)  scaleX(1); }
+      25%  { transform: translateX(45px) translateY(-3px) scaleX(1); }
+      45%  { transform: translateX(95px) translateY(0)  scaleX(1); }
+      50%  { transform: translateX(95px) translateY(0)  scaleX(-1); }
+      75%  { transform: translateX(45px) translateY(-3px) scaleX(-1); }
+      95%  { transform: translateX(0)    translateY(0)  scaleX(-1); }
+      100% { transform: translateX(0)    translateY(0)  scaleX(1); }
+    }
+    @keyframes bubbleRise {
+      0%   { transform: translateY(0) scale(0.5); opacity: 0; }
+      20%  { opacity: 0.6; }
+      100% { transform: translateY(-22px) scale(1); opacity: 0; }
+    }
+    .goldfish-tank { position:relative; width:140px; height:36px; overflow:visible; }
+    .goldfish-swimmer { position:absolute; top:6px; left:0; animation: swimAcross 8s ease-in-out infinite; transform-origin: center; }
+    .bubble { position:absolute; width:5px; height:5px; border-radius:50%; background:rgba(96,165,250,0.6); animation: bubbleRise 3s ease-in infinite; }
+    .bubble:nth-child(2) { left:20px;  width:3px; height:3px; animation-delay:0.5s; }
+    .bubble:nth-child(3) { left:60px;  width:4px; height:4px; animation-delay:1.2s; }
+    .bubble:nth-child(4) { left:100px; width:3px; height:3px; animation-delay:2.0s; }
+    .kingyo { position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:90px;height:60px;animation:swimAround 6s ease-in-out infinite; }
+    @keyframes swimAround {
+      0%   { transform: translate(-50%, -50%) translateX(-30px) rotate(-5deg); }
+      25%  { transform: translate(-50%, -50%) translateX(0px) translateY(-8px) rotate(0deg); }
+      50%  { transform: translate(-50%, -50%) translateX(30px) rotate(5deg); }
+      75%  { transform: translate(-50%, -50%) translateX(0px) translateY(8px) rotate(0deg); }
+      100% { transform: translate(-50%, -50%) translateX(-30px) rotate(-5deg); }
+    }
+    .kingyo-tail { transform-origin:0 0;animation:tailWag 0.6s ease-in-out infinite; }
+    @keyframes tailWag {
+      0%,100%{transform:translate(20px,30px) rotate(-6deg);}
+      50%{transform:translate(20px,30px) rotate(6deg);}
+    }
+    .bubble { position:absolute;background:rgba(255,255,255,0.7);border-radius:50%;border:1px solid rgba(255,255,255,0.9);animation:bubbleUp 4s ease-in infinite;opacity:0; }
+    @keyframes bubbleUp {
+      0% { transform: translateY(0) translateX(0); opacity: 0; }
+      10% { opacity: 0.9; }
+      80% { opacity: 0.6; }
+      100% { transform: translateY(-100px) translateX(8px); opacity: 0; }
+    }
+    .bubble-1 { width:8px;height:8px;top:60%;left:60%;animation-delay:0s; }
+    .bubble-2 { width:6px;height:6px;top:65%;left:55%;animation-delay:1.2s; }
+    .bubble-3 { width:10px;height:10px;top:55%;left:65%;animation-delay:2.4s; }
+    .bubble-4 { width:5px;height:5px;top:70%;left:50%;animation-delay:3s; }
+    .login-title { font-size:22px;font-weight:700;margin-bottom:4px; }
+    .login-sub { font-size:13px;color:var(--text-muted);margin-bottom:32px; }
+    .form-group { margin-bottom:16px; }
+    .form-label { display:block;font-size:12px;font-weight:500;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px; }
+    .form-input { width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:15px;font-family:inherit;outline:none;transition:all 0.2s; }
+    .form-input:focus { border-color:var(--primary);box-shadow:0 0 0 3px rgba(15,76,129,0.1); }
+    .form-select { width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:15px;font-family:inherit;outline:none;appearance:none;background:white url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7a8d' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center; }
+    .btn-login { width:100%;padding:14px;background:linear-gradient(135deg,var(--primary),var(--primary-light));color:white;border:none;border-radius:10px;font-size:16px;font-weight:600;font-family:inherit;cursor:pointer;margin-top:8px; }
+    .error-box { background:#fef2f2;color:var(--danger);padding:10px 14px;border-radius:8px;font-size:13px;margin-top:12px;display:none; }
 
-    <div id="inviteGenerating" style="text-align:center;padding:30px">
-      <div style="display:inline-block;width:36px;height:36px;border:3px solid #e5e7eb;border-top-color:#a855f7;border-radius:50%;animation:spin 0.8s linear infinite"></div>
-      <div style="margin-top:12px;font-size:14px;color:#6b7280">招待リンクを生成中...</div>
-    </div>
+    /* LAYOUT */
+    #appScreen { display:none; }
+    .layout { display:flex;min-height:100vh; }
+    .sidebar { width:var(--sidebar-w);background:var(--primary);color:white;display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:100;padding-top:env(safe-area-inset-top); }
+    .sidebar-logo { padding:24px 20px 20px;border-bottom:1px solid rgba(255,255,255,0.1); }
+    .sidebar-logo-title { font-size:14px;font-weight:700;line-height:1.4; }
+    .sidebar-logo-sub { font-size:11px;opacity:0.6;margin-top:2px; }
+    .sidebar-nav { flex:1;padding:12px 0;overflow-y:auto;min-height:0; }
+    .nav-section { padding:12px 16px 6px;font-size:10px;font-weight:700;opacity:0.5;letter-spacing:1px;text-transform:uppercase; }
+    .nav-item { display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;transition:all 0.15s;font-size:14px;opacity:0.75;border-radius:8px;margin:2px 8px; }
+    .nav-item:hover { background:rgba(255,255,255,0.1);opacity:1; }
+    .nav-item.active { background:rgba(255,255,255,0.15);opacity:1;font-weight:600; }
+    .sidebar-footer { padding:16px;border-top:1px solid rgba(255,255,255,0.1); }
+    .user-info { font-size:13px;margin-bottom:4px; }
+    .user-role { font-size:11px;opacity:0.6; }
+    .btn-logout { width:100%;padding:8px;background:rgba(255,255,255,0.1);color:white;border:none;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer;margin-top:8px; }
+    .main { margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-width:0; }
+    /* スマホ用：メニュー開閉ボタンとドロワー背景（デフォルト非表示） */
+    .sidebar-toggle { display:none;align-items:center;justify-content:center;background:transparent;border:1px solid var(--border);border-radius:8px;width:40px;height:40px;color:var(--text);cursor:pointer;margin-right:12px;flex-shrink:0; }
+    .sidebar-backdrop { display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:90; }
+    .topbar { background:white;padding:calc(16px + env(safe-area-inset-top)) 28px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50; }
+    .page-title { font-size:20px;font-weight:700; }
+    .page-sub { font-size:13px;color:var(--text-muted);margin-top:2px; }
+    .content { padding:24px 28px;flex:1;min-width:0; }
 
-    <div id="inviteResult" style="display:none">
-      <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:14px;margin-bottom:16px">
-        <div style="font-size:12px;color:#0369a1;margin-bottom:4px">招待対象</div>
-        <div style="font-size:15px;font-weight:700;color:#0c4a6e" id="inviteTargetName"></div>
-        <div style="font-size:11px;color:#0369a1;margin-top:6px" id="inviteExpiresAt"></div>
-      </div>
+    /* CARDS */
+    .card { background:white;border-radius:16px;padding:20px;box-shadow:0 2px 12px rgba(0,0,0,0.06);margin-bottom:20px; }
+    .card-title { font-size:15px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px; }
+    .stats-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px; }
+    .stat-card { background:white;border-radius:14px;padding:20px;box-shadow:0 2px 12px rgba(0,0,0,0.06); }
+    .stat-label { font-size:12px;color:var(--text-muted);margin-bottom:8px;font-weight:500; }
+    .stat-value { font-size:28px;font-weight:700;color:var(--primary); }
+    .stat-sub { font-size:12px;color:var(--text-muted);margin-top:4px; }
 
-      <div style="margin-bottom:16px">
-        <div style="font-size:13px;font-weight:600;color:#1f2937;margin-bottom:6px">招待リンク（LINEなどで送信してください）</div>
-        <textarea id="inviteUrlText" readonly style="width:100%;min-height:80px;padding:10px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:12px;font-family:monospace;resize:vertical;box-sizing:border-box;background:#f9fafb"></textarea>
-      </div>
+    /* CONTROLS */
+    .month-nav { display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap; }
+    .month-nav-title { font-size:20px;font-weight:700; }
+    .btn-nav { padding:8px 14px;border:1.5px solid var(--border);border-radius:8px;background:white;cursor:pointer;font-size:14px;font-family:inherit;transition:all 0.15s; }
+    .btn-nav:hover { background:var(--bg); }
+    .dept-tabs { display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap; }
+    .dept-tab { padding:8px 16px;border-radius:100px;font-size:13px;font-weight:500;cursor:pointer;border:1.5px solid var(--border);background:white;transition:all 0.15s;font-family:inherit; }
+    .dept-tab.active { background:var(--primary);color:white;border-color:var(--primary); }
+    .action-row { display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap; }
 
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-primary" id="inviteCopyBtn" style="font-size:13px;flex:1">📋 リンクをコピー</button>
-        <button class="btn btn-outline" id="inviteCopyMessageBtn" style="font-size:13px;flex:1">📨 メッセージごとコピー</button>
-      </div>
+    /* BUTTONS */
+    .btn { padding:10px 18px;border-radius:10px;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;border:none;transition:all 0.15s; }
+    .btn-primary { background:var(--primary);color:white; }
+    .btn-primary:hover { background:var(--primary-light); }
+    .btn-success { background:var(--success);color:white; }
+    .btn-success:hover { opacity:0.9; }
+    .btn-warning { background:var(--warning);color:white; }
+    .btn-outline { background:white;border:1.5px solid var(--border);color:var(--text); }
+    .btn-outline:hover { background:var(--bg); }
+    .btn-danger { background:var(--danger);color:white; }
+    .btn-sm { padding:6px 12px;font-size:12px; }
 
-      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px;margin-top:14px;font-size:11px;color:#92400e;line-height:1.6">
-        ⚠️ <strong>注意事項</strong><br>
-        ・このリンクは <strong>7日間有効</strong>です（期限切れ後は再発行が必要）<br>
-        ・一度アカウント作成に使われると、リンクは無効になります<br>
-        ・LINEなどの安全な方法で対象スタッフに送ってください
-      </div>
-    </div>
+    /* TABLES */
+    .table-wrap { overflow-x:auto; }
+    .data-table { width:100%;border-collapse:collapse;font-size:13px; }
+    .data-table th { background:var(--bg);padding:10px 12px;text-align:left;font-weight:600;font-size:12px;color:var(--text-muted);border-bottom:1px solid var(--border);white-space:nowrap; }
+    .data-table td { padding:10px 12px;border-bottom:1px solid var(--border); }
+    .data-table tr:hover td { background:#f8fafc; }
 
-    <div id="inviteError" style="display:none;text-align:center;padding:20px">
-      <div style="font-size:32px;margin-bottom:12px">⚠️</div>
-      <div id="inviteErrorText" style="font-size:14px;color:#dc2626;margin-bottom:16px"></div>
-    </div>
-  </div>
-</div>
+    /* SHIFT GRID */
+    /* 縦スクロール容器（vh使用＝フリーズ回避）。日付と名前を両方固定するために必要 */
+    .shift-grid-wrap { overflow:auto;max-height:calc(100vh - 220px); }
+    /* sticky を縦横とも効かせるには border-collapse:separate が必須（collapseだと左列stickyが描画されない） */
+    .shift-grid { border-collapse:separate;border-spacing:0;font-size:11px;min-width:100%; }
+    .shift-grid th { padding:6px 4px;text-align:center;font-weight:600;font-size:10px;color:var(--text-muted);border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--bg);white-space:nowrap;min-width:34px; }
+    .shift-grid td { padding:2px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);text-align:center;vertical-align:middle;height:42px; }
+    /* 日付ヘッダ行：上に固定（縦スクロール時） */
+    .shift-grid thead th { position:sticky;top:0;z-index:3;border-top:1px solid var(--border); }
+    /* 名前列：左に固定（横スクロール時）。鍵マーク(z-index:2)より上に重ねる */
+    .shift-grid td.staff-name { padding:6px 10px;text-align:left;font-weight:500;white-space:nowrap;background:white;font-size:12px;height:42px;position:sticky;left:0;z-index:4;border-left:1px solid var(--border);box-shadow:1px 0 0 var(--border); }
+    /* 左上の角（名前列ヘッダ）：縦横ともに固定・最前面 */
+    .shift-grid th.staff-col { min-width:72px;text-align:left;padding-left:10px;position:sticky;left:0;top:0;z-index:6;background:var(--bg);border-left:1px solid var(--border);box-shadow:1px 0 0 var(--border); }
+    .shift-grid tbody tr { height:42px; }
+    .shift-cell { height:36px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:pointer;transition:all 0.15s;padding:1px;overflow:hidden; }
+    #shiftEditOptions .shift-cell { height:auto;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center; }
+    .shift-cell.has-req { flex-direction:column;justify-content:center;align-items:center; }
+    .shift-cell .shift-text { font-size:10px;font-weight:600;line-height:1.2; }
+    .shift-cell .req-text { font-size:8px;color:#f59e0b;line-height:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;text-align:center; }
+    .shift-cell:hover { opacity:0.75;transform:scale(1.08); }
+    .shift-cell.empty { background:#f8fafc;color:#d1d5db; }
+    .shift-cell.locked { position:relative; }
+    .shift-cell.locked::after { content:'🔒';position:absolute;top:-2px;right:-2px;font-size:8px; }
+    /* コーナーのトグルで氏名欄の行ロック鍵マーク🔒/🔓を非表示にする（ロック状態・行の背景色は維持） */
+    .shift-grid.hide-lock-icons .row-lock-icon { display:none !important; }
+    /* OFF時は氏名列のフロア幅(コーナー)とパディングを詰めて編集スペースを広げる */
+    .shift-grid.hide-lock-icons th.staff-col { min-width:0 !important; }
+    .shift-grid.hide-lock-icons td.staff-name { padding-left:6px !important; padding-right:4px !important; }
+    .day-header { display:flex;flex-direction:column;align-items:center; }
+    .day-num { font-size:11px;font-weight:700; }
+    .day-dow { font-size:9px; }
+    .day-sun { color:#ef4444; }
+    .day-sat { color:#3b82f6; }
+    .day-holiday { color:#ef4444; }
 
-<!-- AI相談モーダル -->
-<div class="modal-overlay" id="aiAdviceModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
-  <div class="modal-content" style="background:white;border-radius:16px;padding:24px;width:100%;max-width:720px;max-height:90vh;overflow-y:auto;margin-top:20px">
-    <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <span style="font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px">
-        <svg width="28" height="19" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
-          <g transform="translate(20, 30)">
-            <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
-            <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
-          </g>
-          <g transform="translate(50, 30)">
-            <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
-            <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
-            <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
-            <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
-            <circle cx="20" cy="-3" r="5" fill="white"/>
-            <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
-            <circle cx="22" cy="-4" r="0.8" fill="white"/>
-          </g>
-        </svg>
-        AIに相談
-      </span>
-      <button class="btn btn-outline" id="closeAiModal" style="padding:6px 12px">✕</button>
-    </div>
+    /* SHIFT COLORS */
+    .sc-日勤{background:#dbeafe;color:#1d4ed8}.sc-日勤\+{background:#bfdbfe;color:#1e40af}
+    .sc-午前{background:#dcfce7;color:#15803d}.sc-午後{background:#fef9c3;color:#a16207}
+    .sc-遅番{background:#ffedd5;color:#c2410c}.sc-遅L{background:#fef3c7;color:#92400e}
+    .sc-リハ遅{background:#f3e8ff;color:#7e22ce}.sc-夜勤{background:#ede9fe;color:#5b21b6}
+    .sc-長日{background:#ffe4e6;color:#be123c}.sc-中抜け{background:#ccfbf1;color:#0f766e}
+    .sc-時短{background:#dcfce7;color:#166534}.sc-CC{background:#dbeafe;color:#1d4ed8}
+    .sc-CHO{background:#e0f2fe;color:#075985}.sc-CCのみ{background:#e0f9ff;color:#0e7490}
+    .sc-休み{background:#f3f4f6;color:#6b7280}.sc-有休{background:#fdf4ff;color:#86198f}
+    .sc-半有休{background:#fce7f3;color:#9d174d}.sc-希望休{background:#fff7ed;color:#9a3412}
+    .sc-個夏休{background:#ecfeff;color:#155e75}
+    /* カスタムシフト共通スタイル */
+    .sc-custom{background:#f1f5f9;color:#475569;border:1px dashed #94a3b8}
 
-    <!-- 用途選択 -->
-    <div id="aiStepSelect">
-      <div style="font-size:13px;color:var(--text-muted);margin-bottom:14px">現在表示中のシフト表（<span id="aiTargetMonthLabel"></span>・<span id="aiTargetDeptLabel"></span>）について相談します。</div>
+    /* ===== 印刷用CSS（バーチカル表示）===== */
+    /* body に .printing-vertical クラスが付いたときだけ適用 */
+    /* visibility ではなく display ベースで「不要なものを消す」方式に変更（信頼性が高い）*/
+    @media print {
+      @page {
+        /* size を指定すると Chrome が向き(縦/横)セレクタをロックするため、size は指定しない。
+           margin だけ指定し、用紙サイズ・向きは印刷ダイアログでユーザーが選択する。
+           横向きを選ぶとシフト表・バーチカルが読みやすい */
+        margin: 5mm;
+      }
+      /* 背景色・帯の色を強制的に印刷する */
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+      }
 
-      <!-- メインボタン -->
-      <button class="ai-choice-btn ai-main-btn" data-mode="both" style="width:100%;padding:18px;border-radius:14px;border:none;background:linear-gradient(135deg,#9333ea,#2563eb);color:white;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:16px;box-shadow:0 4px 12px rgba(147,51,234,0.4);display:flex;align-items:center;justify-content:center;gap:10px">
-        <svg width="32" height="22" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
-          <g transform="translate(20, 30)">
-            <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
-            <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
-          </g>
-          <g transform="translate(50, 30)">
-            <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
-            <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
-            <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
-            <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
-            <circle cx="20" cy="-3" r="5" fill="white"/>
-            <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
-            <circle cx="22" cy="-4" r="0.8" fill="white"/>
-          </g>
-        </svg>
-        <div style="text-align:left">
-          <div style="font-weight:700;font-size:16px">問題点と修正案を確認する</div>
-          <div style="font-size:11px;opacity:0.9;margin-top:2px">問題点を見つけて、具体的な修正案を提案します</div>
-        </div>
-      </button>
+      /* バーチカル印刷モード時：バーチカルモーダル以外のページ要素をすべて非表示にする */
+      body.printing-vertical > *:not(#verticalViewModal),
+      body.printing-vertical .sidebar,
+      body.printing-vertical .topbar,
+      body.printing-vertical .month-nav,
+      body.printing-vertical .dept-tabs,
+      body.printing-vertical .action-row,
+      body.printing-vertical .loading,
+      body.printing-vertical .toast,
+      body.printing-vertical #print-header {
+        display: none !important;
+      }
 
-      <!-- 区切り -->
-      <div style="display:flex;align-items:center;gap:12px;margin:14px 0">
-        <div style="flex:1;height:1px;background:#e5e7eb"></div>
-        <div style="font-size:11px;color:#94a3b8;font-weight:500">または</div>
-        <div style="flex:1;height:1px;background:#e5e7eb"></div>
-      </div>
+      /* バーチカルモーダル本体：全画面に展開 */
+      body.printing-vertical #verticalViewModal {
+        display: block !important;
+        position: static !important;
+        background: white !important;
+        backdrop-filter: none !important;
+        z-index: auto !important;
+        width: 100% !important;
+        height: auto !important;
+        max-width: 100% !important;
+        max-height: none !important;
+        overflow: visible !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        inset: auto !important;
+      }
 
-      <!-- 自由記入 -->
-      <div style="margin-bottom:14px">
-        <div style="font-size:13px;font-weight:600;color:#1f2937;margin-bottom:6px">📝 自由に質問・相談する</div>
-        <textarea id="aiFreeText" placeholder="例：来月から育休復帰するスタッフがいるので、シフトを軽めに調整した修正案を出してください" style="width:100%;min-height:80px;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
-        <button class="ai-choice-btn" data-mode="custom" style="margin-top:10px;width:100%;padding:12px;border-radius:10px;border:1.5px solid #a855f7;background:white;color:#7c3aed;font-weight:600;font-size:13px;cursor:pointer;transition:all 0.15s">
-          📤 送信
-        </button>
-      </div>
+      /* モーダル内側の .modal（インラインスタイルで max-width:1400px;width:95vw が入っている）の制限を解除 */
+      body.printing-vertical #verticalViewModal .modal {
+        max-width: 100% !important;
+        width: 100% !important;
+        height: auto !important;
+        max-height: none !important;
+        margin: 0 !important;
+        padding: 4mm !important;
+        box-shadow: none !important;
+        border: none !important;
+        background: white !important;
+        overflow: visible !important;
+      }
 
-      <div style="font-size:11px;color:#94a3b8;background:#f9fafb;padding:10px;border-radius:8px;line-height:1.6">
-        ⚠️ 個人情報保護のため、スタッフ名は「スタッフA・B・C…」に匿名化して送信されます。AIの返答は当画面でスタッフ名に戻して表示されます。
-      </div>
-    </div>
+      /* タイトル：印刷用に整形 */
+      body.printing-vertical #verticalViewModal .modal-title {
+        font-size: 14pt !important;
+        text-align: center !important;
+        padding: 8px 0 !important;
+        margin-bottom: 8px !important;
+        border-bottom: 1px solid #888 !important;
+        display: block !important;
+      }
 
-    <!-- 処理中 -->
-    <div id="aiStepLoading" style="display:none;text-align:center;padding:40px 20px">
-      <div style="display:inline-block;width:40px;height:40px;border:3px solid #e5e7eb;border-top-color:#a855f7;border-radius:50%;animation:spin 0.8s linear infinite"></div>
-      <div style="margin-top:16px;font-size:14px;color:#6b7280">AIに相談しています...（5〜15秒）</div>
-    </div>
+      /* タイトル内のボタンと内側 div は非表示 */
+      body.printing-vertical #verticalViewModal .modal-title button,
+      body.printing-vertical #verticalViewModal .modal-title > div {
+        display: none !important;
+      }
 
-    <!-- 結果（テキスト表示） -->
-    <div id="aiStepResult" style="display:none">
-      <!-- サマリー -->
-      <div id="aiSummaryBox" style="display:none;background:linear-gradient(135deg,#faf5ff,#eff6ff);border-radius:12px;padding:14px;border:1px solid #e9d5ff;margin-bottom:14px">
-        <div style="font-size:12px;font-weight:600;color:#6b21a8;margin-bottom:4px;display:flex;align-items:center;gap:6px">
-          <svg width="20" height="14" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
-            <g transform="translate(20, 30)">
-              <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
-              <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
-            </g>
-            <g transform="translate(50, 30)">
-              <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
-              <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
-              <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
-              <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
-              <circle cx="20" cy="-3" r="5" fill="white"/>
-              <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
-              <circle cx="22" cy="-4" r="0.8" fill="white"/>
-            </g>
-          </svg>
-          <span>全体所感</span>
-        </div>
-        <div id="aiSummaryText" style="font-size:13px;color:#1f2937;line-height:1.6"></div>
-      </div>
-      <!-- 提案カードリスト -->
-      <div id="aiSuggestionsList"></div>
-      <!-- テキスト返答（problems モードのみ） -->
-      <div id="aiResultTextBox" style="display:none;background:#f8fafc;border-radius:12px;padding:14px;border:1px solid #e5e7eb;margin-bottom:12px">
-        <div style="font-size:12px;font-weight:600;color:#475569;margin-bottom:6px;display:flex;align-items:center;gap:6px">
-          <svg width="20" height="14" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
-            <g transform="translate(20, 30)">
-              <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
-              <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
-            </g>
-            <g transform="translate(50, 30)">
-              <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
-              <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
-              <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
-              <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
-              <circle cx="20" cy="-3" r="5" fill="white"/>
-              <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
-              <circle cx="22" cy="-4" r="0.8" fill="white"/>
-            </g>
-          </svg>
-          <span>Geminiからの指摘</span>
-        </div>
-        <div id="aiResultText" style="font-size:13px;line-height:1.7;color:#1f2937;white-space:pre-wrap"></div>
-      </div>
-      <!-- 操作ボタン -->
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb">
-        <button class="btn btn-outline" id="aiBackBtn" style="font-size:13px">🔄 別の相談</button>
-        <button class="btn btn-primary" id="aiCloseFinishBtn" style="font-size:13px;margin-left:auto">✓ 閉じてシフト表を確認</button>
-      </div>
-    </div>
+      /* コンテンツ領域：インラインの overflow:auto;max-height:70vh を解除 */
+      body.printing-vertical #verticalViewContent {
+        max-height: none !important;
+        height: auto !important;
+        overflow: visible !important;
+        font-size: 9pt !important;
+        /* 8:30〜21:30 の全幅(名前列140px＋タイムライン1248px≈1388px)を A4横の用紙幅に確実に収める。
+           内容幅はほぼ固定のため、JS連携(var)に依存せず固定倍率で縮小する。
+           zoom はレイアウト幅自体を縮めるので印刷で切れない（Chrome/Edge/Safari）。 */
+        zoom: 0.72;
+      }
 
-    <!-- エラー -->
-    <div id="aiStepError" style="display:none;text-align:center;padding:20px">
-      <div style="font-size:32px;margin-bottom:12px">⚠️</div>
-      <div id="aiErrorText" style="font-size:14px;color:#dc2626;margin-bottom:16px"></div>
-      <button class="btn btn-outline" id="aiErrorBackBtn" style="font-size:13px">戻る</button>
-    </div>
-  </div>
-</div>
+      /* モーダル下部のボタン類は非表示 */
+      body.printing-vertical #verticalViewModal .modal-footer,
+      body.printing-vertical #verticalViewModal #verticalPrevDay,
+      body.printing-vertical #verticalViewModal #verticalNextDay,
+      body.printing-vertical #verticalViewModal #saveBreaksBtn,
+      body.printing-vertical #verticalViewModal #verticalPrintBtn {
+        display: none !important;
+      }
 
+      /* シフト帯の影は印刷で目立つので消す */
+      body.printing-vertical #verticalViewContent .v-shift-bar {
+        box-shadow: none !important;
+        cursor: default !important;
+      }
 
-<div class="toast" id="toast"></div>
+      /* スクロール禁止（ページ全体）*/
+      body.printing-vertical,
+      body.printing-vertical html {
+        overflow: visible !important;
+        height: auto !important;
+      }
+    }
 
-<!-- LOGIN -->
-<div id="loginScreen">
-  <div class="login-box">
-    <div class="kingyo-tank">
-      <div class="water-surface"></div>
-      <div class="bubble bubble-1"></div>
-      <div class="bubble bubble-2"></div>
-      <div class="bubble bubble-3"></div>
-      <div class="bubble bubble-4"></div>
-      <svg class="kingyo" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg">
-      <!-- 尾びれ（パターン2の流線形・揺れる） -->
-      <g class="kingyo-tail" transform="translate(20, 30)">
-        <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#ea580c"/>
-        <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fb923c"/>
-        <path d="M -5 -3 Q -22 -18, -38 -12" stroke="#dc2626" stroke-width="1" fill="none" opacity="0.6"/>
-        <path d="M -5 5 Q -22 15, -38 8" stroke="#dc2626" stroke-width="1" fill="none" opacity="0.6"/>
-      </g>
-      <!-- 体（卵型・中央線なし） -->
-      <g transform="translate(50, 30)">
-        <ellipse cx="0" cy="0" rx="30" ry="23" fill="#dc2626"/>
-        <ellipse cx="0" cy="0" rx="30" ry="23" fill="url(#bodyGradAdminHybrid)"/>
-        <!-- エラ -->
-        <path d="M 13 -8 Q 18 0, 13 9" stroke="#ea580c" stroke-width="1.3" fill="none" stroke-linecap="round"/>
-        <!-- 背びれ（二段波打ち） -->
-        <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#ea580c"/>
-        <path d="M -7 -22 Q -3 -30, 0 -27" stroke="#dc2626" stroke-width="1" fill="none" stroke-linecap="round"/>
-        <path d="M 2 -27 Q 5 -33, 8 -25" stroke="#dc2626" stroke-width="1" fill="none" stroke-linecap="round"/>
-        <path d="M 10 -25 Q 12 -30, 13 -22" stroke="#dc2626" stroke-width="1" fill="none" stroke-linecap="round"/>
-        <!-- 腹びれ -->
-        <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#ea580c"/>
-        <path d="M -1 20 Q -2 27, 4 28" stroke="#dc2626" stroke-width="0.9" fill="none"/>
-        <!-- 胸びれ -->
-        <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#ea580c"/>
-        <path d="M 4 14 Q 8 18, 11 16" stroke="#dc2626" stroke-width="0.8" fill="none"/>
-        <!-- 中央線なし -->
-        <!-- 目 -->
-        <circle cx="20" cy="-3" r="5" fill="white"/>
-        <circle cx="21" cy="-3" r="3.2" fill="#1f2937"/>
-        <circle cx="22" cy="-4" r="1" fill="white"/>
-        <!-- 口 -->
-        <path d="M 29 5 Q 31 6, 29 8" stroke="#7f1d1d" stroke-width="1.3" fill="none" stroke-linecap="round"/>
-      </g>
-      <defs>
-        <radialGradient id="bodyGradAdminHybrid" cx="0.35" cy="0.3" r="0.7">
-          <stop offset="0%" stop-color="#fecaca" stop-opacity="0.7"/>
-          <stop offset="40%" stop-color="#dc2626" stop-opacity="0"/>
-          <stop offset="100%" stop-color="#991b1b" stop-opacity="0.4"/>
-        </radialGradient>
-      </defs>
-    </svg>
-    </div>
-    <div class="login-title">kingyo-shift</div>
-    <div class="login-sub">管理者ログイン｜やちよ総合診療クリニック</div>
-    <div class="form-group">
-      <label class="form-label">部門</label>
-      <select class="form-input" id="adminDeptSelect">
-        <option value="">部門を選択</option>
-        <option value="0">医療事務</option>
-        <option value="1">看護</option>
-        <option value="2">リハビリ</option>
-        <option value="3">放射線</option>
-        <option value="null">管理</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">お名前</label>
-      <select class="form-input" id="adminNameSelect" disabled>
-        <option value="">先に部門を選択してください</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">パスワード</label>
-      <input type="password" class="form-input" id="adminPassword" placeholder="••••••••" autocomplete="current-password">
-    </div>
-    <button class="btn-login" id="adminLoginBtn">ログイン</button>
-    <div class="error-box" id="adminError">名前またはパスワードが正しくありません</div>
-  </div>
-</div>
+    /* MODAL */
+    .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;display:none;align-items:center;justify-content:center;backdrop-filter:blur(2px); }
+    .modal-overlay.show { display:flex; }
+    .modal { background:white;border-radius:20px;padding:28px;width:100%;max-width:560px;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.2); }
+    .modal-title { font-size:18px;font-weight:700;margin-bottom:20px; }
+    .modal-footer { display:flex;gap:10px;justify-content:flex-end;margin-top:24px; }
+    .modal-lg { max-width:800px; }
 
-<!-- APP -->
-<div id="appScreen">
-  <div class="layout">
-    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
-    <div class="sidebar">
-      <div class="sidebar-logo">
-        <div class="sidebar-logo-title">やちよ総合診療<br>クリニック</div>
-        <div class="sidebar-logo-sub">シフト管理システム</div>
-      </div>
-      <div class="sidebar-nav">
-        <div class="nav-section">メニュー</div>
-        <div class="nav-item active" data-page="shift">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-          <span>シフト表</span>
-        </div>
-        <div class="nav-item" data-page="generate">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-          <span>自動生成</span>
-        </div>
-        <div class="nav-item" data-page="export">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
-          <span>エクスポート</span>
-        </div>
-        <div class="nav-item" data-page="dashboard">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-          <span>ダッシュボード</span>
-        </div>
-        <div class="nav-item" data-page="requests">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="m9 12 2 2 4-4"/></svg>
-          <span>希望一覧</span>
-        </div>
-        <div class="nav-item" data-page="settings">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          <span>設定</span>
-        </div>
-        <div class="nav-item" id="staffNavItem" data-page="staff">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          <span>スタッフ管理</span>
-        </div>
-        <div class="nav-item" id="accountNavItem" data-page="account">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/><path d="M16 11l2 2 4-4"/></svg>
-          <span>アカウント管理</span>
-        </div>
-      </div>
-      <div class="sidebar-footer">
-        <div class="user-info" id="sidebarUserName"></div>
-        <div class="user-role" id="sidebarUserRole"></div>
-        <button class="btn-logout" id="adminLogoutBtn">ログアウト</button>
-      </div>
-    </div>
+    /* ===== バーチカルモーダル専用：フッター（印刷・閉じる・休憩保存ボタン）が
+       画面下に見切れないよう、タイトル・フッター固定でコンテンツのみスクロールする構造にする ===== */
+    #verticalViewModal .modal {
+      max-height: 92vh !important;
+      display: flex !important;
+      flex-direction: column !important;
+      overflow: hidden !important;  /* 親はスクロールしない（内側がスクロール）*/
+    }
+    #verticalViewModal .modal-title {
+      flex: 0 0 auto !important;   /* タイトルは固定 */
+      margin-bottom: 12px !important;
+    }
+    #verticalViewModal #verticalViewContent {
+      flex: 1 1 auto !important;   /* コンテンツは残り高さを使う */
+      max-height: none !important; /* インライン max-height:70vh を解除 */
+      min-height: 0 !important;    /* flex子要素のスクロール許可に必須 */
+      overflow: auto !important;   /* コンテンツのみスクロール */
+    }
+    #verticalViewModal .modal-footer {
+      flex: 0 0 auto !important;   /* フッターは常に最下部に固定 */
+      margin-top: 12px !important;
+      padding-top: 12px !important;
+      border-top: 1px solid var(--border);
+    }
 
-    <div class="main">
-      <div class="topbar">
-        <button class="sidebar-toggle" id="sidebarToggle" aria-label="メニュー">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
-        </button>
-        <div>
-          <div class="page-title" id="topbarTitle">シフト表</div>
-          <div class="page-sub" id="topbarSub"></div>
-        </div>
-        <div class="goldfish-tank" id="topbarGoldfish" title="🐟">
-          <div class="bubble" style="bottom:0;left:30px"></div>
-          <div class="bubble" style="bottom:0"></div>
-          <div class="bubble" style="bottom:0"></div>
-          <div class="bubble" style="bottom:0"></div>
-          <div class="goldfish-swimmer">
-            <svg width="36" height="24" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg">
-              <g transform="translate(20, 30)">
-                <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
-                <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
-              </g>
-              <g transform="translate(50, 30)">
-                <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
-                <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
-                <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
-                <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
-                <circle cx="20" cy="-3" r="5" fill="white"/>
-                <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
-                <circle cx="22" cy="-4" r="0.8" fill="white"/>
-              </g>
-            </svg>
-          </div>
-        </div>
-      </div>
+    /* BADGES */
+    .badge { display:inline-block;padding:3px 10px;border-radius:100px;font-size:11px;font-weight:600; }
+    .badge-full { background:#dbeafe;color:#1d4ed8; }
+    .badge-part { background:#f3f4f6;color:#6b7280; }
+    .badge-submitted { background:#d1fae5;color:#065f46; }
+    .badge-pending { background:#fef3c7;color:#92400e; }
 
-      <div class="content">
+    /* LOADING / TOAST */
+    .loading { position:fixed;inset:0;background:rgba(255,255,255,0.85);display:none;align-items:center;justify-content:center;z-index:999;flex-direction:column;gap:12px; }
+    .spinner { width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .toast { position:fixed;bottom:24px;right:24px;background:var(--text);color:white;padding:12px 20px;border-radius:12px;font-size:14px;font-weight:500;z-index:9999;opacity:0;transform:translateY(8px);transition:all 0.3s; }
+    .toast.show { opacity:1;transform:translateY(0); }
+    .toast.success { background:var(--success); }
+    .toast.error { background:var(--danger); }
 
-        <!-- DASHBOARD -->
-        <div class="page" id="page-dashboard">
-          <div class="month-nav">
-            <button class="btn-nav" id="dashPrevMonth">◀</button>
-            <div class="month-nav-title" id="dashMonthTitle"></div>
-            <button class="btn-nav" id="dashNextMonth">▶</button>
-          </div>
-          <div class="stats-grid" id="statsGrid"></div>
-          <div class="card">
-            <div class="card-title">今月の提出状況</div>
-            <div id="recentSubmissions">読み込み中...</div>
-          </div>
-        </div>
+    /* SETTINGS */
+    .settings-grid { display:grid;grid-template-columns:repeat(2,1fr);gap:16px; }
+    .setting-row { display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border); }
+    .setting-label { font-size:14px;font-weight:500; }
+    .setting-sub { font-size:12px;color:var(--text-muted);margin-top:2px; }
+    .number-input { width:80px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;text-align:center;outline:none; }
+    .number-input:focus { border-color:var(--primary); }
 
-        <!-- REQUESTS -->
-        <div class="page" id="page-requests">
-          <div class="dept-tabs" id="requestDeptTabs"></div>
-          <div class="month-nav">
-            <button class="btn-nav" id="reqPrevMonth">◀</button>
-            <div class="month-nav-title" id="reqMonthTitle"></div>
-            <button class="btn-nav" id="reqNextMonth">▶</button>
-          </div>
-          <div class="card">
-            <div class="table-wrap">
-              <table class="data-table" id="requestsTable">
-                <thead><tr><th>スタッフ名</th><th>部門</th><th>最終提出日</th><th>入力日数</th><th>状況</th><th>詳細</th></tr></thead>
-                <tbody id="requestsBody"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+    /* REQUIREMENT TABLE */
+    .req-table { width:100%;border-collapse:collapse;font-size:13px; }
+    .req-table th { background:var(--bg);padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text-muted);border:1px solid var(--border); }
+    .req-table td { padding:8px;border:1px solid var(--border);text-align:center; }
+    .req-input { width:52px;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;text-align:center;font-family:inherit;outline:none; }
+    .req-input:focus { border-color:var(--primary); }
 
-        <!-- SHIFT -->
-        <div class="page active" id="page-shift">
-          <div class="dept-tabs" id="shiftDeptTabs"></div>
-          <div class="month-nav">
-            <button class="btn-nav" id="shiftPrevMonth">◀</button>
-            <div class="month-nav-title" id="shiftMonthTitle"></div>
-            <button class="btn-nav" id="shiftNextMonth">▶</button>
-            <button class="btn btn-success" id="saveShiftBtn">💾 保存</button>
-            <button class="btn btn-outline" id="undoBtn" title="一つ戻る（元に戻す / Ctrl+Z）" style="background:white;border:1.5px solid #d1d5db;color:#374151;padding:8px 10px;display:inline-flex;align-items:center">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 5 5 5 5 0 0 1-5 5h-3"/></svg>
-            </button>
-            <button class="btn btn-outline" id="redoBtn" title="一つ進む（やり直す / Ctrl+Y）" style="background:white;border:1.5px solid #d1d5db;color:#374151;padding:8px 10px;display:inline-flex;align-items:center">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0-5 5 5 5 0 0 0 5 5h3"/></svg>
-            </button>
-            <button class="btn btn-outline" id="reloadShiftBtn" title="希望をリロード（スタッフ提出の最新の希望を取り込みます。未保存の編集は保持されます）" style="background:white;border:1.5px solid #06b6d4;color:#0e7490;padding:8px 10px;display:inline-flex;align-items:center">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v5h-5"/></svg>
-            </button>
-            <button class="btn btn-primary" id="confirmShiftBtn">✅ 確定する</button>
-            <button class="btn btn-outline" id="aiAdviceBtn" style="background:linear-gradient(135deg,#a855f7,#3b82f6);color:white;border:none;display:inline-flex;align-items:center;gap:6px">
-              <svg width="20" height="14" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
-                <g transform="translate(20, 30)">
-                  <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
-                  <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
-                </g>
-                <g transform="translate(50, 30)">
-                  <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
-                  <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
-                  <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
-                  <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
-                  <circle cx="20" cy="-3" r="5" fill="white"/>
-                  <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
-                  <circle cx="22" cy="-4" r="0.8" fill="white"/>
-                </g>
-              </svg>
-              AIに相談
-            </button>
-          </div>
-          <div id="print-header" style="display:none;margin-bottom:12px">
-            <div style="font-size:16px;font-weight:700">やちよ総合診療クリニック シフト表</div>
-            <div style="font-size:12px;color:#666" id="printHeaderSub"></div>
-          </div>
-          <!-- ★ 状況行（3行目）：公開中バッジ＋確定取消ボタン。確定済みの月で表示。スマホでは1行・横スクロール -->
-          <div class="shift-status-row" style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-            <div id="confirmStatusBadge" style="display:none;padding:6px 12px;border-radius:100px;font-size:12px;font-weight:600;white-space:nowrap"></div>
-            <div id="confirmLockBanner" style="display:none">
-              <button id="unconfirmBtn" class="btn btn-outline" style="background:white; border:1.5px solid #dc2626; color:#dc2626; font-weight:700;white-space:nowrap">✏️ 確定を取り消して編集する</button>
-            </div>
-          </div>
-          <!-- ★ 自動生成プレビュー承認バナー（自動生成直後に表示）-->
-          <div id="aiPreviewBanner" style="display:none; position:sticky; top:0; z-index:50; background:linear-gradient(135deg,#fef3c7,#fde68a); border:2px solid #f59e0b; border-radius:12px; padding:16px; margin-bottom:12px; box-shadow:0 4px 12px rgba(245,158,11,0.3)">
-            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px">
-              <div style="flex:1; min-width:200px; display:flex; align-items:flex-start; gap:10px">
-                <svg width="32" height="22" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0; margin-top:2px">
-                  <g transform="translate(20, 30)">
-                    <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
-                    <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
-                  </g>
-                  <g transform="translate(50, 30)">
-                    <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
-                    <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
-                    <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
-                    <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
-                    <circle cx="20" cy="-3" r="5" fill="white"/>
-                    <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
-                    <circle cx="22" cy="-4" r="0.8" fill="white"/>
-                  </g>
-                </svg>
-                <div>
-                  <div style="font-size:15px; font-weight:700; color:#92400e; margin-bottom:4px">自動生成結果を表示中（まだ保存されていません）</div>
-                  <div style="font-size:12px; color:#78350f">内容を確認のうえ、「確定」または「生成前に戻す」を選択してください</div>
-                </div>
-              </div>
-              <div style="display:flex; gap:8px">
-                <button id="aiPreviewApproveBtn" class="btn btn-success" style="font-weight:700">✓ この内容で確定する</button>
-                <button id="aiPreviewDiscardBtn" class="btn btn-outline" style="background:white; border:1.5px solid #dc2626; color:#dc2626; font-weight:700">↩ 生成前に戻す</button>
-              </div>
-            </div>
-          </div>
-          <div class="card" style="padding:12px">
-            <div class="shift-grid-wrap">
-              <table class="shift-grid" id="shiftGrid"></table>
-            </div>
-          </div>
-        </div>
+    /* AUTO GENERATE */
+    .generate-panel { background:linear-gradient(135deg,#0f4c81,#1a6bb5);border-radius:16px;padding:24px;color:white;margin-bottom:20px; }
+    .generate-title { font-size:18px;font-weight:700;margin-bottom:8px; }
+    .generate-sub { font-size:13px;opacity:0.8;margin-bottom:20px; }
+    .generate-options { display:flex;flex-wrap:wrap;gap:12px;margin-bottom:20px; }
+    .gen-option { background:rgba(255,255,255,0.1);border-radius:12px;padding:12px 20px;border:1.5px solid rgba(255,255,255,0.2);width:fit-content; }
+    .gen-option label { display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px; }
+    .gen-option input[type=checkbox] { width:16px;height:16px;cursor:pointer; }
+    .btn-generate { padding:14px 32px;background:white;color:var(--primary);border:none;border-radius:12px;font-size:16px;font-weight:700;font-family:inherit;cursor:pointer;transition:all 0.2s; }
+    .btn-generate:hover { transform:translateY(-1px);box-shadow:0 4px 20px rgba(0,0,0,0.2); }
 
-        <!-- GENERATE -->
-        <!-- EXPORT -->
-        <div class="page" id="page-export">
-          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;max-width:640px">
-            <h2 style="font-size:18px;font-weight:700;margin:0 0 4px">エクスポート</h2>
-            <p style="font-size:13px;color:#6b7280;margin:0 0 16px;line-height:1.7">「シフト表」で選択中の部署・月を出力します。対象を変えるには、先に「シフト表」で部署・月を切り替えてください。印刷を押すとシフト表の表示に切り替わります。</p>
-            <div style="font-size:14px;font-weight:600;margin-bottom:18px">出力対象：<span id="exportContextLabel" style="color:#0e7490">―</span></div>
-            <div style="display:flex;gap:12px;flex-wrap:wrap">
-              <button class="btn btn-outline" id="exportCsvBtn">📊 CSV出力</button>
-              <button class="btn btn-outline" id="printShiftBtn">🖨️ 印刷</button>
-            </div>
-          </div>
-        </div>
+    /* WED TYPE */
+    .wed-grid { display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:12px; }
+    .wed-cell { text-align:center;padding:8px 4px;border-radius:8px;border:1.5px solid var(--border);cursor:pointer;font-size:11px;transition:all 0.15s; }
+    .wed-cell.normal { background:#f0f9ff;border-color:#7dd3fc;color:#075985; }
+    .wed-cell.cc { background:#fef3c7;border-color:#fcd34d;color:#92400e; }
+    .wed-cell.cho { background:#f3e8ff;border-color:#c4b5fd;color:#5b21b6; }
+    .wed-cell:hover { opacity:0.8; }
 
-        <div class="page" id="page-generate">
-          <div class="dept-tabs" id="genDeptTabs"></div>
-          <div class="month-nav">
-            <button class="btn-nav" id="genPrevMonth">◀</button>
-            <div class="month-nav-title" id="genMonthTitle"></div>
-            <button class="btn-nav" id="genNextMonth">▶</button>
-          </div>
+    .shift-cell.cell-selected {
+      outline: 3px solid #0f4c81 !important;
+      outline-offset: -1px !important;
+      z-index: 10 !important;
+    }
+    .page { display:none; }
+    .page.active { display:block; }
 
-          <!-- 自動生成パネル -->
-          <div class="generate-panel">
-            <div class="generate-title">⚡ シフト自動生成</div>
-            <div class="generate-sub">希望データをもとに、制約条件を満たすシフトを自動で生成します</div>
-            <div class="generate-options">
-              <div class="gen-option">
-                <label><input type="checkbox" id="optNoConsecWeekend" checked> 土日連勤なし</label>
-              </div>
-            </div>
-            <!-- 以下は常時ON固定（UI非表示） -->
-            <input type="hidden" id="optRespectRequest" value="on" data-checked="true">
-            <input type="hidden" id="optRespectHours" value="on" data-checked="true">
-            <input type="hidden" id="optRespectNight" value="on" data-checked="true">
-            <input type="hidden" id="optKeepLocked" value="on" data-checked="true">
-            <input type="hidden" id="optFillRequired" value="on" data-checked="true">
+    /* 印刷用スタイル */
+    @page {
+      /* size を指定すると Chrome が向き(縦/横)セレクタをロックするため、size は指定しない。
+         margin だけ指定し、用紙サイズ・向きは印刷ダイアログでユーザーが選択する */
+      margin: 8mm;
+    }
+    @media print {
+      body { background: white !important; font-size: 10px; }
 
-            <!-- シフトパターン選択 -->
-            <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
-              <div style="font-size:13px;font-weight:700;margin-bottom:10px">
-                📋 使用シフトパターン
-              </div>
-              <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">チェックしたシフトのみ自動生成に使用します（部門ごとに自動保存）</div>
-              <div id="shiftPatternOptions" style="display:flex;flex-wrap:wrap;gap:8px"></div>
-            </div>
+      /* 印刷で非表示にするもの（最新のバナー類も明示的に追加） */
+      .sidebar, .topbar, .month-nav, .dept-tabs, .action-row,
+      #saveShiftBtn, #exportCsvBtn, #printShiftBtn, #reloadShiftBtn,
+      #aiConsultBtn, #revertSavedBtn, #confirmShiftBtn,
+      #confirmLockBanner, #aiPreviewBanner,
+      #topbarGoldfish, .goldfish-tank, .goldfish-swimmer, .bubble,
+      .modal-overlay, #verticalOverlay, #verticalModal,
+      .toast, #loading {
+        display: none !important;
+      }
 
-            <button class="btn-generate" id="generateBtn" style="margin-top:24px">🚀 シフトを自動生成する</button>
-          </div>
+      /* レイアウトリセット */
+      .main { margin-left: 0 !important; }
+      .content { padding: 0 !important; }
+      .card { box-shadow: none !important; border: 1px solid #ccc; padding: 4px !important; }
 
-          <!-- 生成結果プレビュー -->
-          <div class="card" id="previewCard" style="display:none">
-            <div class="card-title">生成結果プレビュー</div>
-            <div class="shift-grid-wrap">
-              <table class="shift-grid" id="previewGrid"></table>
-            </div>
-            <div style="display:flex;gap:10px;margin-top:16px">
-              <button class="btn btn-success" id="applyGenerateBtn">✓ シフト表に適用する</button>
-              <button class="btn btn-outline" id="discardGenerateBtn">✕ 破棄する</button>
-            </div>
-          </div>
-        </div>
+      /* ★ シフトテーブルが切り落とされないように overflow を解除 */
+      .shift-grid-wrap { overflow: visible !important; width: 100% !important; max-height: none !important; }
+      .shift-grid thead th, .shift-grid th.staff-col, .shift-grid td.staff-name { position: static !important; box-shadow: none !important; }
+      .shift-grid {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        table-layout: auto !important;
+      }
+      .shift-grid th, .shift-grid td {
+        padding: 1px !important;
+        font-size: 7px !important;
+        page-break-inside: avoid;
+      }
+      .shift-grid tr { page-break-inside: avoid; }
+      .shift-cell {
+        min-height: 16px !important;
+        font-size: 7px !important;
+        border-radius: 2px !important;
+        /* ★ シフト色を印刷時に保持する */
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+      }
+      .shift-cell .req-text { display: none !important; }
 
-        <!-- SETTINGS -->
-        <div class="page" id="page-settings">
-          <div class="card">
-            <div class="card-title">月間所定労働時間</div>
-            <div id="monthlyHoursGrid"></div>
-            <button class="btn btn-primary" style="margin-top:16px" id="saveHoursBtn">保存</button>
-            <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
-              <div style="font-size:13px;color:var(--text-muted);margin-bottom:8px">個別所定時間のリセット：特定スタッフに個別設定された所定時間を削除し、上記の基準値に統一します。基準値を変更しても反映されない場合に使用してください。</div>
-              <button class="btn btn-outline" id="clearStaffHoursBtn" style="border:1.5px solid #f59e0b;color:#92400e">⚠️ この部署・指定月の個別所定時間をクリア</button>
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-title">必要人数設定</div>
-            <div class="dept-tabs" id="reqDeptTabs"></div>
-            <div id="requirementsGrid"></div>
-            <button class="btn btn-primary" style="margin-top:16px" id="saveRequirementsBtn">保存</button>
-          </div>
-          <!-- 月別設定：祝日・木曜・水曜（全部署共通・1つの月ナビで連動）-->
-          <div class="card">
-            <div class="card-title">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-              月別の診療日設定（祝日・木曜・水曜）
-            </div>
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">下記の祝日・木曜・水曜の設定はすべて全部署共通です。月を切り替えると3つすべてが連動します。</div>
-            <div class="month-nav" style="margin-bottom:20px">
-              <button class="btn-nav" id="specialPrevMonth">◀</button>
-              <div class="month-nav-title" id="specialMonthTitle"></div>
-              <button class="btn-nav" id="specialNextMonth">▶</button>
-            </div>
+      /* 全色を印刷時に保持 */
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
 
-            <!-- 祝日・特殊日 -->
-            <div style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--primary)">📅 祝日・特殊日</div>
-            <div id="specialDaysGrid"></div>
+      /* ページ表示 */
+      .page { display: none !important; }
+      #page-shift { display: block !important; }
+      #print-header { display: block !important; text-align: center; margin-bottom: 8px !important; }
+    }
+    #print-header { display: none; }
 
-            <!-- 任意休診日 -->
-            <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
-              <div style="font-size:14px;font-weight:600;margin-bottom:8px">クリニック休診日（任意）</div>
-              <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
-                祝日・木曜以外でクリニックが休診と定める日を追加します。スタッフのシフト希望提出画面で休診表示されます。
-              </div>
-              <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
-                <select id="customClosedDaySelect" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:white;font-family:inherit"></select>
-                <input type="text" id="customClosedLabelInput" placeholder="ラベル（例：お盆休み）" maxlength="20" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;flex:1;min-width:160px;font-family:inherit">
-                <button id="addCustomClosedBtn" class="btn btn-primary" style="padding:8px 16px;font-size:13px">追加</button>
-              </div>
-              <div id="customClosedList"></div>
-            </div>
+    /* 縦向きスマホ(幅≤768) に加え、横向きスマホ(landscape かつ 高さ≤600px) も同じモバイル挙動にする。
+       横向きでは幅が768pxを超えてこのブロックが外れ、固定ヘッダ等が効かなくなっていたのを解消。
+       タブレット(landscapeでも高さ>600)は対象外でPCレイアウトのまま。 */
+    @media (max-width:768px), (orientation:landscape) and (max-height:600px) {
+      /* サイドバーはオフキャンバス・ドロワー（ハンバーガーで開閉） */
+      .sidebar { transform:translateX(-100%);transition:transform 0.25s ease;box-shadow:2px 0 14px rgba(0,0,0,0.18); }
+      body.sidebar-open .sidebar { transform:translateX(0); }
+      body.sidebar-open .sidebar-backdrop { display:block; }
+      /* ドロワー展開中は背景（body / 新スクロール枠の content）のスクロールをロック。閉じると class が外れて自動復帰 */
+      body.sidebar-open { overflow:hidden; }
+      body.sidebar-open .content { overflow:hidden; }
+      .main { margin-left:0; }
+      .sidebar-toggle { display:flex; }
+      .stats-grid { grid-template-columns:repeat(2,1fr); }
+      /* モバイルは .layout を定値高さにして .content を唯一のスクロール枠にする。
+         バナー・ツールバー・表をまとめて .content でスクロールさせ、表ヘッダ(上)・氏名列(左)を sticky で枠の端に固定する */
+      .layout { height:100vh; }
+      /* 上・左パディングを0に。iOS Safari の sticky+padding 癖で日付ヘッダ上端・氏名列左端に
+         隙間ができ、そこにスクロール中のセルが透けていたのを解消。ヘッダ＝枠上端、氏名列＝枠左端でぴったり固定 */
+      .content { padding:0 16px 16px 0; overflow:auto; }
+      .generate-options { grid-template-columns:1fr; }
+      .settings-grid { grid-template-columns:1fr; }
+      /* スクロールは .content に集約するため、表ラッパー自身はスクロール容器にしない。
+         これにより 表ヘッダ(thead, sticky top)＝画面上端、氏名列(sticky left)＝画面左端 で固定され、
+         確定バナー・ツールバーは .content 内で上にスクロールして消え、作業領域が最大化される。
+         スクロール容器が1つになるので「途中で止まる」ネスト競合も解消。 */
+      .shift-grid-wrap { max-height:none; overflow:visible; }
+      /* スマホ：シフト表を囲む白いカード（background:white の枠）を撤去し、表をページ背景に直置きして
+         「表の後ろの白いエリア」を消す。空セルは透明なので背景色(#f0f4f8)になり白い箱が無くなる。
+         インラインの padding:12px だけ !important で上書き、他は .card より詳細度が高いので通常上書き。 */
+      #page-shift > .card { background:transparent; padding:0 !important; margin:0; border-radius:0; box-shadow:none; }
+      /* スマホ：コマンド群を3行（①部署タブ ②年月〜AIに相談 ③公開中＋確定取消）それぞれ
+         折り返さず1行にし、はみ出したら日付と同じく .content の横スクロールで送る。
+         flex-shrink:0 で各ボタンが潰れず原寸のまま右へあふれ、.content の overflow:auto がスクロールを担う。
+         position:sticky を使わないので以前のカクツキは発生しない。 */
+      #page-shift > .dept-tabs,
+      #page-shift > .month-nav,
+      #page-shift > .shift-status-row { flex-wrap:nowrap; }
+      #page-shift > .dept-tabs > *,
+      #page-shift > .month-nav > *,
+      #page-shift > .shift-status-row > * { flex-shrink:0; }
+      /* コマンド群・確定取消バナーは通常フロー（縦横とも普通にスクロールして流れて消える）。
+         横スクロールで左上固定する案は描画が重くカクつくため、ひとまず不採用。 */
+    }
+      .btn-icon { background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:14px;transition:all 0.15s; }
+    .btn-icon:hover { background:#f1f5f9; }
 
-            <!-- 木曜日 -->
-            <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
-              <div style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--primary)">📅 木曜日の設定</div>
-              <div id="thursdayGrid"></div>
-            </div>
-
-            <!-- 水曜日 -->
-            <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
-              <div style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--primary)">📅 水曜日の種別設定</div>
-              <div id="wedGrid"></div>
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-title">🔰 初心者上限設定</div>
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">1日の時間帯ごとに🔰スタッフが入れる最大人数を設定します。空欄＝制限なし</div>
-            <div class="dept-tabs" id="beginnerDeptTabs"></div>
-            <div id="beginnerLimitsGrid"></div>
-            <button class="btn btn-primary" style="margin-top:16px" id="saveBeginnerLimitsBtn">保存</button>
-          </div>
-
-          <!-- 希望シフト上限 -->
-          <div class="card">
-            <div class="card-title" style="display:flex;align-items:center;gap:8px">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2zM17 4h-2a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM5 19v.01M11 16v.01M19 16v.01M19 12v.01"/></svg>
-              希望シフト上限
-            </div>
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">部門ごとに「希望休／有休／その他」の月上限を設定できます。一度設定すれば毎月自動的に適用されます。空欄＝制限なし。</div>
-            <div class="dept-tabs" id="reqLimitDeptTabs"></div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:16px">
-              <div style="padding:16px;background:#fff7ed;border-radius:12px;border:1px solid #fed7aa">
-                <div style="font-size:13px;font-weight:600;color:#9a3412;margin-bottom:8px;display:flex;align-items:center;gap:6px">
-                  <span style="width:12px;height:12px;background:#fdba74;border-radius:3px"></span>
-                  希望休の月上限
-                </div>
-                <input type="number" class="form-input" id="limitKibouKyu" min="0" max="31" placeholder="空欄=制限なし" style="font-size:14px">
-                <div style="font-size:11px;color:#9a3412;margin-top:4px">日 / 月</div>
-              </div>
-              <div style="padding:16px;background:#fdf4ff;border-radius:12px;border:1px solid #f5d0fe">
-                <div style="font-size:13px;font-weight:600;color:#86198f;margin-bottom:8px;display:flex;align-items:center;gap:6px">
-                  <span style="width:12px;height:12px;background:#e879f9;border-radius:3px"></span>
-                  有休の月上限
-                </div>
-                <input type="number" class="form-input" id="limitYukyu" min="0" max="31" placeholder="空欄=制限なし" style="font-size:14px">
-                <div style="font-size:11px;color:#86198f;margin-top:4px">日 / 月</div>
-              </div>
-              <div style="padding:16px;background:#f0f9ff;border-radius:12px;border:1px solid #bae6fd">
-                <div style="font-size:13px;font-weight:600;color:#075985;margin-bottom:8px;display:flex;align-items:center;gap:6px">
-                  <span style="width:12px;height:12px;background:#7dd3fc;border-radius:3px"></span>
-                  その他の月上限
-                </div>
-                <input type="number" class="form-input" id="limitOther" min="0" max="31" placeholder="空欄=制限なし" style="font-size:14px">
-                <div style="font-size:11px;color:#075985;margin-top:4px">日 / 月（休み・希望休・有休以外）</div>
-              </div>
-            </div>
-            <button class="btn btn-primary" style="margin-top:16px" id="saveReqLimitsBtn">保存</button>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:8px">💡 設定すると、全ての月の希望提出に自動適用されます。値を変更したい場合はここを編集してください。</div>
-          </div>
-
-          <!-- 希望提出期限 -->
-          <div class="card" id="deadlineCard" style="display:none">
-            <div class="card-title" style="display:flex;align-items:center;gap:8px">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              希望提出期限
-            </div>
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">部門ごとに「毎月X日まで」のルールを設定します。一度設定すれば毎月自動的に適用されます。期限を過ぎるとスタッフは編集できなくなります。</div>
-            <div class="dept-tabs" id="deadlineDeptTabs"></div>
-            
-            <div style="margin-top:16px;padding:16px;background:#fef3c7;border-radius:12px;border:1px solid #fcd34d">
-              <div style="font-size:13px;font-weight:600;color:#92400e;margin-bottom:12px">📅 提出期限ルール（毎月適用）</div>
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px">
-                <select class="form-select" id="deadlineMonthsBefore" style="width:auto;font-size:14px;background:white">
-                  <option value="1">1ヶ月前（前月）</option>
-                  <option value="2">2ヶ月前</option>
-                  <option value="3">3ヶ月前</option>
-                </select>
-                <span style="color:#92400e">の</span>
-                <input type="number" class="form-input" id="deadlineDay" min="1" max="31" placeholder="10" style="width:70px;font-size:14px">
-                <span style="color:#92400e">日</span>
-                <input type="time" class="form-input" id="deadlineTime" value="23:59" style="width:130px;font-size:14px">
-                <span style="color:#92400e">まで</span>
-              </div>
-              <div style="font-size:11px;color:#92400e;margin-top:8px" id="deadlineExampleText">例：「1ヶ月前の10日 23:59」=5月分シフトの提出期限は4/10 23:59</div>
-              <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-                <button class="btn btn-primary" id="saveDeadlineRuleBtn" style="font-size:13px;padding:8px 16px">保存</button>
-                <button class="btn btn-outline" id="clearDeadlineRuleBtn" style="font-size:13px;padding:8px 16px;color:#dc2626">ルールを解除</button>
-              </div>
-            </div>
-
-            <div id="deadlineEffective" style="margin-top:16px;padding:12px;background:#f1f5f9;border-radius:10px;font-size:13px"></div>
-          </div>
-
-          <!-- シフトパターン管理 -->
-          <div class="card">
-            <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-              <span style="display:flex;align-items:center;gap:8px">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                シフトパターン管理
-              </span>
-              <button class="btn btn-primary" id="addCustomShiftBtn" style="font-size:13px;padding:8px 16px">＋ カスタム追加</button>
-            </div>
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">既定シフト（14種）に加えて、カスタムシフトを自由に追加できます。既定シフトは編集・削除できません。</div>
-            <div id="shiftPatternsList" style="overflow-x:auto"></div>
-          </div>
-        </div>
-
-        <!-- ACCOUNT -->
-        <div class="page" id="page-account">
-          <div class="card">
-            <div class="card-title">パスワード変更</div>
-            <div style="max-width:400px">
-              <div class="form-group" style="margin-bottom:16px">
-                <label class="form-label">現在のパスワード</label>
-                <input type="password" class="form-input" id="currentPw" placeholder="••••••••">
-              </div>
-              <div class="form-group" style="margin-bottom:16px">
-                <label class="form-label">新しいパスワード</label>
-                <input type="password" class="form-input" id="newPw" placeholder="4文字以上">
-              </div>
-              <div class="form-group" style="margin-bottom:20px">
-                <label class="form-label">新しいパスワード（確認）</label>
-                <input type="password" class="form-input" id="newPwConfirm" placeholder="もう一度入力">
-              </div>
-              <button class="btn btn-primary" id="changePwBtn">パスワードを変更する</button>
-            </div>
-          </div>
-          <div class="card" id="accountListCard" style="display:none">
-            <div class="card-title">アカウント一覧（管理のみ）</div>
-            <div class="action-row">
-              <button class="btn btn-primary" id="addAccountBtn">＋ アカウント追加</button>
-              <button class="btn btn-outline" id="inviteLinkBtn" style="color:#7c3aed;border-color:#a855f7;font-weight:600">🔗 招待リンクを発行</button>
-            </div>
-            <table class="data-table" id="accountTable">
-              <thead><tr><th>名前</th><th>権限</th><th>部門</th><th>状態</th><th>操作</th></tr></thead>
-              <tbody id="accountBody"></tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- STAFF -->
-        <div class="page" id="page-staff">
-          <div class="action-row">
-            <div class="dept-tabs" id="staffDeptTabs"></div>
-            <button class="btn btn-primary" id="addStaffBtn">＋ スタッフ追加</button>
-          </div>
-          <div class="card" style="padding:0;overflow:hidden">
-            <div id="staffListWrap"></div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- MODALS -->
-<!-- カスタムシフト追加・編集モーダル -->
-<div class="modal-overlay" id="customShiftModal">
-  <div class="modal">
-    <div class="modal-title" id="customShiftModalTitle">カスタムシフト追加</div>
-    <input type="hidden" id="customShiftEditId" value="">
-    <div class="form-group">
-      <label class="form-label">シフト名（10文字以内）<span style="color:#dc2626">*</span></label>
-      <input type="text" class="form-input" id="customShiftName" placeholder="例：早番" maxlength="10">
-    </div>
-    <div class="form-group" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div>
-        <label class="form-label">開始時間 <span style="color:#dc2626">*</span></label>
-        <input type="time" class="form-input" id="customShiftStart">
-      </div>
-      <div>
-        <label class="form-label">終了時間 <span style="color:#dc2626">*</span></label>
-        <input type="time" class="form-input" id="customShiftEnd">
-      </div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">実働時間（H）<span style="color:#dc2626">*</span></label>
-      <input type="number" class="form-input" id="customShiftHours" min="0" max="24" step="0.5" placeholder="例：8.0">
-      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">休憩時間を除いた実働時間</div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">カバーする時間帯</label>
-      <div style="display:flex;gap:16px;flex-wrap:wrap">
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customCoverMorning"> 午前</label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customCoverAfternoon"> 午後</label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customCoverEvening"> 夜間</label>
-      </div>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">必要人数の充足判定で使われます</div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">分類フラグ（月間上限のカウント対象）</label>
-      <div style="display:flex;gap:16px;flex-wrap:wrap">
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customIsNight"> 夜勤</label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customIsLate"> 遅番</label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customIsLong"> 長日</label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customIsMidBreak"> 中抜け</label>
-      </div>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">スタッフごとの月間上限（夜勤上限など）にカウントされます</div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal('customShiftModal')">キャンセル</button>
-      <button class="btn btn-primary" id="saveCustomShiftBtn">保存</button>
-    </div>
-  </div>
-</div>
-
-<!-- バーチカル表示モーダル -->
-<div class="modal-overlay" id="verticalViewModal">
-  <div class="modal" style="max-width:1400px;width:95vw">
-    <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-      <span id="verticalViewTitle">バーチカル表示</span>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button class="btn btn-outline" id="verticalPrevDay" style="padding:4px 12px">◀ 前日</button>
-        <button class="btn btn-outline" id="verticalNextDay" style="padding:4px 12px">翌日 ▶</button>
-      </div>
-    </div>
-    <div id="verticalViewContent" style="overflow:auto;max-height:70vh"></div>
-    <div class="modal-footer" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
-      <div style="font-size:12px;color:var(--text-muted)">
-        💡 帯クリックで休憩追加・編集
-      </div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-outline" onclick="closeModal('verticalViewModal')">閉じる</button>
-        <button class="btn btn-outline" id="verticalPrintBtn">🖨 印刷</button>
-        <button class="btn btn-primary" id="saveBreaksBtn">休憩保存</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- 休憩編集モーダル -->
-<div class="modal-overlay" id="breakEditModal">
-  <div class="modal">
-    <div class="modal-title" id="breakEditTitle">休憩時間を編集</div>
-    <div id="breakEditList"></div>
-    <button class="btn btn-outline" id="addBreakBtn" style="width:100%;margin-top:12px">＋ 休憩を追加</button>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal('breakEditModal')">キャンセル</button>
-      <button class="btn btn-primary" id="applyBreakEditBtn">適用</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="requestDetailModal">
-  <div class="modal modal-lg">
-    <div class="modal-title" id="requestDetailTitle"></div>
-    <div id="requestDetailContent"></div>
-    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal('requestDetailModal')">閉じる</button></div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="addStaffModal">
-  <div class="modal">
-    <div class="modal-title">スタッフ追加</div>
-    <div class="form-group"><label class="form-label">部門</label>
-      <select class="form-select" id="newStaffDept"><option value="0">医療事務</option><option value="1">看護</option><option value="2">リハビリ</option><option value="3">放射線</option></select></div>
-    <div class="form-group"><label class="form-label">名前</label><input type="text" class="form-input" id="newStaffName" placeholder="山田 太郎"></div>
-    <div class="form-group"><label class="form-label">雇用形態</label>
-      <select class="form-select" id="newStaffEmpType"><option value="full">常勤</option><option value="part">パート</option><option value="short">時短</option></select></div>
-    <div class="form-group"><label class="form-label">夜勤</label>
-      <select class="form-select" id="newStaffNoNight"><option value="false">あり</option><option value="true">なし</option></select></div>
-    <!-- アカウント作成セクション -->
-    <div style="margin:16px 0 12px;padding:12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px">
-        <input type="checkbox" id="newStaffCreateAccount" checked>
-        <span style="font-weight:600;font-size:13px;color:#0c4a6e">🔑 ログインアカウントも作成する</span>
-      </label>
-      <div id="newStaffAccountFields">
-        <div class="form-group" style="margin-bottom:0">
-          <label class="form-label" style="font-size:12px">初期パスワード（4文字以上）</label>
-          <input type="text" class="form-input" id="newStaffPassword" placeholder="後で本人が変更可能">
-        </div>
-        <div style="font-size:11px;color:#0369a1;margin-top:6px;line-height:1.5">
-          ※ ロールは「スタッフ」、部門は上で選択した部門が自動設定されます
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal('addStaffModal')">キャンセル</button>
-      <button class="btn btn-primary" id="saveNewStaffBtn">追加する</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="shiftEditModal">
-  <div class="modal">
-    <div class="modal-title" id="shiftEditTitle"></div>
-    <div id="shiftEditOptions" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;align-items:stretch"></div>
-    <div class="modal-footer">
-      <button class="btn btn-outline btn-danger" id="clearShiftBtn">クリア</button>
-      <button class="btn btn-outline" onclick="closeModal('shiftEditModal')">閉じる</button>
-    </div>
-  </div>
-</div>
-
-<script src="admin.js?v=18"></script>
-<script src="admin-generate.js?v=3"></script>
-</body>
-</html>
+/* ===== AI ボタン・スピナー（旧HTML内インライン） ===== */
+@keyframes spin { to { transform: rotate(360deg); } }
+.ai-choice-btn:hover { border-color: #a855f7 !important; background: #faf5ff !important; }
+/* メインボタン（金魚付き）はホバーでも色を保つ */
+.ai-main-btn:hover { 
+  background: linear-gradient(135deg,#7e22ce,#1d4ed8) !important; 
+  box-shadow: 0 6px 18px rgba(147,51,234,0.5) !important;
+  transform: translateY(-1px);
+}
+.ai-main-btn:active {
+  transform: translateY(0);
+  background: linear-gradient(135deg,#6b21a8,#1e40af) !important;
+}
