@@ -189,9 +189,8 @@
     .header-dept { font-size: 12px; color: var(--text-muted); }
     /* ===== 金魚の遊泳レーン（ヘッダ全幅を泳ぐ・タップで今日の一言） ===== */
     .header-name-row { display: flex; align-items: center; gap: 8px; }
-    .kingyo-lane { position: relative; height: 28px; margin-top: 10px; cursor: pointer; overflow: visible; -webkit-tap-highlight-color: transparent; }
+    .kingyo-lane { position: relative; flex: 1; min-width: 0; height: 26px; margin: 0 8px; cursor: pointer; overflow: visible; -webkit-tap-highlight-color: transparent; }
     .kingyo-mini { position: absolute; left: 0; top: 1px; width: 36px; height: 25px; border: none; background: transparent; padding: 0; line-height: 0; pointer-events: none; animation: kingyoSwimAcross var(--swim-dur, 20s) linear infinite; }
-    .kingyo-lane.paused .kingyo-mini, .kingyo-lane.paused .mini-tail, .kingyo-lane.paused .fish-bubble { animation-play-state: paused; }
     @keyframes kingyoSwimAcross {
       0%   { transform: translate(0, 0) scaleX(1); }
       25%  { transform: translate(calc(var(--swim-x, 300px) * 0.5), -2px) scaleX(1); }
@@ -488,6 +487,20 @@
         </div>
         <div class="header-dept" id="headerDept"></div>
       </div>
+      <!-- 金魚の遊泳レーン（名前と設定ボタンの間を泳ぐ・タップで今日の一言） -->
+      <div class="kingyo-lane" id="kingyoLane" title="タップで今日の一言">
+        <button class="kingyo-mini" id="kingyoQuoteBtn" aria-hidden="true" tabindex="-1">
+          <svg viewBox="0 0 40 28" width="36" height="25" xmlns="http://www.w3.org/2000/svg">
+            <g class="mini-tail"><path d="M10 14 Q1 5 -5 8 Q-1 14 -5 20 Q1 23 10 14 Z" fill="#fb923c"/></g>
+            <ellipse cx="23" cy="14" rx="13" ry="10" fill="#dc2626"/>
+            <path d="M17 5 Q20 -1 23 4 Q26 -1 29 5 Z" fill="#ea580c"/>
+            <circle cx="30" cy="12" r="2.4" fill="#fff"/>
+            <circle cx="30.8" cy="12" r="1.3" fill="#1f2937"/>
+          </svg>
+          <span class="fish-bubble fb1"></span>
+          <span class="fish-bubble fb2"></span>
+        </button>
+      </div>
       <div style="display:flex;gap:8px">
         <button class="logout-btn" id="settingsStaffBtn" aria-label="設定" title="設定" style="display:flex;align-items:center;justify-content:center;padding:6px 10px">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -499,20 +512,6 @@
       <button class="month-btn" id="prevMonthBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg></button>
       <div><div class="month-title" id="monthTitle"></div></div>
       <button class="month-btn" id="nextMonthBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg></button>
-    </div>
-    <!-- 金魚の遊泳レーン（ヘッダ全幅をゆったり泳ぐ・タップで今日の一言／登録語が増えるほど元気に泳ぐ） -->
-    <div class="kingyo-lane" id="kingyoLane" title="タップで今日の一言">
-      <button class="kingyo-mini" id="kingyoQuoteBtn" aria-hidden="true" tabindex="-1">
-        <svg viewBox="0 0 40 28" width="36" height="25" xmlns="http://www.w3.org/2000/svg">
-          <g class="mini-tail"><path d="M10 14 Q1 5 -5 8 Q-1 14 -5 20 Q1 23 10 14 Z" fill="#fb923c"/></g>
-          <ellipse cx="23" cy="14" rx="13" ry="10" fill="#dc2626"/>
-          <path d="M17 5 Q20 -1 23 4 Q26 -1 29 5 Z" fill="#ea580c"/>
-          <circle cx="30" cy="12" r="2.4" fill="#fff"/>
-          <circle cx="30.8" cy="12" r="1.3" fill="#1f2937"/>
-        </svg>
-        <span class="fish-bubble fb1"></span>
-        <span class="fish-bubble fb2"></span>
-      </button>
     </div>
     <!-- 今日の一言 吹き出し（金魚タップで表示／日替わり） -->
     <div class="kingyo-bubble" id="kingyoBubble"><div class="kb-label">今日の一言</div><div id="kingyoQuoteText"></div></div>
@@ -1766,7 +1765,7 @@ function getDailyQuote() {
 function updateKingyoEnergy() {
   const lane = document.getElementById('kingyoLane');
   if (!lane) return;
-  const dist = Math.max(40, lane.clientWidth - 36); // レーン幅 − 金魚幅
+  const dist = Math.max(0, lane.clientWidth - 36); // レーン幅 − 金魚幅（中央の余白内に収める）
   lane.style.setProperty('--swim-x', dist + 'px');
   const n = getMyQuotes().length;
   const dur = Math.max(13, 22 - n * 1.5); // 言葉が増えるほど速く（元気に）泳ぐ。0語=22s, 6語以上=13s（全体的にゆっくり）
@@ -1778,18 +1777,16 @@ function updateKingyoEnergy() {
   const bubble = document.getElementById('kingyoBubble');
   const txt = document.getElementById('kingyoQuoteText');
   if (!lane || !bubble || !txt) return;
-  // レーンをタップ → 金魚が止まって今日の一言を伝える
+  // レーンをタップ → 今日の一言を表示（金魚は止めずに泳いだまま）
   lane.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (bubble.classList.contains('show')) { bubble.classList.remove('show'); lane.classList.remove('paused'); return; }
+    if (bubble.classList.contains('show')) { bubble.classList.remove('show'); return; }
     txt.textContent = getDailyQuote();
     bubble.classList.add('show');
-    lane.classList.add('paused');
   });
   document.addEventListener('click', (e) => {
     if (bubble.classList.contains('show') && !bubble.contains(e.target) && !lane.contains(e.target)) {
       bubble.classList.remove('show');
-      lane.classList.remove('paused');
     }
   });
   window.addEventListener('resize', updateKingyoEnergy);
