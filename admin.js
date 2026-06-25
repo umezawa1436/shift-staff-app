@@ -184,7 +184,7 @@ let shiftTypesActive = []; // 勤務シフトのみ（is_off=false）
 // =====================================================
 async function loadShiftTypesAndBuildMaps() {
   try {
-    const types = await sb('shift_types?order=display_order,id&select=*');
+    const types = (await adminApi('/api/data', { action: 'list', table: 'shift_types' })).rows || [];
     shiftTypesAll = types;
     shiftTypesActive = types.filter(s => !s.is_off);
 
@@ -4189,7 +4189,7 @@ let shiftPatternsCache = [];
 
 async function loadShiftPatterns() {
   try {
-    shiftPatternsCache = await sb('shift_types?order=display_order,id&select=*');
+    shiftPatternsCache = (await adminApi('/api/data', { action: 'list', table: 'shift_types' })).rows || [];
     renderShiftPatternsList();
   } catch(e) {
     console.error('シフトパターン読み込みエラー', e);
@@ -4293,7 +4293,7 @@ window.deleteCustomShift = async function(id) {
 注意：既にこのシフトを使っている既存のシフト表データには影響しませんが、新規割り当てができなくなります。`)) return;
   showLoading();
   try {
-    await sb(`shift_types?id=eq.${encodeURIComponent(id)}`, {method:'DELETE'});
+    await adminApi('/api/data', { action: 'delete', table: 'shift_types', id });
     showToast('削除しました', 'success');
     await loadShiftPatterns();
     await loadShiftTypesAndBuildMaps();
@@ -4345,7 +4345,7 @@ document.getElementById('saveCustomShiftBtn')?.addEventListener('click', async (
   try {
     if (editId) {
       // 更新
-      await sb(`shift_types?id=eq.${encodeURIComponent(editId)}`, {method:'PATCH', body: JSON.stringify(payload)});
+      await adminApi('/api/data', { action: 'update', table: 'shift_types', id: editId, values: payload });
       showToast('更新しました', 'success');
     } else {
       // 新規追加（idは名前と同じにする）
@@ -4353,7 +4353,7 @@ document.getElementById('saveCustomShiftBtn')?.addEventListener('click', async (
       // display_orderは既存の最大値+1
       const maxOrder = Math.max(50, ...shiftPatternsCache.filter(s => !s.is_off).map(s => s.display_order || 0));
       payload.display_order = maxOrder + 1;
-      await sb('shift_types', {method:'POST', body: JSON.stringify([payload])});
+      await adminApi('/api/data', { action: 'insert', table: 'shift_types', values: payload });
       showToast('追加しました', 'success');
     }
     closeModal('customShiftModal');
