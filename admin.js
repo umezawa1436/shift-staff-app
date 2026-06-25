@@ -395,7 +395,7 @@ document.getElementById('adminLoginBtn').addEventListener('click', async () => {
     const isLeader = account.role === 'leader';
     document.getElementById('staffNavItem').style.display = (isMaster || isLeader) ? 'flex' : 'none';
     document.getElementById('accountNavItem').style.display = isMaster ? 'flex' : 'none';
-    document.getElementById('kingyoNavItem').style.display = (isMaster || isLeader) ? 'flex' : 'none';
+    document.getElementById('kingyoNavItem').style.display = isMaster ? 'flex' : 'none';
     document.getElementById('sidebarUserName').textContent = account.name;
     document.getElementById('sidebarUserRole').textContent =
       account.role === 'master' ? '管理者' :
@@ -4728,11 +4728,11 @@ async function loadStaffTable() {
             ${staff.no_night?'夜勤不可':'夜勤可'}
           </button>
 
-          <!-- 招待リンク発行 -->
-          <button onclick="generateInviteLink('${staff.id}','${staff.name}')"
+          <!-- 招待リンク発行（masterのみ） -->
+          ${adminUser.role === 'master' ? `<button onclick="generateInviteLink('${staff.id}','${staff.name}')"
             style="padding:4px 10px;border-radius:100px;font-size:12px;cursor:pointer;border:1.5px solid #a855f7;background:white;color:#7c3aed;margin-left:auto;font-weight:600">
             🔗 招待リンク
-          </button>
+          </button>` : ''}
 
           <!-- 削除 -->
           <button onclick="deleteStaff('${staff.id}','${staff.name}')"
@@ -5223,8 +5223,9 @@ async function generateInviteLink(staffId, staffName) {
 
   try {
     // 既に有効な招待がある場合は無効化（取り消し）
-    await sb(`invitations?staff_id=eq.${staffId}&used_at=is.null`, {
-      method: 'DELETE'
+    await adminApi('/api/data', {
+      action: 'delete', table: 'invitations',
+      match: { staff_id: staffId, used_at: null }
     }).catch(() => {});  // 失敗してもOK
 
     // ランダムトークン生成（256bit相当）
@@ -5235,15 +5236,15 @@ async function generateInviteLink(staffId, staffName) {
     // 7日間有効
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    // DBに登録
-    const result = await sb('invitations', {
-      method: 'POST',
-      body: JSON.stringify([{
+    // DBに登録（masterのみ・サーバー側で権限検証）
+    await adminApi('/api/data', {
+      action: 'insert', table: 'invitations',
+      values: {
         token,
         staff_id: staffId,
         invited_by: adminUser?.id || null,
         expires_at: expiresAt
-      }])
+      }
     });
 
     // URL生成
