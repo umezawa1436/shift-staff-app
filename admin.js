@@ -1835,7 +1835,6 @@ function computeBulkFillTargets(overrideReq) {
 
 function openBulkFillModal() {
   if (!checkConfirmLock()) return;               // 確定済みなら編集ブロック
-  if (!currentDept) { showToast('先に部門を選択してください', 'error'); return; }
   const sel = document.getElementById('bulkFillShift');
   sel.innerHTML = shiftTypesActive.map(s => `<option value="${s.id}">${escapeHtml(s.label || s.id)}</option>`).join('');
   const def = shiftTypesActive.find(s => s.id === '日勤+') || shiftTypesActive.find(s => s.id === '日勤') || shiftTypesActive[0];
