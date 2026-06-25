@@ -5,8 +5,8 @@
 //   - list-mine   : 本人の言葉（非表示のみ）を返す。編集用。
 //   - save-mine   : 本人の言葉を置き換え。staff_id/name/dept はアカウントから解決（なりすまし防止）。
 //                   非表示にされた語は保持（再保存で復活させない＝モデレーション尊重）。
-//   - list-admin  : master/leader。全件（実名込み）。
-//   - moderate    : master/leader。hide / show / delete。
+//   - list-admin  : master のみ。全件（実名込み）。
+//   - moderate    : master のみ。hide / show / delete。
 
 import crypto from 'crypto';
 
@@ -78,11 +78,11 @@ export default async function handler(req, res) {
     if (action === 'list-mine') return await listMine(req, res, payload);
     if (action === 'save-mine') return await saveMine(req, res, payload);
     if (action === 'list-admin') {
-      if (!isAdmin) return bad(res, 403, '権限がありません');
+      if (role !== 'master') return bad(res, 403, 'masterのみ');
       return await listAdmin(req, res);
     }
     if (action === 'moderate') {
-      if (!isAdmin) return bad(res, 403, '権限がありません');
+      if (role !== 'master') return bad(res, 403, 'masterのみ');
       return await moderate(req, res, req.body);
     }
     return bad(res, 400, '不明なアクション');
