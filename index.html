@@ -873,7 +873,7 @@ async function supabaseRequest(path, options = {}) {
 // ===== shift_types ロード =====
 async function loadShiftTypesFromDB() {
   try {
-    const types = await supabaseRequest('shift_types?order=display_order,id&select=*');
+    const types = (await dataApi({ action: 'list', table: 'shift_types' })).rows || [];
     shiftTypesAll = types;
     shiftTypesMap = {};
     types.forEach(s => { shiftTypesMap[s.id] = s; });
@@ -1774,6 +1774,19 @@ async function kingyoApi(action, body) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify({ action, ...(body || {}) }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `API ${res.status}`);
+  return data;
+}
+
+// /api/data 呼び出し（認証付き汎用データAPI。anonキー直叩きを段階的に置換）
+async function dataApi(body) {
+  const token = localStorage.getItem('shift_token') || '';
+  const res = await fetch('/api/data', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(body || {}),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `API ${res.status}`);
