@@ -73,11 +73,11 @@
     /* LAYOUT */
     #appScreen { display:none; }
     .layout { display:flex;min-height:100vh; }
-    .sidebar { width:var(--sidebar-w);background:var(--primary);color:white;display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:100;padding-top:env(safe-area-inset-top); }
+    .sidebar { width:var(--sidebar-w);background:var(--primary);color:white;display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:100;padding-top:env(safe-area-inset-top);overscroll-behavior:contain; }
     .sidebar-logo { padding:24px 20px 20px;border-bottom:1px solid rgba(255,255,255,0.1); }
     .sidebar-logo-title { font-size:14px;font-weight:700;line-height:1.4; }
     .sidebar-logo-sub { font-size:11px;opacity:0.6;margin-top:2px; }
-    .sidebar-nav { flex:1;padding:12px 0;overflow-y:auto;min-height:0; }
+    .sidebar-nav { flex:1;padding:12px 0;overflow-y:auto;min-height:0;overscroll-behavior:contain;-webkit-overflow-scrolling:touch; }
     .nav-section { padding:12px 16px 6px;font-size:10px;font-weight:700;opacity:0.5;letter-spacing:1px;text-transform:uppercase; }
     .nav-item { display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;transition:all 0.15s;font-size:14px;opacity:0.75;border-radius:8px;margin:2px 8px; }
     .nav-item:hover { background:rgba(255,255,255,0.1);opacity:1; }
@@ -89,7 +89,7 @@
     .main { margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-width:0; }
     /* スマホ用：メニュー開閉ボタンとドロワー背景（デフォルト非表示） */
     .sidebar-toggle { display:none;align-items:center;justify-content:center;background:transparent;border:1px solid var(--border);border-radius:8px;width:40px;height:40px;color:var(--text);cursor:pointer;margin-right:12px;flex-shrink:0; }
-    .sidebar-backdrop { display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:90; }
+    .sidebar-backdrop { display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:90;touch-action:none;overscroll-behavior:none; }
     .topbar { background:white;padding:calc(16px + env(safe-area-inset-top)) 28px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50; }
     .page-title { font-size:20px;font-weight:700; }
     .page-sub { font-size:13px;color:var(--text-muted);margin-top:2px; }
@@ -467,7 +467,7 @@
       .layout { height:100vh; }
       /* 上・左パディングを0に。iOS Safari の sticky+padding 癖で日付ヘッダ上端・氏名列左端に
          隙間ができ、そこにスクロール中のセルが透けていたのを解消。ヘッダ＝枠上端、氏名列＝枠左端でぴったり固定 */
-      .content { padding:0 16px 16px 0; overflow:auto; }
+      .content { padding:0 16px 16px 0; overflow:auto; transform:translateZ(0); -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
       .generate-options { grid-template-columns:1fr; }
       .settings-grid { grid-template-columns:1fr; }
       /* スクロールは .content に集約するため、表ラッパー自身はスクロール容器にしない。
