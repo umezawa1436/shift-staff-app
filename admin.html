@@ -428,6 +428,7 @@
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v5h-5"/></svg>
             </button>
             <button class="btn btn-primary" id="confirmShiftBtn">✅ 確定する</button>
+            <button class="btn btn-outline" id="bulkFillBtn" onclick="openBulkFillModal()" title="未選択・未ロックのセルを、選んだシフトで一括で埋めます" style="background:white;border:1.5px solid #10b981;color:#047857;font-weight:700;white-space:nowrap">🖊️ 一括埋め</button>
             <button class="btn btn-outline" id="aiAdviceBtn" style="background:linear-gradient(135deg,#a855f7,#3b82f6);color:white;border:none;display:inline-flex;align-items:center;gap:6px">
               <svg width="20" height="14" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
                 <g transform="translate(20, 30)">
@@ -897,6 +898,32 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="bulkFillModal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-title">🖊️ 未選択セルを一括で埋める</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.6">
+      表示中の部門・月で、<b>未選択（空）かつ未ロック</b>のセルを選んだシフトで埋めます（🌸スタッフも含む）。<br>
+      入力済み・ロック済み・休診日は対象外です（埋めたセルは未ロックのまま）。<br>
+      実行後、保存前なら「戻る」で取り消せます。
+    </div>
+    <div style="margin-bottom:14px">
+      <label class="form-label" style="display:block;margin-bottom:6px">埋めるシフト</label>
+      <select id="bulkFillShift" onchange="updateBulkFillCount()" style="width:100%;padding:10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;font-family:inherit"></select>
+    </div>
+    <div style="margin-bottom:14px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="bulkFillOverrideReq" onchange="updateBulkFillCount()" style="width:16px;height:16px">
+        希望休・有休などの希望がある空セルも埋める
+      </label>
+    </div>
+    <div id="bulkFillCount" style="font-size:13px;font-weight:700;color:#047857;background:#ecfdf5;border-radius:8px;padding:8px 12px;margin-bottom:16px;text-align:center">対象: 0 セル</div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('bulkFillModal')">閉じる</button>
+      <button class="btn btn-primary" onclick="executeBulkFill()" style="background:#10b981;border-color:#10b981">埋める</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="shiftEditModal">
   <div class="modal">
     <div class="modal-title" id="shiftEditTitle"></div>
@@ -908,7 +935,7 @@
   </div>
 </div>
 
-<script src="admin.js?v=21"></script>
+<script src="admin.js?v=23"></script>
 <script src="admin-generate.js?v=3"></script>
 </body>
 </html>
