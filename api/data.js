@@ -7,6 +7,7 @@
 // 対応アクション: list / insert / update / delete
 // 対応テーブル（順次追加）:
 //   shift_types  list: staff/leader/master   insert/update/delete: leader/master
+//   invitations  insert/delete: master のみ（招待リンクの発行・取消）
 //
 // リクエスト形:
 //   { action:'list',   table:'shift_types' }
@@ -83,6 +84,11 @@ const POLICY = {
     update: ['leader', 'master'],
     delete: ['leader', 'master'],
   },
+  invitations: {
+    idCol: 'id',
+    insert: ['master'],
+    delete: ['master'],
+  },
 };
 
 function allowed(table, action, role) {
@@ -124,10 +130,20 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, rows });
     }
     if (action === 'delete') {
-      const { id } = body;
-      if (id === undefined || id === null || id === '') return bad(res, 400, 'id が必要です');
-      await sb(`${table}?${p.idCol}=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
-      return res.status(200).json({ ok: true });
+      const { id, match } = body;
+      if (id !== undefined && id !== null && id !== '') {
+        await sb(`${table}?${p.idCol}=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+        return res.status(200).json({ ok: true });
+      }
+      // match: { col: value, ... } の等価フィルタで削除（value が null なら is.null）
+      if (match && typeof match === 'object' && !Array.isArray(match) && Object.keys(match).length) {
+        const filters = Object.entries(match).map(([k, v]) =>
+          (v === null) ? `${encodeURIComponent(k)}=is.null` : `${encodeURIComponent(k)}=eq.${encodeURIComponent(v)}`
+        ).join('&');
+        await sb(`${table}?${filters}`, { method: 'DELETE' });
+        return res.status(200).json({ ok: true });
+      }
+      return bad(res, 400, 'id または match が必要です');
     }
     return bad(res, 400, '不明なアクション');
   } catch (e) {
