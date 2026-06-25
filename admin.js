@@ -1792,6 +1792,95 @@ function applyShiftToSelected(shiftId) {
   refreshSummaryRows();
 }
 
+// ===== 一括埋め（未選択・未ロックのセルを登録済みシフトで一括充填）=====
+// 設計: shiftData をメモリ上で書き換えるだけ（DB保存は既存の保存/確定に委譲）。
+//   saveUndoState() を呼ぶので既存の「戻る」で取り消せる。
+//   対象 = 表示中の部門×当月で「空セル ∧ 未ロック ∧ 休診日でない」。
+//   既定で 🌸スタッフ(no_count) と 希望休/有休など(OFF_SHIFTS)の希望日は除外（モーダルで切替可）。
+
+// 休診日判定（renderShiftGrid 内クロージャと同一ロジックを再現）
+function bulkFillIsClosedDay(d) {
+  const holidays = getJapaneseHolidays(shiftYear, shiftMonth);
+  const dow = new Date(shiftYear, shiftMonth - 1, d).getDay();
+  const _closedH = window._shiftClosedHolidays || new Set();
+  const _openThu = window._shiftOpenThursdays || new Set();
+  const _customC = window._shiftCustomClosed || {};
+  if (_customC[d]) return true;                          // 任意休診日
+  if (holidays.has(d) && _closedH.has(d)) return true;   // 休診扱いの祝日
+  if (dow === 4 && !_openThu.has(d)) return true;        // 木曜デフォルト休診
+  return false;
+}
+
+// 対象セルのキー配列を返す（🌸スタッフも常に対象）
+function computeBulkFillTargets(overrideReq) {
+  const deptStaff = allStaff.filter(s => s.dept_id === currentDept);
+  const daysInMonth = new Date(shiftYear, shiftMonth, 0).getDate();
+  const reqMap = window._shiftReqMap || {};
+  const targets = [];
+  for (const staff of deptStaff) {
+    for (let d = 1; d <= daysInMonth; d++) {
+      if (bulkFillIsClosedDay(d)) continue;       // 休診日はスキップ
+      const key = `${staff.id}|${d}`;
+      if (shiftData[key]) continue;               // 既に入力済み → 触らない
+      if (lockedCells[key]) continue;             // ロック済み → 触らない
+      if (!overrideReq) {
+        const req = reqMap[key];
+        if (req && OFF_SHIFTS.includes(req)) continue; // 希望休・有休などの希望日は守る
+      }
+      targets.push(key);
+    }
+  }
+  return targets;
+}
+
+function openBulkFillModal() {
+  if (!checkConfirmLock()) return;               // 確定済みなら編集ブロック
+  if (!currentDept) { showToast('先に部門を選択してください', 'error'); return; }
+  const sel = document.getElementById('bulkFillShift');
+  sel.innerHTML = shiftTypesActive.map(s => `<option value="${s.id}">${escapeHtml(s.label || s.id)}</option>`).join('');
+  const def = shiftTypesActive.find(s => s.id === '日勤+') || shiftTypesActive.find(s => s.id === '日勤') || shiftTypesActive[0];
+  if (def) sel.value = def.id;
+  document.getElementById('bulkFillOverrideReq').checked = false;
+  updateBulkFillCount();
+  openModal('bulkFillModal');
+}
+
+function updateBulkFillCount() {
+  const overrideReq = document.getElementById('bulkFillOverrideReq').checked;
+  const targets = computeBulkFillTargets(overrideReq);
+  const days = new Set(targets.map(k => parseKey(k)[1])).size;
+  document.getElementById('bulkFillCount').textContent = `対象: ${targets.length} セル（${days}日分）`;
+}
+
+function executeBulkFill() {
+  if (!checkConfirmLock()) return;
+  const shiftId = document.getElementById('bulkFillShift').value;
+  if (!shiftId) { showToast('埋めるシフトを選んでください', 'error'); return; }
+  const overrideReq = document.getElementById('bulkFillOverrideReq').checked;
+  const targets = computeBulkFillTargets(overrideReq);
+  if (targets.length === 0) { showToast('対象セルがありません', 'error'); return; }
+  const days = new Set(targets.map(k => parseKey(k)[1])).size;
+  const exclusions = ['ロック済み', '入力済み', '休診日']
+    .concat(overrideReq ? [] : ['希望休/有休の希望日'])
+    .join('・');
+  if (!window.confirm(
+    `未選択・未ロックの ${targets.length} セル（${days}日分）を「${shiftId}」で埋めます。\n\n` +
+    `対象外: ${exclusions}\n\n` +
+    `よろしいですか？（保存前なら「戻る」で取り消せます）`
+  )) return;
+  saveUndoState();
+  const affected = new Set();
+  targets.forEach(key => {
+    shiftData[key] = shiftId;
+    updateCellDisplay(key);
+    affected.add(parseKey(key)[0]);
+  });
+  refreshSummaryRows();
+  affected.forEach(sid => refreshHoursCell(sid));
+  closeModal('bulkFillModal');
+  showToast(`${targets.length}セルを「${shiftId}」で埋めました ✓ まだ未保存です`, 'success');
+}
+
 function refreshSummaryRows() {
   const deptStaff = allStaff.filter(s => s.dept_id === currentDept);
   const daysInMonth = new Date(shiftYear, shiftMonth, 0).getDate();
