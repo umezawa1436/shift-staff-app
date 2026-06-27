@@ -467,7 +467,7 @@
       .layout { height:100vh; }
       /* 上・左パディングを0に。iOS Safari の sticky+padding 癖で日付ヘッダ上端・氏名列左端に
          隙間ができ、そこにスクロール中のセルが透けていたのを解消。ヘッダ＝枠上端、氏名列＝枠左端でぴったり固定 */
-      .content { padding:0 16px 16px 0; overflow:auto; transform:translateZ(0); -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
+      .content { padding:0 16px 16px 0; overflow:auto; overscroll-behavior:contain; }
       .generate-options { grid-template-columns:1fr; }
       .settings-grid { grid-template-columns:1fr; }
       /* スクロールは .content に集約するため、表ラッパー自身はスクロール容器にしない。
