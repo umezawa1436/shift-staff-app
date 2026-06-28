@@ -478,7 +478,7 @@
       body[data-page="shift"] .content { padding:0; overflow:hidden; display:flex; flex-direction:column; min-height:0; }
       body[data-page="shift"] #page-shift { flex:1; min-height:0; display:flex; flex-direction:column; }
       body[data-page="shift"] #page-shift > .card { flex:1; min-height:0; display:flex; flex-direction:column; }
-      body[data-page="shift"] .shift-grid-wrap { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; transform:translateZ(0); }
+      body[data-page="shift"] .shift-grid-wrap { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; transform:translateZ(0); touch-action:pan-x pan-y; }
       /* ツール群：横一列のまま、各行を個別に横スクロール可能に（.contentのスクロールに頼れないため） */
       body[data-page="shift"] #shiftToolbar > .dept-tabs,
       body[data-page="shift"] #shiftToolbar > .month-nav,
