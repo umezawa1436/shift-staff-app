@@ -430,7 +430,6 @@ async function initApp() {
     document.body.dataset.page = 'shift';
     await loadShiftGrid();
     setupScrollPausePerf();
-    window.addEventListener('resize', scheduleFrozenRebuild);
   } catch(e) { console.error(e); showToast('初期化エラー','error'); }
   hideLoading();
 }
@@ -1110,133 +1109,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
   html += '</tbody>';
   grid.innerHTML = html;
   // 再描画後もロックアイコン表示状態を維持（編集グリッドのみ）
-  if (gridId === 'shiftGrid') { grid.classList.toggle('hide-lock-icons', hideLockIcons); scheduleFrozenRebuild(); }
-}
-
-// ===== シフト表 固定オーバーレイ（sticky代替・iOS「めり込み」対策）=====
-// 名前列・日付ヘッダ・角を sticky でなく絶対配置のクローン層として描画し、
-// rAFループで毎フレーム scrollLeft/scrollTop を実測して transform 同期する（momentum中もズレない）。
-let _frozenRAF = null, _frozenIdleTimer = null, _frozenRebuildScheduled = false;
-
-function syncFrozenLayers() {
-  const wrap = document.querySelector('.shift-grid-wrap');
-  if (!wrap) return;
-  const x = wrap.scrollLeft, y = wrap.scrollTop;
-  const row = wrap.querySelector('.frozen-row');
-  const col = wrap.querySelector('.frozen-col');
-  const corner = wrap.querySelector('.frozen-corner');
-  if (row) row.style.transform = `translateY(${y}px)`;
-  if (col) col.style.transform = `translateX(${x}px)`;
-  if (corner) corner.style.transform = `translate(${x}px,${y}px)`;
-}
-function _frozenLoop() { syncFrozenLayers(); _frozenRAF = requestAnimationFrame(_frozenLoop); }
-function _startFrozenLoop() {
-  if (_frozenRAF == null) _frozenRAF = requestAnimationFrame(_frozenLoop);
-  clearTimeout(_frozenIdleTimer);
-  _frozenIdleTimer = setTimeout(() => {
-    if (_frozenRAF != null) { cancelAnimationFrame(_frozenRAF); _frozenRAF = null; }
-    syncFrozenLayers();
-  }, 300);
-}
-function setupFrozenScroll() {
-  const wrap = document.querySelector('.shift-grid-wrap');
-  if (!wrap || wrap._frozenScrollBound) return;
-  wrap._frozenScrollBound = true;
-  wrap.addEventListener('scroll', () => { syncFrozenLayers(); _startFrozenLoop(); }, { passive: true });
-}
-function buildFrozenOverlays() {
-  const wrap = document.querySelector('.shift-grid-wrap');
-  const table = document.getElementById('shiftGrid');
-  if (!wrap) return;
-  wrap.querySelectorAll('.frozen-layer').forEach(e => e.remove());
-  if (!table) return;
-  const thead = table.tHead, tbody = table.tBodies[0];
-  if (!thead || !tbody || !thead.rows[0]) return;
-  const headerRow = thead.rows[0];
-  const cornerCell = headerRow.cells[0];
-  if (!cornerCell) return;
-  const tableW = table.getBoundingClientRect().width;
-  if (tableW < 1) return; // 非表示時はスキップ
-  const headerH = headerRow.getBoundingClientRect().height;
-  const colW = cornerCell.getBoundingClientRect().width;
-  const tableH = table.getBoundingClientRect().height;
-  const cls = table.className;
-  const tStyle = 'table-layout:fixed;border-collapse:separate;border-spacing:0;margin:0;';
-
-  // ヘッダ層（上固定）：全列ぶんのクローン＋列幅を実測一致
-  const rowLayer = document.createElement('div');
-  rowLayer.className = 'frozen-layer frozen-row';
-  rowLayer.style.width = tableW + 'px';
-  rowLayer.style.height = headerH + 'px';
-  const headTable = document.createElement('table');
-  headTable.className = cls;
-  headTable.style.cssText = `width:${tableW}px;${tStyle}`;
-  const colgroup = document.createElement('colgroup');
-  Array.from(headerRow.cells).forEach(c => {
-    const col = document.createElement('col');
-    col.style.width = c.getBoundingClientRect().width + 'px';
-    colgroup.appendChild(col);
-  });
-  headTable.appendChild(colgroup);
-  headTable.appendChild(thead.cloneNode(true));
-  rowLayer.appendChild(headTable);
-
-  // 名前列層（左固定）：角＋各行先頭セルを行高一致でクローン
-  const colLayer = document.createElement('div');
-  colLayer.className = 'frozen-layer frozen-col';
-  colLayer.style.width = colW + 'px';
-  colLayer.style.height = tableH + 'px';
-  const colTable = document.createElement('table');
-  colTable.className = cls;
-  colTable.style.cssText = `width:${colW}px;${tStyle}`;
-  const cgThead = document.createElement('thead');
-  const cgTr = document.createElement('tr');
-  const cgCorner = cornerCell.cloneNode(true);
-  cgCorner.style.height = headerH + 'px';
-  cgTr.appendChild(cgCorner);
-  cgThead.appendChild(cgTr);
-  colTable.appendChild(cgThead);
-  const cgTbody = document.createElement('tbody');
-  Array.from(tbody.rows).forEach(r => {
-    const cell = r.cells[0];
-    if (!cell) return;
-    const tr = document.createElement('tr');
-    const st = r.getAttribute('style'); if (st) tr.setAttribute('style', st);
-    const clone = cell.cloneNode(true);
-    clone.style.height = r.getBoundingClientRect().height + 'px';
-    tr.appendChild(clone);
-    cgTbody.appendChild(tr);
-  });
-  colTable.appendChild(cgTbody);
-  colLayer.appendChild(colTable);
-
-  // 角層（両固定）
-  const cornerLayer = document.createElement('div');
-  cornerLayer.className = 'frozen-layer frozen-corner';
-  cornerLayer.style.width = colW + 'px';
-  cornerLayer.style.height = headerH + 'px';
-  const cornerTable = document.createElement('table');
-  cornerTable.className = cls;
-  cornerTable.style.cssText = `width:${colW}px;${tStyle}`;
-  const ccThead = document.createElement('thead');
-  const ccTr = document.createElement('tr');
-  const ccClone = cornerCell.cloneNode(true);
-  ccClone.style.height = headerH + 'px';
-  ccTr.appendChild(ccClone);
-  ccThead.appendChild(ccTr);
-  cornerTable.appendChild(ccThead);
-  cornerLayer.appendChild(cornerTable);
-
-  wrap.appendChild(rowLayer);
-  wrap.appendChild(colLayer);
-  wrap.appendChild(cornerLayer);
-  setupFrozenScroll();
-  syncFrozenLayers();
-}
-function scheduleFrozenRebuild() {
-  if (_frozenRebuildScheduled) return;
-  _frozenRebuildScheduled = true;
-  requestAnimationFrame(() => { _frozenRebuildScheduled = false; buildFrozenOverlays(); });
+  if (gridId === 'shiftGrid') grid.classList.toggle('hide-lock-icons', hideLockIcons);
 }
 
 // シフト表セル内のロックアイコン🔒の表示/非表示をトグル（CSSクラスで切替＝再描画不要・ロック状態は不変）
@@ -1246,7 +1119,6 @@ function toggleLockIcons() {
   if (grid) grid.classList.toggle('hide-lock-icons', hideLockIcons);
   const btn = document.getElementById('lockIconToggleBtn');
   if (btn) btn.textContent = `🔒 ${hideLockIcons ? 'OFF' : 'ON'}`;
-  scheduleFrozenRebuild();
 }
 
 // 遅番系(遅番+遅L)・長日の月間回数カウント列の表示トグル（医療事務のみ）。localStorageに永続化し再描画。
