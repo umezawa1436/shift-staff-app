@@ -1203,14 +1203,20 @@ async function showApp() {
   document.getElementById('appScreen').style.display = 'flex';
   document.getElementById('headerName').textContent = currentUser.name;
   document.getElementById('headerDept').textContent = currentUser.deptName;
-  await loadSharedWords();
-  updateKingyoEnergy();
-  await loadShiftTypesFromDB();
+  applyKingyoColorFromCache(); // 開いた瞬間に前回の色を即適用（サーバー取得を待たない）
+  // appSettings（所定時間の定数 APP_SHORT_RATIO/APP_DEFAULT_PLAN_HOURS）は
+  // loadClinicSettings→loadPlannedHours が参照するため、これだけ先に取得
   await loadAppSettings();
-  await loadRequests();
-  await loadClinicSettings();
-  await loadReqLimitsForStaff();
-  await loadDeadlineForStaff();
+  // 残り6本は互いに独立 → 並列取得で直列の待ち時間を解消
+  await Promise.all([
+    loadSharedWords(),
+    loadShiftTypesFromDB(),
+    loadRequests(),
+    loadClinicSettings(),
+    loadReqLimitsForStaff(),
+    loadDeadlineForStaff()
+  ]);
+  updateKingyoEnergy();
   renderDeadlineInfo();
   renderCalendar();
   // 期限前日のリマインダーをトーストで
@@ -1644,10 +1650,7 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
 document.getElementById('prevMonthBtn').addEventListener('click', async () => {
   currentMonth--;
   if (currentMonth < 1) { currentMonth = 12; currentYear--; }
-  await loadRequests();
-  await loadClinicSettings();
-  await loadReqLimitsForStaff();
-  await loadDeadlineForStaff();
+  await Promise.all([loadRequests(), loadClinicSettings(), loadReqLimitsForStaff(), loadDeadlineForStaff()]);
   renderDeadlineInfo();
   renderCalendar();
 });
@@ -1655,10 +1658,7 @@ document.getElementById('prevMonthBtn').addEventListener('click', async () => {
 document.getElementById('nextMonthBtn').addEventListener('click', async () => {
   currentMonth++;
   if (currentMonth > 12) { currentMonth = 1; currentYear++; }
-  await loadRequests();
-  await loadClinicSettings();
-  await loadReqLimitsForStaff();
-  await loadDeadlineForStaff();
+  await Promise.all([loadRequests(), loadClinicSettings(), loadReqLimitsForStaff(), loadDeadlineForStaff()]);
   renderDeadlineInfo();
   renderCalendar();
 });
@@ -1921,15 +1921,30 @@ function getRotatingQuote() {
 }
 
 // 金魚の見た目：チーム全体の登録語数が増えるほど色が育つ（速度は一定のゆっくり）
+function kingyoColorClass(n) {
+  return n >= 100 ? 'color-rainbow' : n >= 60 ? 'color-gold' : n >= 35 ? 'color-silver'
+    : n >= 20 ? 'color-black' : n >= 10 ? 'color-blue' : n >= 5 ? 'color-green' : n >= 2 ? 'color-white' : '';
+}
+function applyKingyoColor(lane, n) {
+  lane.style.setProperty('--swim-x', Math.max(0, lane.clientWidth - 36) + 'px');
+  lane.classList.remove('color-blue','color-green','color-white','color-black','color-silver','color-gold','color-rainbow');
+  const c = kingyoColorClass(n);
+  if (c) lane.classList.add(c);
+}
+// 開いた瞬間に前回の語数（キャッシュ）で即色付け → サーバー取得後に正しい色へ更新
+function applyKingyoColorFromCache() {
+  const lane = document.getElementById('kingyoLane');
+  if (!lane) return;
+  let n = 0;
+  try { n = parseInt(localStorage.getItem('kingyo_word_count'), 10) || 0; } catch(e) {}
+  applyKingyoColor(lane, n);
+}
 function updateKingyoEnergy() {
   const lane = document.getElementById('kingyoLane');
   if (!lane) return;
-  lane.style.setProperty('--swim-x', Math.max(0, lane.clientWidth - 36) + 'px');
   const n = allSharedWords.length;
-  const color = n >= 100 ? 'rainbow' : n >= 60 ? 'gold' : n >= 35 ? 'silver'
-    : n >= 20 ? 'black' : n >= 10 ? 'blue' : n >= 5 ? 'green' : n >= 2 ? 'white' : '';
-  lane.classList.remove('color-blue','color-green','color-white','color-black','color-silver','color-gold','color-rainbow');
-  if (color) lane.classList.add('color-' + color);
+  applyKingyoColor(lane, n);
+  try { localStorage.setItem('kingyo_word_count', String(n)); } catch(e) {}
 }
 
 (function initKingyoQuote() {
