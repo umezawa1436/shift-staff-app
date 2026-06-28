@@ -427,7 +427,9 @@ async function initApp() {
     await loadStaff();
     updateMonthDisplays();
     buildAllDeptTabs();
+    document.body.dataset.page = 'shift';
     await loadShiftGrid();
+    setupScrollPausePerf();
   } catch(e) { console.error(e); showToast('初期化エラー','error'); }
   hideLoading();
 }
@@ -464,10 +466,23 @@ function applyShiftToolbarState() {
   const tb = document.getElementById('shiftToolbar');
   const btn = document.getElementById('shiftToolToggle');
   if (!tb) return;
-  let collapsed = false;
-  try { collapsed = localStorage.getItem('shiftToolbarCollapsed') === '1'; } catch(e) {}
+  const stored = localStorage.getItem('shiftToolbarCollapsed');
+  const collapsed = (stored === null) ? true : (stored === '1'); // 既定は閉じる
   tb.classList.toggle('collapsed', collapsed);
   if (btn) btn.textContent = collapsed ? '▼ ツール' : '▲ 閉じる';
+}
+
+// スクロール中はヘッダー金魚アニメを止めてコンポジタを解放（カクツキ低減）
+let _scrollIdleTimer = null;
+function setupScrollPausePerf() {
+  const wrap = document.querySelector('.shift-grid-wrap');
+  if (!wrap || wrap._perfBound) return;
+  wrap._perfBound = true;
+  wrap.addEventListener('scroll', () => {
+    if (!document.body.classList.contains('scrolling')) document.body.classList.add('scrolling');
+    clearTimeout(_scrollIdleTimer);
+    _scrollIdleTimer = setTimeout(() => document.body.classList.remove('scrolling'), 150);
+  }, { passive: true });
 }
 
 // DEPT TABS
@@ -520,6 +535,7 @@ document.querySelectorAll('.nav-item[data-page]').forEach(item => {
     document.getElementById(`page-${page}`).classList.add('active');
     const titles = {dashboard:'ダッシュボード',requests:'希望一覧',shift:'シフト表',generate:'自動生成',settings:'設定',staff:'スタッフ管理',account:'アカウント管理',export:'エクスポート',kingyo:'今日の一言'};
     document.getElementById('topbarTitle').textContent = titles[page] || page;
+    document.body.dataset.page = page;
     const isShift = page === 'shift';
     document.getElementById('shiftToolToggle')?.classList.toggle('show', isShift);
     if (!isShift) { const subEl = document.getElementById('topbarSub'); if (subEl) subEl.textContent = ''; }

@@ -33,6 +33,7 @@
     .goldfish-tank { position:relative; width:140px; height:36px; overflow:visible; }
     #topbarGoldfish { pointer-events:none; }
     .goldfish-swimmer { position:absolute; top:6px; left:0; animation: swimAcross 8s ease-in-out infinite; transform-origin: center; }
+    body.scrolling .goldfish-swimmer, body.scrolling .bubble { animation-play-state:paused; }
     .bubble { position:absolute; width:5px; height:5px; border-radius:50%; background:rgba(96,165,250,0.6); animation: bubbleRise 3s ease-in infinite; }
     .bubble:nth-child(2) { left:20px;  width:3px; height:3px; animation-delay:0.5s; }
     .bubble:nth-child(3) { left:60px;  width:4px; height:4px; animation-delay:1.2s; }
@@ -94,6 +95,7 @@
     .topbar { background:white;padding:calc(16px + env(safe-area-inset-top)) 28px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50; }
     .page-title { font-size:20px;font-weight:700; }
     .page-sub { font-size:13px;color:var(--text-muted);margin-top:2px; }
+    #topbarSub { white-space:nowrap; }
     #shiftToolToggle { display:none;align-items:center;gap:4px;background:white;border:1.5px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;color:var(--text);cursor:pointer;white-space:nowrap;flex-shrink:0;margin-left:8px; }
     .content { padding:24px 28px;flex:1;min-width:0; }
 
@@ -145,11 +147,11 @@
     /* 日付ヘッダ行：上に固定（縦スクロール時） */
     .shift-grid thead th { position:sticky;top:0;z-index:3;border-top:1px solid var(--border); }
     /* 名前列：左に固定（横スクロール時）。鍵マーク(z-index:2)より上に重ねる */
-    .shift-grid td.staff-name { padding:6px 10px;text-align:left;font-weight:500;white-space:nowrap;background:white;font-size:12px;height:42px;position:sticky;left:0;z-index:4;border-left:1px solid var(--border);box-shadow:1px 0 0 #fff,2px 0 0 var(--border); }
+    .shift-grid td.staff-name { padding:6px 10px;text-align:left;font-weight:500;white-space:nowrap;background:white;font-size:12px;height:42px;position:sticky;left:0;z-index:4;border-left:1px solid var(--border);border-right:2px solid var(--border); }
     /* 左上の角（名前列ヘッダ）：縦横ともに固定・最前面 */
-    .shift-grid th.staff-col { min-width:72px;text-align:left;padding-left:10px;position:sticky;left:0;top:0;z-index:6;background:var(--bg);border-left:1px solid var(--border);box-shadow:1px 0 0 var(--bg),2px 0 0 var(--border); }
+    .shift-grid th.staff-col { min-width:72px;text-align:left;padding-left:10px;position:sticky;left:0;top:0;z-index:6;background:var(--bg);border-left:1px solid var(--border);border-right:2px solid var(--border); }
     .shift-grid tbody tr { height:42px; }
-    .shift-cell { height:36px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:pointer;transition:all 0.15s;padding:1px;overflow:hidden; }
+    .shift-cell { height:36px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:pointer;transition:background-color 0.12s ease;padding:1px;overflow:hidden; }
     #shiftEditOptions .shift-cell { height:auto;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center; }
     .shift-cell.has-req { flex-direction:column;justify-content:center;align-items:center; }
     .shift-cell .shift-text { font-size:10px;font-weight:600;line-height:1.2; }
@@ -470,6 +472,17 @@
       /* 上・左パディングを0に。iOS Safari の sticky+padding 癖で日付ヘッダ上端・氏名列左端に
          隙間ができ、そこにスクロール中のセルが透けていたのを解消。ヘッダ＝枠上端、氏名列＝枠左端でぴったり固定 */
       .content { padding:0 16px 16px 0; overflow:auto; overscroll-behavior:contain; }
+      /* シフト表だけ：ツール群と分離し、表自身を独立スクロール枠に（iOSの2軸stickyが安定しやすい） */
+      body[data-page="shift"] .content { padding:0; overflow:hidden; display:flex; flex-direction:column; min-height:0; }
+      body[data-page="shift"] #page-shift { flex:1; min-height:0; display:flex; flex-direction:column; }
+      body[data-page="shift"] #page-shift > .card { flex:1; min-height:0; display:flex; flex-direction:column; }
+      body[data-page="shift"] .shift-grid-wrap { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; transform:translateZ(0); }
+      /* ツール群：横一列のまま、各行を個別に横スクロール可能に（.contentのスクロールに頼れないため） */
+      body[data-page="shift"] #shiftToolbar > .dept-tabs,
+      body[data-page="shift"] #shiftToolbar > .month-nav,
+      body[data-page="shift"] #shiftToolbar > .shift-status-row { flex-wrap:nowrap; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; }
+      /* タップ端末ではhoverの拡大が残ってカクつくので無効化 */
+      .shift-cell:hover { transform:none; opacity:1; }
       #shiftToolToggle.show { display:inline-flex; }
       #shiftToolbar.collapsed { height:0; overflow:hidden; }
       .generate-options { grid-template-columns:1fr; }
