@@ -429,6 +429,7 @@ async function initApp() {
     buildAllDeptTabs();
     document.body.dataset.page = 'shift';
     await loadShiftGrid();
+    setupScrollPausePerf();
   } catch(e) { console.error(e); showToast('初期化エラー','error'); }
   hideLoading();
 }
@@ -469,6 +470,19 @@ function applyShiftToolbarState() {
   const collapsed = (stored === null) ? true : (stored === '1'); // 既定は閉じる
   tb.classList.toggle('collapsed', collapsed);
   if (btn) btn.textContent = collapsed ? '▼ ツール' : '▲ 閉じる';
+}
+
+// スクロール中はヘッダー金魚アニメを止めてコンポジタを解放（カクツキ低減）
+let _scrollIdleTimer = null;
+function setupScrollPausePerf() {
+  const wrap = document.querySelector('.shift-grid-wrap');
+  if (!wrap || wrap._perfBound) return;
+  wrap._perfBound = true;
+  wrap.addEventListener('scroll', () => {
+    if (!document.body.classList.contains('scrolling')) document.body.classList.add('scrolling');
+    clearTimeout(_scrollIdleTimer);
+    _scrollIdleTimer = setTimeout(() => document.body.classList.remove('scrolling'), 150);
+  }, { passive: true });
 }
 
 // DEPT TABS
