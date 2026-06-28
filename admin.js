@@ -430,6 +430,7 @@ async function initApp() {
     document.body.dataset.page = 'shift';
     await loadShiftGrid();
     setupScrollPausePerf();
+    setupShiftPinchZoom();
   } catch(e) { console.error(e); showToast('初期化エラー','error'); }
   hideLoading();
 }
@@ -485,7 +486,52 @@ function setupScrollPausePerf() {
   }, { passive: true });
 }
 
-// DEPT TABS
+// ===== シフト表ピンチズーム（指2本で拡大縮小）=====
+// transformでなく CSS zoom を使う＝ヘッダ/氏名列の sticky 固定を壊さない。
+let shiftZoom = 1;
+let _pinchD0 = 0, _pinchBase = 1, _pinching = false, _zoomRAF = false;
+const SHIFT_ZOOM_MIN = 0.6, SHIFT_ZOOM_MAX = 2.5;
+function _applyShiftZoom() {
+  _zoomRAF = false;
+  const grid = document.getElementById('shiftGrid');
+  if (grid) grid.style.zoom = shiftZoom;
+}
+function _scheduleShiftZoom() {
+  if (_zoomRAF) return;
+  _zoomRAF = true;
+  requestAnimationFrame(_applyShiftZoom);
+}
+function _pinchDist(t) {
+  const dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY;
+  return Math.hypot(dx, dy);
+}
+function setupShiftPinchZoom() {
+  const wrap = document.querySelector('.shift-grid-wrap');
+  if (!wrap || wrap._pinchBound) return;
+  wrap._pinchBound = true;
+  wrap.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2) {
+      _pinching = true;
+      _pinchD0 = _pinchDist(e.touches);
+      _pinchBase = shiftZoom;
+    }
+  }, { passive: true });
+  wrap.addEventListener('touchmove', (e) => {
+    if (_pinching && e.touches.length === 2) {
+      e.preventDefault(); // 2本指中はスクロール/ネイティブズームを抑止
+      const d = _pinchDist(e.touches);
+      if (_pinchD0 > 0) {
+        let z = _pinchBase * (d / _pinchD0);
+        z = Math.min(SHIFT_ZOOM_MAX, Math.max(SHIFT_ZOOM_MIN, z));
+        shiftZoom = z;
+        _scheduleShiftZoom();
+      }
+    }
+  }, { passive: false });
+  const endPinch = (e) => { if (e.touches.length < 2) _pinching = false; };
+  wrap.addEventListener('touchend', endPinch, { passive: true });
+  wrap.addEventListener('touchcancel', endPinch, { passive: true });
+}
 function buildAllDeptTabs() {
   const depts = adminUser.role === 'master' ? DEPT_IDS : [adminUser.deptId];
   ['requestDeptTabs','shiftDeptTabs','genDeptTabs','staffDeptTabs','reqDeptTabs'].forEach(id => {
