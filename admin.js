@@ -444,6 +444,30 @@ function updateMonthDisplays() {
   document.getElementById('genMonthTitle').textContent = `${genYear}年${genMonth}月`;
   const dashTitle = document.getElementById('dashMonthTitle');
   if (dashTitle) dashTitle.textContent = `${dashYear}年${dashMonth}月`;
+  if (document.querySelector('.page.active')?.id === 'page-shift') updateShiftToolbarHeader();
+}
+
+// ===== シフト ツールバー折りたたみ＆ヘッダー部署表示 =====
+function updateShiftToolbarHeader() {
+  const sub = document.getElementById('topbarSub');
+  if (sub) sub.textContent = `${DEPT_NAMES[currentDept] || ''} ${shiftYear}年${shiftMonth}月`;
+}
+function toggleShiftToolbar() {
+  const tb = document.getElementById('shiftToolbar');
+  const btn = document.getElementById('shiftToolToggle');
+  if (!tb) return;
+  const collapsed = tb.classList.toggle('collapsed');
+  if (btn) btn.textContent = collapsed ? '▼ ツール' : '▲ 閉じる';
+  try { localStorage.setItem('shiftToolbarCollapsed', collapsed ? '1' : '0'); } catch(e) {}
+}
+function applyShiftToolbarState() {
+  const tb = document.getElementById('shiftToolbar');
+  const btn = document.getElementById('shiftToolToggle');
+  if (!tb) return;
+  let collapsed = false;
+  try { collapsed = localStorage.getItem('shiftToolbarCollapsed') === '1'; } catch(e) {}
+  tb.classList.toggle('collapsed', collapsed);
+  if (btn) btn.textContent = collapsed ? '▼ ツール' : '▲ 閉じる';
 }
 
 // DEPT TABS
@@ -496,6 +520,9 @@ document.querySelectorAll('.nav-item[data-page]').forEach(item => {
     document.getElementById(`page-${page}`).classList.add('active');
     const titles = {dashboard:'ダッシュボード',requests:'希望一覧',shift:'シフト表',generate:'自動生成',settings:'設定',staff:'スタッフ管理',account:'アカウント管理',export:'エクスポート',kingyo:'今日の一言'};
     document.getElementById('topbarTitle').textContent = titles[page] || page;
+    const isShift = page === 'shift';
+    document.getElementById('shiftToolToggle')?.classList.toggle('show', isShift);
+    if (!isShift) { const subEl = document.getElementById('topbarSub'); if (subEl) subEl.textContent = ''; }
     refreshCurrentPage();
     // スマホ：メニュー選択後はドロワーを閉じる
     if (window.matchMedia('(max-width:768px), (orientation:landscape) and (max-height:600px)').matches) document.body.classList.remove('sidebar-open');
@@ -507,6 +534,9 @@ function refreshCurrentPage() {
   if (active === 'dashboard') loadDashboard();
   else if (active === 'requests') loadRequests();
   else if (active === 'shift') {
+    applyShiftToolbarState();
+    updateShiftToolbarHeader();
+    document.getElementById('shiftToolToggle')?.classList.add('show');
     const ctx = `${currentDept}|${shiftYear}|${shiftMonth}`;
     // 同コンテキストならメモリ状態で再描画（shiftData空でもreqMapが有効なら反映される）
     if (shiftGridContext === ctx) {
@@ -707,6 +737,12 @@ let shiftGridPlanHours = 171.4;
 let shiftGridStaffSettings = {};
 
 async function loadShiftGrid() {
+  // シフト表が active のときだけツールバートグルを出す（初期ログイン経路もここを通る）
+  if (document.getElementById('page-shift')?.classList.contains('active')) {
+    document.getElementById('shiftToolToggle')?.classList.add('show');
+    applyShiftToolbarState();
+    updateShiftToolbarHeader();
+  }
   showLoading();
   try {
     const deptStaff = allStaff.filter(s => s.dept_id === currentDept).sort((a, b) => {
