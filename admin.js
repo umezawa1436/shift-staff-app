@@ -427,6 +427,7 @@ async function initApp() {
     await loadStaff();
     updateMonthDisplays();
     buildAllDeptTabs();
+    document.body.dataset.page = 'shift';
     await loadShiftGrid();
   } catch(e) { console.error(e); showToast('初期化エラー','error'); }
   hideLoading();
@@ -464,8 +465,8 @@ function applyShiftToolbarState() {
   const tb = document.getElementById('shiftToolbar');
   const btn = document.getElementById('shiftToolToggle');
   if (!tb) return;
-  let collapsed = false;
-  try { collapsed = localStorage.getItem('shiftToolbarCollapsed') === '1'; } catch(e) {}
+  const stored = localStorage.getItem('shiftToolbarCollapsed');
+  const collapsed = (stored === null) ? true : (stored === '1'); // 既定は閉じる
   tb.classList.toggle('collapsed', collapsed);
   if (btn) btn.textContent = collapsed ? '▼ ツール' : '▲ 閉じる';
 }
@@ -520,6 +521,7 @@ document.querySelectorAll('.nav-item[data-page]').forEach(item => {
     document.getElementById(`page-${page}`).classList.add('active');
     const titles = {dashboard:'ダッシュボード',requests:'希望一覧',shift:'シフト表',generate:'自動生成',settings:'設定',staff:'スタッフ管理',account:'アカウント管理',export:'エクスポート',kingyo:'今日の一言'};
     document.getElementById('topbarTitle').textContent = titles[page] || page;
+    document.body.dataset.page = page;
     const isShift = page === 'shift';
     document.getElementById('shiftToolToggle')?.classList.toggle('show', isShift);
     if (!isShift) { const subEl = document.getElementById('topbarSub'); if (subEl) subEl.textContent = ''; }
