@@ -486,12 +486,12 @@
          折り返さず1行にし、はみ出したら日付と同じく .content の横スクロールで送る。
          flex-shrink:0 で各ボタンが潰れず原寸のまま右へあふれ、.content の overflow:auto がスクロールを担う。
          position:sticky を使わないので以前のカクツキは発生しない。 */
-      #page-shift > .dept-tabs,
-      #page-shift > .month-nav,
-      #page-shift > .shift-status-row { flex-wrap:nowrap; }
-      #page-shift > .dept-tabs > *,
-      #page-shift > .month-nav > *,
-      #page-shift > .shift-status-row > * { flex-shrink:0; }
+      #shiftToolbar > .dept-tabs,
+      #shiftToolbar > .month-nav,
+      #shiftToolbar > .shift-status-row { flex-wrap:nowrap; }
+      #shiftToolbar > .dept-tabs > *,
+      #shiftToolbar > .month-nav > *,
+      #shiftToolbar > .shift-status-row > * { flex-shrink:0; }
       /* コマンド群・確定取消バナーは通常フロー（縦横とも普通にスクロールして流れて消える）。
          横スクロールで左上固定する案は描画が重くカクつくため、ひとまず不採用。 */
     }
