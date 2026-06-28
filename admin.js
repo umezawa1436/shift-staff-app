@@ -737,6 +737,12 @@ let shiftGridPlanHours = 171.4;
 let shiftGridStaffSettings = {};
 
 async function loadShiftGrid() {
+  // シフト表が active のときだけツールバートグルを出す（初期ログイン経路もここを通る）
+  if (document.getElementById('page-shift')?.classList.contains('active')) {
+    document.getElementById('shiftToolToggle')?.classList.add('show');
+    applyShiftToolbarState();
+    updateShiftToolbarHeader();
+  }
   showLoading();
   try {
     const deptStaff = allStaff.filter(s => s.dept_id === currentDept).sort((a, b) => {
