@@ -139,22 +139,17 @@
 
     /* SHIFT GRID */
     /* 縦スクロール容器（vh使用＝フリーズ回避）。日付と名前を両方固定するために必要 */
-    .shift-grid-wrap { overflow:auto;max-height:calc(100vh - 220px);position:relative; }
+    .shift-grid-wrap { overflow:auto;max-height:calc(100vh - 220px); }
     /* sticky を縦横とも効かせるには border-collapse:separate が必須（collapseだと左列stickyが描画されない） */
     .shift-grid { border-collapse:separate;border-spacing:0;font-size:11px;min-width:100%; }
     .shift-grid th { padding:6px 4px;text-align:center;font-weight:600;font-size:10px;color:var(--text-muted);border-right:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--bg);white-space:nowrap;min-width:34px; }
     .shift-grid td { padding:2px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);text-align:center;vertical-align:middle;height:42px; }
     /* 日付ヘッダ行：上に固定（縦スクロール時） */
-    .shift-grid thead th { border-top:1px solid var(--border); }
+    .shift-grid thead th { position:sticky;top:0;z-index:3;border-top:1px solid var(--border); }
     /* 名前列：左に固定（横スクロール時）。鍵マーク(z-index:2)より上に重ねる */
-    .shift-grid td.staff-name { padding:6px 10px;text-align:left;font-weight:500;white-space:nowrap;background:white;font-size:12px;height:42px;border-left:1px solid var(--border);border-right:2px solid var(--border); }
+    .shift-grid td.staff-name { padding:6px 10px;text-align:left;font-weight:500;white-space:nowrap;background:white;font-size:12px;height:42px;position:sticky;left:0;z-index:4;border-left:1px solid var(--border);border-right:2px solid var(--border); }
     /* 左上の角（名前列ヘッダ）：縦横ともに固定・最前面 */
-    .shift-grid th.staff-col { min-width:72px;text-align:left;padding-left:10px;background:var(--bg);border-left:1px solid var(--border);border-right:2px solid var(--border); }
-    /* sticky代替：JS固定オーバーレイ層（名前列/ヘッダ/角） */
-    .frozen-layer { position:absolute;top:0;left:0;overflow:hidden;will-change:transform;z-index:7;background:#fff; }
-    .frozen-col { z-index:8; }
-    .frozen-corner { z-index:9; }
-    .frozen-layer > table { margin:0; }
+    .shift-grid th.staff-col { min-width:72px;text-align:left;padding-left:10px;position:sticky;left:0;top:0;z-index:6;background:var(--bg);border-left:1px solid var(--border);border-right:2px solid var(--border); }
     .shift-grid tbody tr { height:42px; }
     .shift-cell { height:36px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:pointer;transition:background-color 0.12s ease;padding:1px;overflow:hidden; }
     #shiftEditOptions .shift-cell { height:auto;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center; }
@@ -481,7 +476,7 @@
       body[data-page="shift"] .content { padding:0; overflow:hidden; display:flex; flex-direction:column; min-height:0; }
       body[data-page="shift"] #page-shift { flex:1; min-height:0; display:flex; flex-direction:column; }
       body[data-page="shift"] #page-shift > .card { flex:1; min-height:0; display:flex; flex-direction:column; }
-      body[data-page="shift"] .shift-grid-wrap { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; transform:translateZ(0); }
+      body[data-page="shift"] .shift-grid-wrap { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; }
       /* ツール群：横一列のまま、各行を個別に横スクロール可能に（.contentのスクロールに頼れないため） */
       body[data-page="shift"] #shiftToolbar > .dept-tabs,
       body[data-page="shift"] #shiftToolbar > .month-nav,
@@ -531,4 +526,3 @@
   background: linear-gradient(135deg,#6b21a8,#1e40af) !important;
 }
 @media print { #shiftToolbar, #shiftToolbar.collapsed { display:block !important; height:auto !important; overflow:visible !important; } #shiftToolToggle { display:none !important; } }
-@media print { .frozen-layer { display:none !important; } }
