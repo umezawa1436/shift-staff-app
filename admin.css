@@ -94,6 +94,7 @@
     .topbar { background:white;padding:calc(16px + env(safe-area-inset-top)) 28px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50; }
     .page-title { font-size:20px;font-weight:700; }
     .page-sub { font-size:13px;color:var(--text-muted);margin-top:2px; }
+    #topbarSub { white-space:nowrap; }
     #shiftToolToggle { display:none;align-items:center;gap:4px;background:white;border:1.5px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;color:var(--text);cursor:pointer;white-space:nowrap;flex-shrink:0;margin-left:8px; }
     .content { padding:24px 28px;flex:1;min-width:0; }
 
@@ -470,6 +471,11 @@
       /* 上・左パディングを0に。iOS Safari の sticky+padding 癖で日付ヘッダ上端・氏名列左端に
          隙間ができ、そこにスクロール中のセルが透けていたのを解消。ヘッダ＝枠上端、氏名列＝枠左端でぴったり固定 */
       .content { padding:0 16px 16px 0; overflow:auto; overscroll-behavior:contain; }
+      /* シフト表だけ：ツール群と分離し、表自身を独立スクロール枠に（iOSの2軸stickyが安定しやすい） */
+      body[data-page="shift"] .content { padding:0; overflow:hidden; display:flex; flex-direction:column; min-height:0; }
+      body[data-page="shift"] #page-shift { flex:1; min-height:0; display:flex; flex-direction:column; }
+      body[data-page="shift"] #page-shift > .card { flex:1; min-height:0; display:flex; flex-direction:column; }
+      body[data-page="shift"] .shift-grid-wrap { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; }
       #shiftToolToggle.show { display:inline-flex; }
       #shiftToolbar.collapsed { height:0; overflow:hidden; }
       .generate-options { grid-template-columns:1fr; }
