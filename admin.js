@@ -26,6 +26,7 @@ let shiftYear = new Date().getFullYear(), shiftMonth = new Date().getMonth() + 1
 let dashYear = new Date().getFullYear(), dashMonth = new Date().getMonth() + 1;
 let genYear = new Date().getFullYear(), genMonth = new Date().getMonth() + 1;
 let allStaff = [], shiftData = {}, lockedCells = {}, wedTypes = {}, generatedShifts = {};
+let cellLabels = {}; // アルバイト用：セル(staffId|day)ごとの当日氏名
 // ★ シフト表セル内のロックアイコン🔒の表示/非表示（コーナーのボタンで切替。ロック状態自体は保持）
 let hideLockIcons = false;
 // 遅番系(遅番+遅L)・長日の月間回数カウント列の表示フラグ（医療事務のみ・localStorage永続）
@@ -80,6 +81,7 @@ function saveCurrentShiftStateToCache() {
   if (!shiftGridContext) return;
   shiftMonthCache[shiftGridContext] = {
     shiftData: JSON.parse(JSON.stringify(shiftData)),
+    cellLabels: JSON.parse(JSON.stringify(cellLabels)),
     lockedCells: JSON.parse(JSON.stringify(lockedCells)),
     savedShiftSnapshot: savedShiftSnapshot ? JSON.parse(JSON.stringify(savedShiftSnapshot)) : null,
     undoStack: undoStack.slice(),
@@ -100,6 +102,7 @@ function tryRestoreShiftStateFromCache(ctx) {
   if (!shiftMonthCache[ctx]) return false;
   const c = shiftMonthCache[ctx];
   shiftData = JSON.parse(JSON.stringify(c.shiftData));
+  cellLabels = c.cellLabels ? JSON.parse(JSON.stringify(c.cellLabels)) : {};
   lockedCells = JSON.parse(JSON.stringify(c.lockedCells));
   savedShiftSnapshot = c.savedShiftSnapshot ? JSON.parse(JSON.stringify(c.savedShiftSnapshot)) : null;
   undoStack = c.undoStack.slice();
@@ -818,7 +821,7 @@ async function loadShiftGrid() {
     const daysInMonth = new Date(shiftYear, shiftMonth, 0).getDate();
 
     const [existingShifts, requestData, requirements, monthlyHoursData, staffSettingsData, wedData, shiftSpecialDays, shiftThursdayData] = await Promise.all([
-      sb(`shifts?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,day,shift_type_id,is_locked,is_confirmed`),
+      sb(`shifts?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,day,shift_type_id,is_locked,is_confirmed,cell_label`),
       sb(`shift_requests?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,day,request_type`),
       sb(`staffing_requirements?dept_id=eq.${currentDept}&select=period_id,day_type,min_count`),
       sb(`monthly_hours?month=eq.${shiftMonth}&year=eq.${shiftYear}&dept_id=is.null&select=hours`),
@@ -851,10 +854,12 @@ async function loadShiftGrid() {
     //         未保存変更の保持は shiftMonthCache が担当するのでここでは不要。
     shiftData = {};
     lockedCells = {};
+    cellLabels = {};
     existingShifts.forEach(s => {
       const key = `${s.staff_id}|${s.day}`;
       shiftData[key] = s.shift_type_id;
       if (s.is_locked) lockedCells[key] = true;
+      if (s.cell_label) cellLabels[key] = s.cell_label;
     });
 
     // ★ 確定ロック判定：is_confirmed=true のレコードが 1 件でもあればロック状態
@@ -908,7 +913,8 @@ async function loadShiftGrid() {
     shiftGridContext = `${currentDept}|${shiftYear}|${shiftMonth}`;
     savedShiftSnapshot = {
       shiftData: JSON.parse(JSON.stringify(shiftData)),
-      lockedCells: JSON.parse(JSON.stringify(lockedCells))
+      lockedCells: JSON.parse(JSON.stringify(lockedCells)),
+      cellLabels: JSON.parse(JSON.stringify(cellLabels))
     };
     undoStack = [];
     redoStack = [];
@@ -1074,16 +1080,23 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
         const lockBorder = isLocked ? 'box-shadow:inset 0 0 0 2px #f59e0b;' : '';
         const reqLabel = hasRequest ? `<div class="req-text" style="font-size:8px;color:#f59e0b;line-height:1;margin-top:1px;pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">⭐${requestedShift}</div>` : '';
         const lockIcon = isLocked ? `<span class="lock-icon" style="position:absolute;top:-3px;right:-3px;font-size:11px;line-height:1;z-index:2;pointer-events:none">🔒</span>` : '';
+        const isArbeit = staff.emp_type === 'arbeit';
+        const cellName = isArbeit ? (cellLabels[`${staff.id}|${d}`] || '') : '';
+        const nameLine = isArbeit ? `<div class="arbeit-name" style="font-size:8px;line-height:1.1;color:#1e40af;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;pointer-events:none;max-width:100%">${escapeHtml(cellName)||'　'}</div>` : '';
+        const arbeitEmpty = isArbeit && !cellName && !dispShift;
         html += `<td style="padding:2px;position:relative">
           <div class="shift-cell ${colorClass||'empty'}"
             data-staff="${staff.id}" data-day="${d}" data-grid="${gridId}"
             data-request="${requestedShift}"
             onclick="handleCellClick(event,'${staff.id}','${escapeJs(staff.name)}',${d},'${gridId}')"
             style="position:relative;cursor:pointer;${lockBorder};flex-direction:column;"
-          ><span class="shift-text">${dispShift||'+'}</span>${reqLabel}${lockIcon}</div>
+          >${nameLine}<span class="shift-text">${isArbeit ? (dispShift||(arbeitEmpty?'+':'')) : (dispShift||'+')}</span>${reqLabel}${lockIcon}</div>
         </td>`;
       } else {
-        html += `<td><div class="shift-cell ${colorClass||'empty'}" style="font-size:9px">${dispShift||''}</div></td>`;
+        const isArbeit = staff.emp_type === 'arbeit';
+        const cellName = isArbeit ? (cellLabels[`${staff.id}|${d}`] || '') : '';
+        const nameLine = isArbeit && cellName ? `<div style="font-size:8px;line-height:1.1;color:#1e40af;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(cellName)}</div>` : '';
+        html += `<td><div class="shift-cell ${colorClass||'empty'}" style="font-size:9px;flex-direction:column">${nameLine}${dispShift||''}</div></td>`;
       }
     }
     staffTotalHours[staff.id] = totalH;
@@ -1262,6 +1275,25 @@ function openShiftEditModal(staffId, staffName, day, gridId) {
   }).join('');
   document.getElementById('clearShiftBtn').textContent = isLocked ? '🔓 ロック解除' : '🔒 ロックする';
   document.getElementById('clearShiftBtn').onclick = () => toggleLock(key);
+  // アルバイト：氏名入力欄の表示・初期値・保存ボタン配線
+  const arbeitRow = document.getElementById('arbeitNameRow');
+  const staffObj = allStaff.find(s => s.id === staffId);
+  if (staffObj && staffObj.emp_type === 'arbeit') {
+    arbeitRow.style.display = 'block';
+    const inp = document.getElementById('arbeitNameInput');
+    inp.value = cellLabels[key] || '';
+    document.getElementById('arbeitNameSaveBtn').onclick = () => {
+      if (!checkConfirmLock()) return;
+      saveUndoState();
+      const v = inp.value.trim();
+      if (v) cellLabels[key] = v; else delete cellLabels[key];
+      updateCellDisplay(key);
+      closeModal('shiftEditModal');
+      showToast('氏名を保存しました ✓','success');
+    };
+  } else {
+    arbeitRow.style.display = 'none';
+  }
   document.getElementById('shiftEditModal').classList.add('show');
 }
 
@@ -1276,6 +1308,13 @@ function applyShiftEdit(shiftId) {
   const { staffId, day, gridId, key } = editingCell;
   saveUndoState();
   shiftData[key] = shiftId;
+  // アルバイト：氏名欄の内容も同時反映
+  const staffObj = allStaff.find(s => s.id === staffId);
+  if (staffObj && staffObj.emp_type === 'arbeit') {
+    const inp = document.getElementById('arbeitNameInput');
+    const v = inp ? inp.value.trim() : '';
+    if (v) cellLabels[key] = v; else delete cellLabels[key];
+  }
   const key2 = `${staffId}|${day}`;
   updateCellDisplay(key2);
   refreshSummaryRows();
@@ -1395,6 +1434,20 @@ function updateCellDisplay(key) {
 
   const shift = shiftData[key] || '';
   const isLocked = !!lockedCells[key];
+
+  // アルバイト：氏名行を更新（なければ作る）
+  const staffObj = allStaff.find(s => s.id === staffId);
+  if (staffObj && staffObj.emp_type === 'arbeit') {
+    const nm = cellLabels[key] || '';
+    let nameEl = el.querySelector('.arbeit-name');
+    if (!nameEl) {
+      nameEl = document.createElement('div');
+      nameEl.className = 'arbeit-name';
+      nameEl.style.cssText = 'font-size:8px;line-height:1.1;color:#1e40af;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;pointer-events:none;max-width:100%';
+      el.insertBefore(nameEl, el.firstChild);
+    }
+    nameEl.textContent = nm || '　';
+  }
 
   // セル色更新
   el.className = `shift-cell ${SHIFT_COLORS[shift]||'empty'}`;
@@ -1871,7 +1924,8 @@ function selectCell(staffId, day, mode) {
 function saveUndoState() {
   undoStack.push({
     shiftData: JSON.parse(JSON.stringify(shiftData)),
-    lockedCells: JSON.parse(JSON.stringify(lockedCells))
+    lockedCells: JSON.parse(JSON.stringify(lockedCells)),
+    cellLabels: JSON.parse(JSON.stringify(cellLabels))
   });
   if (undoStack.length > MAX_UNDO) undoStack.shift();
   redoStack = [];
@@ -1882,7 +1936,7 @@ function applyShiftToSelected(shiftId) {
   saveUndoState();
   selectedCells.forEach(key => {
     if (lockedCells[key]) return;
-    if (shiftId === null) delete shiftData[key];
+    if (shiftId === null) { delete shiftData[key]; delete cellLabels[key]; }
     else shiftData[key] = shiftId;
     const [sid, d] = parseKey(key);
     updateCellDisplay(key);
@@ -2016,11 +2070,13 @@ function doUndo() {
   if (undoStack.length === 0) { showToast('これ以上戻れません'); return; }
   redoStack.push({
     shiftData: JSON.parse(JSON.stringify(shiftData)),
-    lockedCells: JSON.parse(JSON.stringify(lockedCells))
+    lockedCells: JSON.parse(JSON.stringify(lockedCells)),
+    cellLabels: JSON.parse(JSON.stringify(cellLabels))
   });
   const prev = undoStack.pop();
   shiftData = prev.shiftData;
   lockedCells = prev.lockedCells;
+  cellLabels = prev.cellLabels || {};
   rerenderShiftGridFromMemory();
   showToast('元に戻しました');
 }
@@ -2029,11 +2085,13 @@ function doRedo() {
   if (redoStack.length === 0) { showToast('これ以上進めません'); return; }
   undoStack.push({
     shiftData: JSON.parse(JSON.stringify(shiftData)),
-    lockedCells: JSON.parse(JSON.stringify(lockedCells))
+    lockedCells: JSON.parse(JSON.stringify(lockedCells)),
+    cellLabels: JSON.parse(JSON.stringify(cellLabels))
   });
   const next = redoStack.pop();
   shiftData = next.shiftData;
   lockedCells = next.lockedCells;
+  cellLabels = next.cellLabels || {};
   rerenderShiftGridFromMemory();
   showToast('やり直しました');
 }
@@ -2070,6 +2128,7 @@ document.addEventListener('keydown', (e) => {
     selectedCells.forEach(key => {
       if (!lockedCells[key]) {
         delete shiftData[key];
+        delete cellLabels[key];
         const [sid,d] = parseKey(key);
         const el = getCellEl(sid,d);
         if (el) { el.className='shift-cell empty'; const sp=el.querySelector('span:first-child'); if(sp&&sp.tagName==='SPAN')sp.textContent='+'; else if(el.childNodes[0]&&el.childNodes[0].nodeType===3)el.childNodes[0].textContent='+'; }
@@ -2276,9 +2335,14 @@ document.getElementById('saveShiftBtn').addEventListener('click', async () => {
     if (ids) {
       await sb(`shifts?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}`, { method:'DELETE' });
     }
-    const inserts = Object.entries(shiftData).map(([key, shiftId]) => {
+    const insKeys = new Set([...Object.keys(shiftData), ...Object.keys(cellLabels)]);
+    const inserts = [];
+    insKeys.forEach(key => {
+      const shiftId = shiftData[key];
+      const label = cellLabels[key] || null;
+      if (!shiftId && !label) return; // シフトも氏名も無いキーはスキップ
       const [staffId, day] = parseKey(key);
-      return { staff_id:staffId, year:shiftYear, month:shiftMonth, day:parseInt(day), shift_type_id:shiftId, is_locked:!!lockedCells[key] };
+      inserts.push({ staff_id:staffId, year:shiftYear, month:shiftMonth, day:parseInt(day), shift_type_id:shiftId || null, is_locked:!!lockedCells[key], cell_label:label });
     });
     if (inserts.length > 0) {
       await sb('shifts', { method:'POST', body:JSON.stringify(inserts) });
@@ -2288,7 +2352,8 @@ document.getElementById('saveShiftBtn').addEventListener('click', async () => {
     // 保存時点スナップショット更新（保存時点に戻すボタン用）
     savedShiftSnapshot = {
       shiftData: JSON.parse(JSON.stringify(shiftData)),
-      lockedCells: JSON.parse(JSON.stringify(lockedCells))
+      lockedCells: JSON.parse(JSON.stringify(lockedCells)),
+      cellLabels: JSON.parse(JSON.stringify(cellLabels))
     };
     undoStack = [];
     redoStack = [];
@@ -4026,6 +4091,7 @@ function renderVerticalView() {
     // スタッフ属性
     const empBadge = staff.emp_type === 'short' ? '<span style="font-size:9px;color:#0f766e;background:#ccfbf1;padding:1px 4px;border-radius:3px;margin-left:4px">時短</span>' 
       : staff.emp_type === 'part' ? '<span style="font-size:9px;color:#6b7280;background:#f3f4f6;padding:1px 4px;border-radius:3px;margin-left:4px">パート</span>'
+      : staff.emp_type === 'arbeit' ? '<span style="font-size:9px;color:#1e40af;background:#dbeafe;padding:1px 4px;border-radius:3px;margin-left:4px">アルバイト</span>'
       : '';
 
     rows += `<div style="display:flex;align-items:stretch;border-bottom:1px solid #e2e8f0">
@@ -4743,7 +4809,7 @@ async function loadStaffTable() {
     if (!wrap) { hideLoading(); return; }
 
     const SKILL_LABELS = { normal:'無印', beginner:'🔰', no_count:'🌸' };
-    const EMP_LABELS = { full:'常勤', short:'時短', part:'パート' };
+    const EMP_LABELS = { full:'常勤', short:'時短', part:'パート', arbeit:'アルバイト' };
     const DOW_LABELS = ['日','月','火','水','木','金','土'];
 
     wrap.innerHTML = deptStaff.map(staff => {
@@ -4806,7 +4872,7 @@ async function loadStaffTable() {
 
           <!-- 雇用形態 -->
           <div style="display:flex;gap:4px">
-            ${['full','short','part'].map(et => `
+            ${['full','short','part','arbeit'].map(et => `
               <button onclick="updateStaffField('${staff.id}','emp_type','${et}')"
                 style="padding:4px 10px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;
                 border:1.5px solid ${staff.emp_type===et?'var(--primary)':'var(--border)'};
@@ -5502,7 +5568,7 @@ document.getElementById('exportCsvBtn')?.addEventListener('click', () => {
 
   // スタッフ行
   deptStaff.forEach(staff => {
-    const empLabel = staff.emp_type === 'full' ? '常勤' : staff.emp_type === 'short' ? '時短' : 'パート';
+    const empLabel = staff.emp_type === 'full' ? '常勤' : staff.emp_type === 'short' ? '時短' : staff.emp_type === 'arbeit' ? 'アルバイト' : 'パート';
     let totalH = 0;
     let row = `${staff.name},${empLabel}`;
     const csvHolidays = getJapaneseHolidays(shiftYear, shiftMonth);
