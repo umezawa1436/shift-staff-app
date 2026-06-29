@@ -28,7 +28,7 @@ let genYear = new Date().getFullYear(), genMonth = new Date().getMonth() + 1;
 let allStaff = [], shiftData = {}, lockedCells = {}, wedTypes = {}, generatedShifts = {};
 let cellLabels = {}; // アルバイト用：セル(staffId|day)ごとの当日氏名
 // ★ シフト表セル内のロックアイコン🔒の表示/非表示（コーナーのボタンで切替。ロック状態自体は保持）
-let hideLockIcons = false;
+let hideLockIcons = true;
 // 遅番系(遅番+遅L)・長日の月間回数カウント列の表示フラグ（医療事務のみ・localStorage永続）
 let showLateLongCount = (typeof localStorage !== 'undefined' && localStorage.getItem('shift_late_long_count') === '1');
 // ★ AI 生成プレビュー用：生成前の状態スナップショット（破棄時の復元用）
@@ -927,7 +927,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
   const holidays = getJapaneseHolidays(year, month);
   const wt = wedTypesMap || wedTypes || {};
   // 遅番系(遅番+遅L)・長日カウント列：編集グリッド かつ トグルON かつ 医療事務(dept0) のときのみ表示
-  const showLateLong = editable && showLateLongCount && currentDept === 0;
+  const showLateLong = editable && showLateLongCount;
 
   function getShiftDayType(d) {
     const dow = new Date(year, month-1, d).getDay();
@@ -975,8 +975,8 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
         ? `<button id="lockIconToggleBtn" onclick="toggleLockIcons()" title="氏名欄の行ロック鍵マーク🔒/🔓の表示/非表示を切り替えます（ロック状態自体は変わりません）" style="font-size:8px;padding:2px 5px;border:1px solid #cbd5e1;border-radius:4px;background:white;cursor:pointer;font-family:inherit;line-height:1.2;white-space:nowrap">🔒 ${hideLockIcons ? 'OFF' : 'ON'}</button>`
         : `<div style="font-size:9px">🔓=ロック</div>`}
     </div>
-    ${editable && currentDept === 0
-      ? `<div style="border-top:1px solid #e2e8f0;background:#f8fafc;padding:2px"><button onclick="toggleLateLongCount()" title="遅番系(遅番+遅L)と長日の月間回数を右端に表示します（医療事務のみ）" style="font-size:8px;padding:2px 5px;border:1px solid #cbd5e1;border-radius:4px;background:${showLateLongCount ? '#dbeafe' : 'white'};cursor:pointer;font-family:inherit;line-height:1.2;white-space:nowrap">遅長 ${showLateLongCount ? 'ON' : 'OFF'}</button></div>`
+    ${editable
+      ? `<div style="border-top:1px solid #e2e8f0;background:#f8fafc;padding:2px"><button onclick="toggleLateLongCount()" title="遅番系(遅番+遅L)と長日の月間回数を右端に表示します" style="font-size:8px;padding:2px 5px;border:1px solid #cbd5e1;border-radius:4px;background:${showLateLongCount ? '#dbeafe' : 'white'};cursor:pointer;font-family:inherit;line-height:1.2;white-space:nowrap">遅長 ${showLateLongCount ? 'ON' : 'OFF'}</button></div>`
       : ''}
   </th>`;
   for (let d = 1; d <= daysInMonth; d++) {
@@ -4093,15 +4093,19 @@ function renderVerticalView() {
       : staff.emp_type === 'part' ? '<span style="font-size:9px;color:#6b7280;background:#f3f4f6;padding:1px 4px;border-radius:3px;margin-left:4px">パート</span>'
       : staff.emp_type === 'arbeit' ? '<span style="font-size:9px;color:#1e40af;background:#dbeafe;padding:1px 4px;border-radius:3px;margin-left:4px">アルバイト</span>'
       : '';
+    // アルバイトはセルに入力された当日氏名を名前として表示
+    const dispName = staff.emp_type === 'arbeit'
+      ? ((cellLabels[`${staff.id}|${day}`] || '').trim() || 'アルバイト')
+      : staff.name;
 
     rows += `<div style="display:flex;align-items:stretch;border-bottom:1px solid #e2e8f0">
       <div style="min-width:140px;padding:8px 10px;background:#f8fafc;border-right:1px solid #e2e8f0;display:flex;align-items:center;font-size:13px;font-weight:600;white-space:nowrap">
-        ${escapeHtml(staff.name)}${empBadge}
+        ${escapeHtml(dispName)}${empBadge}
       </div>
       <div style="position:relative;height:44px;width:${timelineWidth}px;background:#fafafa">
         <div class="${colorClass} v-shift-bar" style="position:absolute;left:${barLeft}px;top:6px;width:${barWidth}px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:flex-start;padding-left:8px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid rgba(0,0,0,0.1);box-shadow:0 1px 2px rgba(0,0,0,0.06);overflow:hidden;white-space:nowrap" 
           data-staff-id="${staff.id}"
-          data-staff-name="${escapeHtml(staff.name)}"
+          data-staff-name="${escapeHtml(dispName)}"
           data-shift-start="${st.start_time}"
           data-shift-end="${st.end_time}"
           title="クリックで休憩編集 (${escapeHtml(sh)} ${st.start_time}-${st.end_time})">${escapeHtml(sh)} ${st.start_time}-${st.end_time}</div>

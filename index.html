@@ -963,7 +963,7 @@ async function openVerticalView(year, month, day) {
   showLoading();
   try {
     const allDeptShifts = await supabaseRequest(
-      `shifts?year=eq.${year}&month=eq.${month}&day=eq.${day}&is_confirmed=eq.true&select=staff_id,shift_type_id`
+      `shifts?year=eq.${year}&month=eq.${month}&day=eq.${day}&is_confirmed=eq.true&select=staff_id,shift_type_id,cell_label`
     );
 
     // ★ 確定シフトが無い場合、調整中の可能性をチェック
@@ -994,7 +994,9 @@ async function openVerticalView(year, month, day) {
     });
 
     const shiftMap = {};
-    allDeptShifts.forEach(s => { shiftMap[s.staff_id] = s.shift_type_id; });
+    const labelMap = {};
+    allDeptShifts.forEach(s => { shiftMap[s.staff_id] = s.shift_type_id; if (s.cell_label) labelMap[s.staff_id] = s.cell_label; });
+    allDeptStaff.forEach(s => { s._cellLabel = labelMap[s.id] || ''; });
 
     const workingStaff = allDeptStaff.filter(s => {
       const sh = shiftMap[s.id];
@@ -1103,11 +1105,13 @@ function renderVerticalView(year, month, day, workingStaff, shiftMap, breaksMap)
 
     const isSelf = staff.id === currentUser.id;
     const empBadge = staff.emp_type === 'short' ? '<span style="font-size:9px;color:#0f766e;background:#ccfbf1;padding:1px 4px;border-radius:3px;margin-left:4px">時短</span>' 
-      : staff.emp_type === 'part' ? '<span style="font-size:9px;color:#6b7280;background:#f3f4f6;padding:1px 4px;border-radius:3px;margin-left:4px">パート</span>' : '';
+      : staff.emp_type === 'part' ? '<span style="font-size:9px;color:#6b7280;background:#f3f4f6;padding:1px 4px;border-radius:3px;margin-left:4px">パート</span>'
+      : staff.emp_type === 'arbeit' ? '<span style="font-size:9px;color:#1e40af;background:#dbeafe;padding:1px 4px;border-radius:3px;margin-left:4px">アルバイト</span>' : '';
+    const dispName = staff.emp_type === 'arbeit' ? ((staff._cellLabel||'').trim() || 'アルバイト') : staff.name;
 
     rows += `<div class="v-row${isSelf?' is-self':''}">
       <div class="v-name">
-        ${escapeHtml(staff.name)}${isSelf?' <span style="font-size:9px;color:#92400e;background:#fef3c7;padding:1px 4px;border-radius:3px;margin-left:2px">自分</span>':''}${empBadge}
+        ${escapeHtml(dispName)}${isSelf?' <span style="font-size:9px;color:#92400e;background:#fef3c7;padding:1px 4px;border-radius:3px;margin-left:2px">自分</span>':''}${empBadge}
       </div>
       <div class="v-bar-area" style="width:${timelineWidth}px">
         <div style="position:absolute;left:${barLeft}px;top:6px;width:${barWidth}px;height:32px;background:${barBg};color:${barColor};border-radius:6px;display:flex;align-items:center;justify-content:flex-start;padding-left:8px;font-size:11px;font-weight:700;border:1px solid rgba(0,0,0,0.1);box-shadow:0 1px 2px rgba(0,0,0,0.06);overflow:hidden;white-space:nowrap" title="${escapeHtml(sh)} ${st.start_time}-${st.end_time}">${escapeHtml(sh)} ${st.start_time}-${st.end_time}</div>
