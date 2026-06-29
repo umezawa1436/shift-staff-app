@@ -4911,16 +4911,30 @@ async function loadStaffTable() {
 
         <!-- 詳細設定（展開） -->
         <div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
-          
+
+          <!-- 対象年月（所定労働時間・各種上限の共通セレクタ） -->
+          <div style="grid-column:1/-1;background:#eef2f7;border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-size:12px;font-weight:700;color:var(--text)">対象</span>
+            <select id="planYear-${staff.id}" onchange="onStaffMonthChange('${staff.id}')"
+              style="padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit">
+              ${[currentYear-1,currentYear,currentYear+1,currentYear+2].map(y => `<option value="${y}" ${y===currentYear?'selected':''}>${y}年</option>`).join('')}
+            </select>
+            <select id="planMonth-${staff.id}" onchange="onStaffMonthChange('${staff.id}')"
+              style="padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit">
+              ${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${m===currentMonth?'selected':''}>${m}月</option>`).join('')}
+            </select>
+            <span style="font-size:11px;color:var(--text-muted)">の所定労働時間・各種上限を設定</span>
+          </div>
+
           <!-- 所定労働時間 -->
           <div style="background:var(--bg);border-radius:10px;padding:12px">
-            <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:600">所定労働時間（${currentMonth}月）</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:600">所定労働時間</div>
             <div style="display:flex;align-items:center;gap:8px">
               <input type="number" id="planH-${staff.id}" value="${setting.planned_hours??''}" placeholder="デフォルト" 
                 style="width:80px;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"
                 step="0.1" min="0" max="300">
               <span style="font-size:12px;color:var(--text-muted)">H</span>
-              <button onclick="saveStaffSetting('${staff.id}','planned_hours',document.getElementById('planH-${staff.id}').value)"
+              <button onclick="saveStaffMonthSetting('${staff.id}','planned_hours',document.getElementById('planH-${staff.id}').value)"
                 style="padding:4px 10px;background:var(--primary);color:white;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit">保存</button>
             </div>
           </div>
@@ -4933,7 +4947,7 @@ async function loadStaffTable() {
                 style="width:70px;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"
                 min="0" max="31">
               <span style="font-size:12px;color:var(--text-muted)">回</span>
-              <button onclick="saveStaffSetting('${staff.id}','max_night_per_month',document.getElementById('maxNight-${staff.id}').value)"
+              <button onclick="saveStaffMonthSetting('${staff.id}','max_night_per_month',document.getElementById('maxNight-${staff.id}').value)"
                 style="padding:4px 10px;background:var(--primary);color:white;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit">保存</button>
             </div>
           </div>
@@ -4946,7 +4960,7 @@ async function loadStaffTable() {
                 style="width:70px;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"
                 min="0" max="31">
               <span style="font-size:12px;color:var(--text-muted)">回</span>
-              <button onclick="saveStaffSetting('${staff.id}','max_late_per_month',document.getElementById('maxLate-${staff.id}').value)"
+              <button onclick="saveStaffMonthSetting('${staff.id}','max_late_per_month',document.getElementById('maxLate-${staff.id}').value)"
                 style="padding:4px 10px;background:var(--primary);color:white;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit">保存</button>
             </div>
           </div>
@@ -4959,7 +4973,7 @@ async function loadStaffTable() {
                 style="width:70px;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"
                 min="0" max="31">
               <span style="font-size:12px;color:var(--text-muted)">回</span>
-              <button onclick="saveStaffSetting('${staff.id}','max_long_per_month',document.getElementById('maxLong-${staff.id}').value)"
+              <button onclick="saveStaffMonthSetting('${staff.id}','max_long_per_month',document.getElementById('maxLong-${staff.id}').value)"
                 style="padding:4px 10px;background:var(--primary);color:white;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit">保存</button>
             </div>
           </div>
@@ -4972,7 +4986,7 @@ async function loadStaffTable() {
                 style="width:70px;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit"
                 min="0" max="31">
               <span style="font-size:12px;color:var(--text-muted)">回</span>
-              <button onclick="saveStaffSetting('${staff.id}','max_mid_per_month',document.getElementById('maxMid-${staff.id}').value)"
+              <button onclick="saveStaffMonthSetting('${staff.id}','max_mid_per_month',document.getElementById('maxMid-${staff.id}').value)"
                 style="padding:4px 10px;background:var(--primary);color:white;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit">保存</button>
             </div>
           </div>
@@ -4994,10 +5008,6 @@ async function loadStaffTable() {
               <button onclick="saveAllFixedShifts('${staff.id}')"
                 style="padding:6px 14px;background:var(--primary);color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">
                 保存
-              </button>
-              <button onclick="showClearFixedShiftsModal('${staff.id}','${staff.name}')"
-                style="padding:6px 14px;background:white;color:var(--danger);border:1.5px solid var(--danger);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">
-                一括解除
               </button>
             </div>
           </div>
@@ -5029,6 +5039,55 @@ async function updateStaffField(staffId, field, value) {
 
 async function toggleStaffNoNight(staffId, current) {
   await updateStaffField(staffId, 'no_night', !current);
+}
+
+// 対象年月の変更：所定労働時間＋各種上限を選択年月の値で再表示
+async function onStaffMonthChange(staffId) {
+  const ys = document.getElementById('planYear-' + staffId);
+  const ms = document.getElementById('planMonth-' + staffId);
+  if (!ys || !ms) return;
+  const y = parseInt(ys.value), m = parseInt(ms.value);
+  const setVal = (id, v) => { const el = document.getElementById(id + '-' + staffId); if (el) el.value = (v == null ? '' : v); };
+  // いったん空に
+  ['planH','maxNight','maxLate','maxLong','maxMid'].forEach(id => setVal(id, null));
+  try {
+    const rows = await sb(`staff_settings?staff_id=eq.${staffId}&year=eq.${y}&month=eq.${m}&select=planned_hours,max_night_per_month,max_late_per_month,max_long_per_month,max_mid_per_month`);
+    if (rows.length) {
+      const s = rows[0];
+      setVal('planH', s.planned_hours);
+      setVal('maxNight', s.max_night_per_month);
+      setVal('maxLate', s.max_late_per_month);
+      setVal('maxLong', s.max_long_per_month);
+      setVal('maxMid', s.max_mid_per_month);
+    }
+  } catch(e) { console.error(e); }
+}
+
+// 選択中の年月へ保存（所定労働時間・各種上限 共通）
+async function saveStaffMonthSetting(staffId, field, value) {
+  const ys = document.getElementById('planYear-' + staffId);
+  const ms = document.getElementById('planMonth-' + staffId);
+  const y = ys ? parseInt(ys.value) : currentYear;
+  const m = ms ? parseInt(ms.value) : currentMonth;
+  showLoading();
+  try {
+    const existing = await sb(`staff_settings?staff_id=eq.${staffId}&year=eq.${y}&month=eq.${m}&select=id`);
+    const parsedVal = value === '' ? null : (field === 'planned_hours' ? parseFloat(value) : parseInt(value));
+    if (existing.length > 0) {
+      await sb(`staff_settings?staff_id=eq.${staffId}&year=eq.${y}&month=eq.${m}`, {
+        method: 'PATCH',
+        headers: { 'Prefer': 'return=representation' },
+        body: JSON.stringify({ [field]: parsedVal })
+      });
+    } else {
+      await sb('staff_settings', {
+        method: 'POST',
+        body: JSON.stringify([{ staff_id: staffId, year: y, month: m, [field]: parsedVal }])
+      });
+    }
+    showToast(`${y}年${m}月の設定を保存しました ✓`, 'success');
+  } catch(e) { console.error(e); showToast('保存エラー','error'); }
+  hideLoading();
 }
 
 async function saveStaffSetting(staffId, field, value) {
