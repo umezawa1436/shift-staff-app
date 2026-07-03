@@ -850,7 +850,20 @@ let SHIFTS = [
   ]},
 ];
 
+// 設定系テーブルは /api/data の settings ゲートウェイ経由（anonキー直叩き廃止・RLS対応）
+const API_SETTINGS_TABLES = new Set(['staff_settings','monthly_hours','staffing_requirements','special_days','wednesday_types','thursday_types','shift_request_deadline_rules','shift_request_limits_default','beginner_limits','app_settings','dept_shift_pattern_settings']);
+
 async function supabaseRequest(path, options = {}) {
+  const table = String(path).split('?')[0];
+  if (API_SETTINGS_TABLES.has(table)) {
+    const r = await dataApi({
+      action: 'settings',
+      path,
+      method: options.method || 'GET',
+      body: options.body ? JSON.parse(options.body) : undefined,
+    });
+    return r.rows ?? [];
+  }
   const url = `${SUPABASE_URL}/rest/v1/${path}`;
   const res = await fetch(url, {
     ...options,
@@ -979,9 +992,7 @@ async function openVerticalView(year, month, day) {
     }
 
     const allDeptStaff = (await dataApi({ action:'list', table:'staff', view:'dept', params:{ dept_id: currentUser.deptId } })).rows || [];
-    const breaksData = await supabaseRequest(
-      `shift_breaks?year=eq.${year}&month=eq.${month}&day=eq.${day}&order=staff_id,display_order&select=staff_id,break_start,break_end`
-    );
+    const breaksData = (await dataApi({ action:'list', table:'shift_breaks', view:'day', params:{ year, month, day } })).rows || [];
     const breaksMap = {};
     breaksData.forEach(b => {
       if (!breaksMap[b.staff_id]) breaksMap[b.staff_id] = [];
@@ -1228,9 +1239,7 @@ async function loadRequests() {
   if (!currentUser?.id) return;
   try {
     // ★ まず下書き（自動保存）を読み込む。提出前の入力もここから復元される。
-    const draftData = await supabaseRequest(
-      `shift_request_drafts?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}&select=day,request_type`
-    );
+    const draftData = (await dataApi({ action:'list', table:'shift_request_drafts', view:'mine', params:{ year: currentYear, month: currentMonth } })).rows || [];
     requests = {};
     if (draftData && draftData.length > 0) {
       // 下書きがあればそれを使う（最新の作業状態）
@@ -1257,16 +1266,7 @@ async function loadRequests() {
 async function saveDraftDay(day, requestType) {
   if (!currentUser?.id) return;
   try {
-    await supabaseRequest(
-      `shift_request_drafts?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}&day=eq.${day}`,
-      { method: 'DELETE' }
-    );
-    await supabaseRequest('shift_request_drafts', {
-      method: 'POST',
-      body: JSON.stringify([{
-        staff_id: currentUser.id, year: currentYear, month: currentMonth, day, request_type: requestType
-      }])
-    });
+    await dataApi({ action:'draft-save-day', year: currentYear, month: currentMonth, day, request_type: requestType });
   } catch(e) { console.error('[saveDraftDay]', e); }
 }
 
@@ -1274,10 +1274,7 @@ async function saveDraftDay(day, requestType) {
 async function deleteDraftDay(day) {
   if (!currentUser?.id) return;
   try {
-    await supabaseRequest(
-      `shift_request_drafts?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}&day=eq.${day}`,
-      { method: 'DELETE' }
-    );
+    await dataApi({ action:'draft-delete-day', year: currentYear, month: currentMonth, day });
   } catch(e) { console.error('[deleteDraftDay]', e); }
 }
 
@@ -1605,16 +1602,7 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
 
     // ★ 提出後、下書きテーブルも提出内容に同期（下書き＝提出済みの状態にする）
     try {
-      await supabaseRequest(
-        `shift_request_drafts?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}`,
-        { method: 'DELETE' }
-      );
-      if (inserts.length > 0) {
-        await supabaseRequest('shift_request_drafts', {
-          method: 'POST',
-          body: JSON.stringify(inserts),
-        });
-      }
+      await dataApi({ action:'draft-sync', year: currentYear, month: currentMonth, items });
       hasDraft = false;
     } catch(e) { console.error('[draft sync after submit]', e); }
 
