@@ -14,8 +14,40 @@ const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 function envOk() { return SUPABASE_URL && SERVICE_ROLE_KEY && SESSION_SECRET; }
 
-async function sha256(text) {
-  return crypto.createHash('sha256').update(text).digest('hex');
+// ===== パスワードハッシュ（scrypt・ソルト付き）=====
+// 形式: s2$N$r$p$salt(base64)$hash(base64)
+// 旧形式（SHA-256 hex 64桁）はログイン成功時に自動で scrypt へ再ハッシュ（レイジー移行）。
+const SCRYPT_N = 16384, SCRYPT_R = 8, SCRYPT_P = 1, SCRYPT_KEYLEN = 64;
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16);
+  const hash = crypto.scryptSync(String(password), salt, SCRYPT_KEYLEN, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P });
+  return `s2$${SCRYPT_N}$${SCRYPT_R}$${SCRYPT_P}$${salt.toString('base64')}$${hash.toString('base64')}`;
+}
+
+function verifyPassword(password, stored) {
+  if (!stored || typeof stored !== 'string') return false;
+  try {
+    if (stored.startsWith('s2$')) {
+      const parts = stored.split('$');
+      if (parts.length !== 6) return false;
+      const N = parseInt(parts[1]), r = parseInt(parts[2]), p = parseInt(parts[3]);
+      const salt = Buffer.from(parts[4], 'base64');
+      const expected = Buffer.from(parts[5], 'base64');
+      if (!Number.isInteger(N) || N < 2 || N > 1048576 || !Number.isInteger(r) || !Number.isInteger(p) || !salt.length || !expected.length) return false;
+      const actual = crypto.scryptSync(String(password), salt, expected.length, { N, r, p, maxmem: 128 * 1024 * 1024 });
+      return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+    }
+    // 旧形式: SHA-256 hex
+    const legacy = crypto.createHash('sha256').update(String(password)).digest();
+    const storedBuf = Buffer.from(stored, 'hex');
+    return storedBuf.length === legacy.length && crypto.timingSafeEqual(storedBuf, legacy);
+  } catch { return false; }
+}
+
+// 旧形式かどうか（ログイン成功時の自動再ハッシュ判定用）
+function isLegacyHash(stored) {
+  return typeof stored === 'string' && !stored.startsWith('s2$');
 }
 function base64url(buf) {
   return Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -105,9 +137,8 @@ async function staffLogin(req, res, body) {
     return bad(res, 423, 'このアカウントはロックされています。管理者に解除を依頼してください。');
   }
 
-  // パスワード照合
-  const hash = await sha256(password);
-  if (a.password_hash !== hash) {
+  // パスワード照合（scrypt / 旧SHA-256 両対応）
+  if (!verifyPassword(password, a.password_hash)) {
     // 失敗カウント増、5回でロック
     const newCount = (a.failed_attempts || 0) + 1;
     const updates = { failed_attempts: newCount };
@@ -121,9 +152,12 @@ async function staffLogin(req, res, body) {
 
   if (a.staff_id == null || a.staff_code == null) return bad(res, 500, 'アカウント設定が不完全です。管理者に連絡してください');
 
-  // 成功: 失敗カウントをリセット
-  if (a.failed_attempts && a.failed_attempts > 0) {
-    await sb(`accounts?id=eq.${a.id}`, { method: 'PATCH', body: JSON.stringify({ failed_attempts: 0 }) });
+  // 成功: 失敗カウントをリセット＋旧形式ハッシュは scrypt へ自動移行
+  const successUpdates = {};
+  if (a.failed_attempts && a.failed_attempts > 0) successUpdates.failed_attempts = 0;
+  if (isLegacyHash(a.password_hash)) successUpdates.password_hash = hashPassword(password);
+  if (Object.keys(successUpdates).length) {
+    await sb(`accounts?id=eq.${a.id}`, { method: 'PATCH', body: JSON.stringify(successUpdates) });
   }
 
   const token = createToken({ accountId: a.id, role: a.role, deptId: a.dept_id });
@@ -153,9 +187,8 @@ async function adminLogin(req, res, body) {
     return bad(res, 423, 'このアカウントはロックされています。管理者に解除を依頼してください。');
   }
 
-  // パスワード照合
-  const hash = await sha256(password);
-  if (a.password_hash !== hash) {
+  // パスワード照合（scrypt / 旧SHA-256 両対応）
+  if (!verifyPassword(password, a.password_hash)) {
     const newCount = (a.failed_attempts || 0) + 1;
     const updates = { failed_attempts: newCount };
     if (newCount >= 5) updates.locked_at = new Date().toISOString();
@@ -166,9 +199,12 @@ async function adminLogin(req, res, body) {
     return bad(res, 401, `名前またはパスワードが正しくありません（残り${5 - newCount}回でロックされます）`);
   }
 
-  // 成功: 失敗カウントをリセット
-  if (a.failed_attempts && a.failed_attempts > 0) {
-    await sb(`accounts?id=eq.${a.id}`, { method: 'PATCH', body: JSON.stringify({ failed_attempts: 0 }) });
+  // 成功: 失敗カウントをリセット＋旧形式ハッシュは scrypt へ自動移行
+  const successUpdates = {};
+  if (a.failed_attempts && a.failed_attempts > 0) successUpdates.failed_attempts = 0;
+  if (isLegacyHash(a.password_hash)) successUpdates.password_hash = hashPassword(password);
+  if (Object.keys(successUpdates).length) {
+    await sb(`accounts?id=eq.${a.id}`, { method: 'PATCH', body: JSON.stringify(successUpdates) });
   }
 
   const token = createToken({ accountId: a.id, role: a.role, deptId: a.dept_id });
@@ -182,10 +218,9 @@ async function changePassword(req, res, body) {
   const { currentPassword, newPassword } = body;
   if (!currentPassword || !newPassword) return bad(res, 400, '入力が不足しています');
   if (newPassword.length < 4) return bad(res, 400, 'パスワードは4文字以上にしてください');
-  const currentHash = await sha256(currentPassword);
-  const check = await sb(`accounts?id=eq.${payload.accountId}&password_hash=eq.${currentHash}&select=id`);
-  if (!check || check.length === 0) return bad(res, 401, '現在のパスワードが正しくありません');
-  const newHash = await sha256(newPassword);
-  await sb(`accounts?id=eq.${payload.accountId}`, { method: 'PATCH', body: JSON.stringify({ password_hash: newHash }) });
+  const rows = await sb(`accounts?id=eq.${payload.accountId}&select=id,password_hash`);
+  if (!rows || rows.length === 0) return bad(res, 401, 'アカウントが見つかりません');
+  if (!verifyPassword(currentPassword, rows[0].password_hash)) return bad(res, 401, '現在のパスワードが正しくありません');
+  await sb(`accounts?id=eq.${payload.accountId}`, { method: 'PATCH', body: JSON.stringify({ password_hash: hashPassword(newPassword) }) });
   return res.status(200).json({ ok: true });
 }
