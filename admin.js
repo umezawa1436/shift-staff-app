@@ -257,7 +257,22 @@ async function loadShiftTypesAndBuildMaps() {
 }
 
 // SUPABASE
+// 設定系テーブルは /api/data の settings ゲートウェイ経由（anonキー直叩き廃止・RLS対応）
+const API_SETTINGS_TABLES = new Set(['staff_settings','monthly_hours','staffing_requirements','special_days','wednesday_types','thursday_types','shift_request_deadline_rules','shift_request_limits_default','beginner_limits','app_settings','dept_shift_pattern_settings']);
+
 async function sb(path, options = {}) {
+  const table = String(path).split('?')[0];
+  if (API_SETTINGS_TABLES.has(table)) {
+    const prefer = (options.headers && (options.headers['Prefer'] || options.headers['prefer'])) || '';
+    const r = await adminApi('/api/data', {
+      action: 'settings',
+      path,
+      method: options.method || 'GET',
+      body: options.body ? JSON.parse(options.body) : undefined,
+      upsert: prefer.includes('merge-duplicates') || undefined,
+    });
+    return r.rows ?? [];
+  }
   const url = `${SUPABASE_URL}/rest/v1/${path}`;
   const res = await fetch(url, {
     ...options,
@@ -3915,7 +3930,7 @@ function minToTimeStr(min) {
 // その日の休憩データをDBから取得
 async function loadDayBreaks(year, month, day) {
   try {
-    const data = await sb(`shift_breaks?year=eq.${year}&month=eq.${month}&day=eq.${day}&order=staff_id,display_order&select=*`);
+    const data = (await adminApi('/api/data', { action:'list', table:'shift_breaks', view:'day', params:{ year, month, day } })).rows || [];
     const breaks = {};
     data.forEach(b => {
       if (!breaks[b.staff_id]) breaks[b.staff_id] = [];
@@ -4288,27 +4303,14 @@ document.getElementById('verticalPrintBtn')?.addEventListener('click', () => {
 document.getElementById('saveBreaksBtn')?.addEventListener('click', async () => {
   showLoading();
   try {
-    // その日の既存データを全削除してから新規挿入（簡潔）
-    await sb(`shift_breaks?year=eq.${shiftYear}&month=eq.${shiftMonth}&day=eq.${verticalCurrentDay}`, {method:'DELETE'});
-    
-    // 新規挿入
-    const inserts = [];
+    // その日の既存データを全削除してから新規挿入（サーバ側で一括処理）
+    const rows = [];
     Object.entries(verticalBreaksCache).forEach(([staffId, breaks]) => {
       breaks.forEach((b, idx) => {
-        inserts.push({
-          staff_id: parseInt(staffId, 10),
-          year: shiftYear,
-          month: shiftMonth,
-          day: verticalCurrentDay,
-          break_start: b.break_start,
-          break_end: b.break_end,
-          display_order: idx
-        });
+        rows.push({ staff_id: staffId, break_start: b.break_start, break_end: b.break_end, display_order: idx });
       });
     });
-    if (inserts.length > 0) {
-      await sb('shift_breaks', {method:'POST', body: JSON.stringify(inserts)});
-    }
+    await adminApi('/api/data', { action:'breaks-save-day', year:shiftYear, month:shiftMonth, day:verticalCurrentDay, rows });
     verticalBreaksOriginal = JSON.parse(JSON.stringify(verticalBreaksCache));
     showToast('休憩を保存しました ✓', 'success');
   } catch(e) {
