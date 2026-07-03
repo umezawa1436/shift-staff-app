@@ -483,7 +483,7 @@ const SETTINGS_TABLES = {
   staff_settings:               { cols: ['id','staff_id','year','month','planned_hours','max_night_per_month','max_late_per_month','max_long_per_month','max_mid_per_month'], ownCol: 'staff_id' },
   monthly_hours:                { cols: ['id','year','month','dept_id','hours'] },
   staffing_requirements:        { cols: ['id','dept_id','period_id','day_type','min_count'] },
-  special_days:                 { cols: ['id','year','month','day','is_closed','is_holiday','label'] },
+  special_days:                 { cols: ['id','year','month','day','day_type','is_closed','is_holiday','label'] },
   wednesday_types:              { cols: ['id','year','month','day','wed_type'] },
   thursday_types:               { cols: ['id','year','month','day','is_open'] },
   shift_request_deadline_rules: { cols: ['id','dept_id','days_before','hour','minute','months_before'] },
