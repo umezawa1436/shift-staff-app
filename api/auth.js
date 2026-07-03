@@ -110,8 +110,15 @@ export default async function handler(req, res) {
   const body = req.body || {};
   const action = body.action;
   try {
-    if (action === 'staff-login') return await staffLogin(req, res, body);
-    if (action === 'admin-login') return await adminLogin(req, res, body);
+    if (action === 'staff-login') {
+      // 新方式: 社員番号ID + パスワード（deptId 付きの旧クライアントはレガシー処理へ）
+      if (body.deptId === undefined || body.deptId === null || body.deptId === '') return await staffLoginByCode(req, res, body);
+      return await staffLogin(req, res, body);
+    }
+    if (action === 'admin-login') {
+      if (body.name === undefined) return await adminLoginByCode(req, res, body);
+      return await adminLogin(req, res, body);
+    }
     if (action === 'change-password') return await changePassword(req, res, body);
     return bad(res, 400, '不明なアクション');
   } catch (e) {
@@ -207,6 +214,92 @@ async function adminLogin(req, res, body) {
     await sb(`accounts?id=eq.${a.id}`, { method: 'PATCH', body: JSON.stringify(successUpdates) });
   }
 
+  const token = createToken({ accountId: a.id, role: a.role, deptId: a.dept_id });
+  return res.status(200).json({ token, user: { id: a.id, name: a.name, role: a.role, deptId: a.dept_id } });
+}
+
+// ===== 社員番号ID + パスワード によるログイン中核 =====
+// staff_code は歴史的に部署内ユニーク採番のため、部署跨ぎの重複があり得る。
+// 候補全員に対して照合し、一致が1件のときだけログイン成立。複数一致は安全側で拒否。
+async function authenticateByCode(staffCode, password) {
+  const codeNum = parseInt(staffCode);
+  if (!Number.isInteger(codeNum) || codeNum < 0) {
+    return { status: 400, error: '社員番号IDを入力してください' };
+  }
+  const candidates = await sb(`accounts?staff_code=eq.${codeNum}&select=id,name,role,dept_id,staff_id,staff_code,password_hash,failed_attempts,locked_at`);
+  if (!candidates || candidates.length === 0) {
+    return { status: 401, error: '社員番号IDまたはパスワードが正しくありません' };
+  }
+  const matches = candidates.filter(a => verifyPassword(password, a.password_hash));
+  if (matches.length > 1) {
+    return { status: 409, error: '同じ社員番号IDのアカウントが複数一致しました。管理者に社員番号IDの重複解消を依頼してください' };
+  }
+  if (matches.length === 1) {
+    const a = matches[0];
+    if (a.locked_at) {
+      return { status: 423, error: 'このアカウントはロックされています。管理者に解除を依頼してください。' };
+    }
+    // 成功: 失敗カウントリセット＋旧形式ハッシュは scrypt へ自動移行
+    const upd = {};
+    if (a.failed_attempts && a.failed_attempts > 0) upd.failed_attempts = 0;
+    if (isLegacyHash(a.password_hash)) upd.password_hash = hashPassword(password);
+    if (Object.keys(upd).length) {
+      await sb(`accounts?id=eq.${a.id}`, { method: 'PATCH', body: JSON.stringify(upd) });
+    }
+    return { account: a };
+  }
+  // 全候補で不一致: 未ロック候補の失敗カウントを進める（5回でロック）
+  let minRemain = 5;
+  let anyUnlocked = false;
+  for (const a of candidates) {
+    if (a.locked_at) continue;
+    anyUnlocked = true;
+    const n = (a.failed_attempts || 0) + 1;
+    const u = { failed_attempts: n };
+    if (n >= 5) u.locked_at = new Date().toISOString();
+    await sb(`accounts?id=eq.${a.id}`, { method: 'PATCH', body: JSON.stringify(u) });
+    minRemain = Math.min(minRemain, 5 - n);
+  }
+  if (!anyUnlocked) {
+    return { status: 423, error: 'このアカウントはロックされています。管理者に解除を依頼してください。' };
+  }
+  if (minRemain <= 0) {
+    return { status: 423, error: 'ログイン失敗が5回に達したため、アカウントがロックされました。管理者に解除を依頼してください。' };
+  }
+  return { status: 401, error: `社員番号IDまたはパスワードが正しくありません（残り${minRemain}回でロックされます）` };
+}
+
+// スタッフ画面ログイン（新方式）: どの権限でも可。スタッフ紐付け必須。
+async function staffLoginByCode(req, res, body) {
+  const { staffCode, password } = body;
+  if (staffCode === undefined || staffCode === null || staffCode === '' || !password) {
+    return bad(res, 400, '社員番号IDとパスワードを入力してください');
+  }
+  const r = await authenticateByCode(staffCode, password);
+  if (r.error) return bad(res, r.status, r.error);
+  const a = r.account;
+  if (!a.staff_id) {
+    return bad(res, 400, 'スタッフ情報が未紐付けのアカウントです。管理者に紐付けを依頼してください');
+  }
+  // 部門はスタッフ本体から解決（master/leaderはアカウント側dept_idがnullの場合があるため）
+  const staffRows = await sb(`staff?id=eq.${encodeURIComponent(a.staff_id)}&select=dept_id`);
+  const deptId = (staffRows && staffRows[0] && staffRows[0].dept_id != null) ? staffRows[0].dept_id : a.dept_id;
+  const token = createToken({ accountId: a.id, role: a.role, deptId });
+  return res.status(200).json({ token, user: { id: a.staff_id, accountId: a.id, staffCode: a.staff_code, name: a.name, deptId, role: a.role } });
+}
+
+// 管理画面ログイン（新方式）: leader/master 権限が必須。
+async function adminLoginByCode(req, res, body) {
+  const { staffCode, password } = body;
+  if (staffCode === undefined || staffCode === null || staffCode === '' || !password) {
+    return bad(res, 400, '社員番号IDとパスワードを入力してください');
+  }
+  const r = await authenticateByCode(staffCode, password);
+  if (r.error) return bad(res, r.status, r.error);
+  const a = r.account;
+  if (a.role !== 'leader' && a.role !== 'master') {
+    return bad(res, 403, '管理者権限がありません。スタッフ画面からログインしてください');
+  }
   const token = createToken({ accountId: a.id, role: a.role, deptId: a.dept_id });
   return res.status(200).json({ token, user: { id: a.id, name: a.name, role: a.role, deptId: a.dept_id } });
 }
