@@ -1149,7 +1149,7 @@ document.getElementById('deptSelect').addEventListener('change', function() {
   staffSel.innerHTML = '<option value="">選択してください</option>';
   if (STAFF_DATA[deptId]) {
     STAFF_DATA[deptId].forEach(s => {
-      staffSel.innerHTML += `<option value="${s.code}">${s.name}</option>`;
+      staffSel.innerHTML += `<option value="${s.code}">${escapeHtml(s.name)}</option>`;
     });
   }
 });
