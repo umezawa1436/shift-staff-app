@@ -262,21 +262,8 @@
     <div class="login-title">kingyo-shift</div>
     <div class="login-sub">管理者ログイン｜やちよ総合診療クリニック</div>
     <div class="form-group">
-      <label class="form-label">部門</label>
-      <select class="form-input" id="adminDeptSelect">
-        <option value="">部門を選択</option>
-        <option value="0">医療事務</option>
-        <option value="1">看護</option>
-        <option value="2">リハビリ</option>
-        <option value="3">放射線</option>
-        <option value="null">管理</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">お名前</label>
-      <select class="form-input" id="adminNameSelect" disabled>
-        <option value="">先に部門を選択してください</option>
-      </select>
+      <label class="form-label">社員番号ID</label>
+      <input type="number" inputmode="numeric" class="form-input" id="adminStaffCode" placeholder="例）12" autocomplete="username">
     </div>
     <div class="form-group">
       <label class="form-label">パスワード</label>
@@ -945,7 +932,7 @@
   </div>
 </div>
 
-<script src="admin.js?v=41"></script>
+<script src="admin.js?v=43"></script>
 <script src="admin-generate.js?v=4"></script>
 </body>
 </html>
