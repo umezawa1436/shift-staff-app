@@ -820,7 +820,7 @@ async function loadShiftGrid() {
     const daysInMonth = new Date(shiftYear, shiftMonth, 0).getDate();
 
     const [existingShifts, requestData, requirements, monthlyHoursData, staffSettingsData, wedData, shiftSpecialDays, shiftThursdayData] = await Promise.all([
-      sb(`shifts?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,day,shift_type_id,is_locked,is_confirmed,cell_label`),
+      adminApi('/api/data', { action:'list', table:'shifts', view:'admin-month', params:{ year:shiftYear, month:shiftMonth } }).then(r => { const set = new Set(deptStaff.map(s => s.id)); return (r.rows || []).filter(x => set.has(x.staff_id)); }),
       adminApi('/api/data', { action:'list', table:'shift_requests', view:'admin-month', params:{ year:shiftYear, month:shiftMonth } }).then(r => { const set = new Set(deptStaff.map(s => s.id)); return (r.rows || []).filter(x => set.has(x.staff_id)); }),
       sb(`staffing_requirements?dept_id=eq.${currentDept}&select=period_id,day_type,min_count`),
       sb(`monthly_hours?month=eq.${shiftMonth}&year=eq.${shiftYear}&dept_id=is.null&select=hours`),
@@ -870,7 +870,8 @@ async function loadShiftGrid() {
     //   shifts.is_locked はシフト選択済みセルのみ保持できるため、未選択セルのロックは別管理。
     //   テーブル未作成時は警告のみで処理継続（既存機能を壊さない）。
     try {
-      const cellLocksData = await sb(`cell_locks?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,day`);
+      const _clSet = new Set(deptStaff.map(s => s.id));
+      const cellLocksData = ((await adminApi('/api/data', { action:'list', table:'cell_locks', view:'admin-month', params:{ year:shiftYear, month:shiftMonth } })).rows || []).filter(c => _clSet.has(c.staff_id));
       (cellLocksData || []).forEach(c => {
         const key = `${c.staff_id}|${c.day}`;
         lockedCells[key] = true;
@@ -1597,16 +1598,9 @@ async function unconfirmCurrentMonth() {
   showLoading();
   try {
     const deptStaff = allStaff.filter(s => s.dept_id === currentDept);
-    const ids = deptStaff.map(s => `"${s.id}"`).join(',');
-    if (ids) {
-      await sb(
-        `shifts?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&is_confirmed=eq.true`,
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-          body: JSON.stringify({ is_confirmed: false })
-        }
-      );
+    const staffIds = deptStaff.map(s => s.id);
+    if (staffIds.length) {
+      await adminApi('/api/data', { action:'set-shift-month-confirmed', year:shiftYear, month:shiftMonth, staff_ids:staffIds, confirmed:false });
     }
     isCurrentMonthConfirmed = false;
     updateConfirmLockUI();
@@ -1625,9 +1619,9 @@ document.getElementById('unconfirmBtn')?.addEventListener('click', unconfirmCurr
 // 確定済みがあれば alert を出して false、無ければ true を返す
 async function checkRangeNotConfirmed(deptId, startYear, startMonth, endYear, endMonth) {
   const deptStaff = allStaff.filter(s => s.dept_id === deptId);
-  const ids = deptStaff.map(s => `"${s.id}"`).join(',');
-  if (!ids) return true;
-  const confirmedShifts = await sb(`shifts?staff_id=in.(${ids})&is_confirmed=eq.true&select=year,month`);
+  if (!deptStaff.length) return true;
+  const _cfSet = new Set(deptStaff.map(s => s.id));
+  const confirmedShifts = ((await adminApi('/api/data', { action:'list', table:'shifts', view:'admin-confirmed-months' })).rows || []).filter(r => _cfSet.has(r.staff_id));
   const startKey = startYear * 100 + startMonth;
   const endKey = endYear * 100 + endMonth;
   const inRange = (confirmedShifts || []).filter(s => {
@@ -2263,33 +2257,13 @@ document.getElementById('confirmShiftBtn')?.addEventListener('click', async () =
 
   showLoading();
   try {
-    // まず保存
+    // まず保存（確定フラグ付き・アルバイト氏名 cell_label も維持）
     const deptStaff2 = allStaff.filter(s => s.dept_id === currentDept);
-    const ids = deptStaff2.map(s => `"${s.id}"`).join(',');
-
-    if (ids) {
-      await sb(`shifts?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}`, { method:'DELETE' });
+    const staffIds = deptStaff2.map(s => s.id);
+    const inserts = buildShiftInsertRows();
+    if (staffIds.length) {
+      await adminApi('/api/data', { action:'save-shift-month', year:shiftYear, month:shiftMonth, staff_ids:staffIds, confirmed:true, rows:inserts, cellLocks:buildCellLockRows() });
     }
-
-    const inserts = Object.entries(shiftData).map(([key, shiftId]) => {
-      const [staffId, day] = parseKey(key);
-      return {
-        staff_id: staffId,
-        year: shiftYear,
-        month: shiftMonth,
-        day: parseInt(day),
-        shift_type_id: shiftId,
-        is_locked: !!lockedCells[key],
-        is_confirmed: true  // 確定フラグを立てる
-      };
-    });
-
-    if (inserts.length > 0) {
-      await sb('shifts', { method:'POST', body:JSON.stringify(inserts) });
-    }
-
-    // ★ 未選択セルのロックを永続化
-    await persistCellLocks(ids, shiftYear, shiftMonth);
 
     // ★ 確定状態を更新してバナー表示も自動切替
     isCurrentMonthConfirmed = true;
@@ -2307,23 +2281,27 @@ document.getElementById('confirmShiftBtn')?.addEventListener('click', async () =
 // shifts.is_locked はシフト選択済みセル用、cell_locks は未選択セル用に役割分担。
 // 呼び出し側で shifts の保存（DELETE→INSERT）を済ませた後に呼ぶ。
 // テーブル未作成時は警告のみで処理継続（既存機能を壊さない）。
-async function persistCellLocks(staffIdsCsv, year, month) {
-  if (!staffIdsCsv) return;
-  try {
-    await sb(`cell_locks?staff_id=in.(${staffIdsCsv})&year=eq.${year}&month=eq.${month}`, { method:'DELETE' });
-    // シフト未選択かつロック有りのセルのみを cell_locks に保存
-    const inserts = Object.keys(lockedCells)
-      .filter(key => !shiftData[key])
-      .map(key => {
-        const [staffId, day] = parseKey(key);
-        return { staff_id: staffId, year, month, day: parseInt(day) };
-      });
-    if (inserts.length > 0) {
-      await sb('cell_locks', { method:'POST', body:JSON.stringify(inserts) });
-    }
-  } catch(e) {
-    console.warn('cell_locks 保存スキップ（テーブル未作成の可能性）:', e);
-  }
+// 保存API用：シフト行（シフトor氏名があるセル）を構築
+function buildShiftInsertRows() {
+  const insKeys = new Set([...Object.keys(shiftData), ...Object.keys(cellLabels)]);
+  const rows = [];
+  insKeys.forEach(key => {
+    const shiftId = shiftData[key];
+    const label = cellLabels[key] || null;
+    if (!shiftId && !label) return;
+    const [staffId, day] = parseKey(key);
+    rows.push({ staff_id: staffId, day: parseInt(day), shift_type_id: shiftId || null, is_locked: !!lockedCells[key], cell_label: label });
+  });
+  return rows;
+}
+// 保存API用：シフト未選択かつロック有りのセル（cell_locks 永続化対象）を構築
+function buildCellLockRows() {
+  return Object.keys(lockedCells)
+    .filter(key => !shiftData[key])
+    .map(key => {
+      const [staffId, day] = parseKey(key);
+      return { staff_id: staffId, day: parseInt(day) };
+    });
 }
 
 // シフト保存
@@ -2338,24 +2316,11 @@ document.getElementById('saveShiftBtn').addEventListener('click', async () => {
       if (aOrder !== bOrder) return aOrder - bOrder;
       return a.staff_code - b.staff_code;
     });
-    const ids = deptStaff.map(s => `"${s.id}"`).join(',');
-    if (ids) {
-      await sb(`shifts?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}`, { method:'DELETE' });
+    const staffIds = deptStaff.map(s => s.id);
+    const inserts = buildShiftInsertRows();
+    if (staffIds.length) {
+      await adminApi('/api/data', { action:'save-shift-month', year:shiftYear, month:shiftMonth, staff_ids:staffIds, confirmed:false, rows:inserts, cellLocks:buildCellLockRows() });
     }
-    const insKeys = new Set([...Object.keys(shiftData), ...Object.keys(cellLabels)]);
-    const inserts = [];
-    insKeys.forEach(key => {
-      const shiftId = shiftData[key];
-      const label = cellLabels[key] || null;
-      if (!shiftId && !label) return; // シフトも氏名も無いキーはスキップ
-      const [staffId, day] = parseKey(key);
-      inserts.push({ staff_id:staffId, year:shiftYear, month:shiftMonth, day:parseInt(day), shift_type_id:shiftId || null, is_locked:!!lockedCells[key], cell_label:label });
-    });
-    if (inserts.length > 0) {
-      await sb('shifts', { method:'POST', body:JSON.stringify(inserts) });
-    }
-    // ★ 未選択セルのロックを永続化
-    await persistCellLocks(ids, shiftYear, shiftMonth);
     // 保存時点スナップショット更新（保存時点に戻すボタン用）
     savedShiftSnapshot = {
       shiftData: JSON.parse(JSON.stringify(shiftData)),
@@ -5240,14 +5205,10 @@ async function clearFixedShifts(staffId, staffName) {
         deletions.push({ day: d, shift_type_id: fixedShift });
       }
 
-      // 削除実行: day と shift_type_id が完全一致するもののみ
-      for (const del of deletions) {
-        const url = `shifts?staff_id=eq.${staffId}&year=eq.${curYear}&month=eq.${curMonth}&day=eq.${del.day}&shift_type_id=eq.${encodeURIComponent(del.shift_type_id)}`;
-        const before = await sb(`${url}&select=id`);
-        if (before && before.length > 0) {
-          await sb(url, { method: 'DELETE' });
-          deletedTotal += before.length;
-        }
+      // 削除実行: day と shift_type_id が完全一致するもののみ（サーバ側で一括処理）
+      if (deletions.length > 0) {
+        const r = await adminApi('/api/data', { action:'fixed-shift-remove', staff_id:staffId, year:curYear, month:curMonth, items:deletions });
+        deletedTotal += r.deleted || 0;
       }
 
       // 表示中の月ならローカルもクリア
@@ -5376,7 +5337,7 @@ async function applyFixedShiftsToGrid(staffId, fixedShifts) {
       const inserts = [];
 
       // 既存シフトを取得
-      const existing = await sb(`shifts?staff_id=eq.${staffId}&year=eq.${curYear}&month=eq.${curMonth}&select=day,shift_type_id,is_locked`);
+      const existing = (await adminApi('/api/data', { action:'list', table:'shifts', view:'admin-staff-month', params:{ staff_id:staffId, year:curYear, month:curMonth } })).rows || [];
       const existingMap = {};
       existing.forEach(s => { existingMap[s.day] = s; });
 
@@ -5398,12 +5359,9 @@ async function applyFixedShiftsToGrid(staffId, fixedShifts) {
       }
 
       if (inserts.length > 0) {
-        // 対象日のロックされてないシフトを削除してから挿入
-        for (const ins of inserts) {
-          await sb(`shifts?staff_id=eq.${staffId}&year=eq.${curYear}&month=eq.${curMonth}&day=eq.${ins.day}&is_locked=eq.false`, {method:'DELETE'});
-        }
-        await sb('shifts', {method:'POST', body:JSON.stringify(inserts)});
-        totalInserts += inserts.length;
+        // ロックされていない対象日を削除してから挿入（サーバ側で一括処理・ロック日は保護）
+        const r = await adminApi('/api/data', { action:'fixed-shift-apply', staff_id:staffId, year:curYear, month:curMonth, rows:inserts });
+        totalInserts += r.inserted ?? inserts.length;
       }
 
       // 表示中の月ならローカルにも反映
