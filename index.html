@@ -963,16 +963,12 @@ function minToTimeStr(min) {
 async function openVerticalView(year, month, day) {
   showLoading();
   try {
-    const allDeptShifts = await supabaseRequest(
-      `shifts?year=eq.${year}&month=eq.${month}&day=eq.${day}&is_confirmed=eq.true&select=staff_id,shift_type_id,cell_label`
-    );
+    const allDeptShifts = (await dataApi({ action:'list', table:'shifts', view:'day-confirmed', params:{ year, month, day } })).rows || [];
 
     // ★ 確定シフトが無い場合、調整中の可能性をチェック
     //   レース条件：ユーザーがカレンダーを開いた後に管理者が確定取り消しすると発生する
     if (allDeptShifts.length === 0) {
-      const unconfirmedExists = await supabaseRequest(
-        `shifts?year=eq.${year}&month=eq.${month}&day=eq.${day}&is_confirmed=eq.false&select=staff_id&limit=1`
-      );
+      const unconfirmedExists = (await dataApi({ action:'list', table:'shifts', view:'day-has-unconfirmed', params:{ year, month, day } })).rows || [];
       hideLoading();
       if (unconfirmedExists.length > 0) {
         showToast('この日のシフトは現在調整中です', 'info');
@@ -2095,9 +2091,7 @@ async function loadConfirmedShifts() {
   grid.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:20px">読み込み中...</div>';
 
   try {
-    const shifts = await supabaseRequest(
-      `shifts?staff_id=eq.${currentUser.id}&year=eq.${confYear}&month=eq.${confMonth}&is_confirmed=eq.true&select=day,shift_type_id&order=day`
-    );
+    const shifts = (await dataApi({ action:'list', table:'shifts', view:'my-month-confirmed', params:{ year: confYear, month: confMonth } })).rows || [];
 
     const daysInMonth = new Date(confYear, confMonth, 0).getDate();
     const shiftMap = {};
@@ -2122,9 +2116,7 @@ async function loadConfirmedShifts() {
       // ★ 確定シフトがない場合、未確定なのか「調整中」なのかを判別する
       //   調整中 = 過去に確定されたが、管理者が編集のため一時的に取り消した状態
       //   この時 shifts テーブルには is_confirmed=false のレコードが残っている
-      const unconfirmedExists = await supabaseRequest(
-        `shifts?staff_id=eq.${currentUser.id}&year=eq.${confYear}&month=eq.${confMonth}&is_confirmed=eq.false&select=day&limit=1`
-      );
+      const unconfirmedExists = (await dataApi({ action:'list', table:'shifts', view:'my-month-has-unconfirmed', params:{ year: confYear, month: confMonth } })).rows || [];
 
       if (unconfirmedExists.length > 0) {
         // 調整中：管理者が確定を取り消して編集中
