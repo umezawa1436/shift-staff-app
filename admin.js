@@ -439,8 +439,7 @@ async function initApp() {
 }
 
 async function loadStaff() {
-  const f = adminUser.role === 'leader' ? `&dept_id=eq.${adminUser.deptId}` : '';
-  allStaff = await sb(`staff?order=dept_id,display_order.asc.nullslast,staff_code${f}&select=id,staff_code,name,dept_id,emp_type,no_night,no_count,skill_level,fixed_shifts,display_order`);
+  allStaff = (await adminApi('/api/data', { action:'list', table:'staff', view:'admin-all' })).rows || [];
 }
 
 function updateMonthDisplays() {
@@ -705,7 +704,7 @@ async function loadDashboard() {
   try {
     // タイムアウト10秒
     const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('タイムアウト（10秒経過）')), 10000));
-    const requestsPromise = sb(`shift_requests?year=eq.${dashYear}&month=eq.${dashMonth}&select=staff_id`);
+    const requestsPromise = adminApi('/api/data', { action:'list', table:'shift_requests', view:'admin-month', params:{ year:dashYear, month:dashMonth } }).then(r => r.rows || []);
     const requests = await Promise.race([requestsPromise, timeoutPromise]);
 
     const submittedIds = new Set(requests.map(r => r.staff_id));
@@ -752,8 +751,8 @@ async function loadRequests() {
       return a.staff_code - b.staff_code;
     });
     if (!deptStaff.length) { hideLoading(); return; }
-    const ids = deptStaff.map(s => `"${s.id}"`).join(',');
-    const reqs = await sb(`shift_requests?staff_id=in.(${ids})&year=eq.${reqYear}&month=eq.${reqMonth}&select=staff_id,day,request_type,submitted_at`);
+    const idSet = new Set(deptStaff.map(s => s.id));
+    const reqs = ((await adminApi('/api/data', { action:'list', table:'shift_requests', view:'admin-month', params:{ year:reqYear, month:reqMonth } })).rows || []).filter(r => idSet.has(r.staff_id));
     const byStaff = {};
     deptStaff.forEach(s => { byStaff[s.id] = {staff:s, entries:[]}; });
     reqs.forEach(r => { if (byStaff[r.staff_id]) byStaff[r.staff_id].entries.push(r); });
@@ -774,7 +773,7 @@ async function loadRequests() {
 async function showRequestDetail(staffId, staffName) {
   showLoading();
   try {
-    const reqs = await sb(`shift_requests?staff_id=eq.${staffId}&year=eq.${reqYear}&month=eq.${reqMonth}&order=day&select=day,request_type`);
+    const reqs = ((await adminApi('/api/data', { action:'list', table:'shift_requests', view:'admin-month', params:{ year:reqYear, month:reqMonth } })).rows || []).filter(r => r.staff_id === staffId).sort((a,b) => a.day - b.day);
     document.getElementById('requestDetailTitle').textContent = `${staffName} - ${reqYear}年${reqMonth}月`;
     const daysInMonth = new Date(reqYear, reqMonth, 0).getDate();
     const reqMap = {};
@@ -822,7 +821,7 @@ async function loadShiftGrid() {
 
     const [existingShifts, requestData, requirements, monthlyHoursData, staffSettingsData, wedData, shiftSpecialDays, shiftThursdayData] = await Promise.all([
       sb(`shifts?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,day,shift_type_id,is_locked,is_confirmed,cell_label`),
-      sb(`shift_requests?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,day,request_type`),
+      adminApi('/api/data', { action:'list', table:'shift_requests', view:'admin-month', params:{ year:shiftYear, month:shiftMonth } }).then(r => { const set = new Set(deptStaff.map(s => s.id)); return (r.rows || []).filter(x => set.has(x.staff_id)); }),
       sb(`staffing_requirements?dept_id=eq.${currentDept}&select=period_id,day_type,min_count`),
       sb(`monthly_hours?month=eq.${shiftMonth}&year=eq.${shiftYear}&dept_id=is.null&select=hours`),
       sb(`staff_settings?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,planned_hours`),
@@ -2635,11 +2634,7 @@ async function updateAccount(id) {
 
     // 紐付け先 staff も同期：staff_code を合わせ、表示氏名もアカウント名に合わせる（uuidで確実に特定）
     if (staffLinkActive && staffId) {
-      await sb(`staff?id=eq.${staffId}`, {
-        method: 'PATCH',
-        headers: { 'Prefer': 'return=representation' },
-        body: JSON.stringify({ staff_code: staffCode, name })
-      });
+      await adminApi('/api/data', { action:'update', table:'staff', id: staffId, values:{ staff_code: staffCode, name } });
       const idx = allStaff.findIndex(s => s.id === staffId);
       if (idx !== -1) { allStaff[idx].staff_code = staffCode; allStaff[idx].name = name; }
     }
@@ -4769,7 +4764,7 @@ async function moveStaffOrder(staffId, direction) {
       for (let i = 0; i < deptStaff.length; i++) {
         const s = deptStaff[i];
         const newOrder = (i + 1) * 10;
-        await sb(`staff?id=eq.${s.id}`, { method:'PATCH', body: JSON.stringify({ display_order: newOrder }) });
+        await adminApi('/api/data', { action:'update', table:'staff', id: s.id, values:{ display_order: newOrder } });
         s.display_order = newOrder;
       }
     }
@@ -4777,8 +4772,8 @@ async function moveStaffOrder(staffId, direction) {
     // 2人を入れ替え
     const myOrder = myself.display_order;
     const targetOrder = target.display_order;
-    await sb(`staff?id=eq.${myself.id}`, { method:'PATCH', body: JSON.stringify({ display_order: targetOrder }) });
-    await sb(`staff?id=eq.${target.id}`, { method:'PATCH', body: JSON.stringify({ display_order: myOrder }) });
+    await adminApi('/api/data', { action:'update', table:'staff', id: myself.id, values:{ display_order: targetOrder } });
+    await adminApi('/api/data', { action:'update', table:'staff', id: target.id, values:{ display_order: myOrder } });
 
     // ローカル状態を更新
     myself.display_order = targetOrder;
@@ -5031,11 +5026,7 @@ async function loadStaffTable() {
 async function updateStaffField(staffId, field, value) {
   showLoading();
   try {
-    await sb(`staff?id=eq.${staffId}`, {
-      method: 'PATCH',
-      headers: { 'Prefer': 'return=representation' },
-      body: JSON.stringify({ [field]: value })
-    });
+    await adminApi('/api/data', { action:'update', table:'staff', id: staffId, values:{ [field]: value } });
     // ローカルのallStaffも即時更新
     const idx = allStaff.findIndex(s => s.id === staffId);
     if (idx !== -1) allStaff[idx][field] = value;
@@ -5128,11 +5119,7 @@ async function saveAllFixedShifts(staffId) {
       const el = document.getElementById(`fixedShift-${staffId}-${dow}`);
       if (el && el.value !== '') fixedShifts[dow] = el.value;
     });
-    await sb(`staff?id=eq.${staffId}`, {
-      method: 'PATCH',
-      headers: { 'Prefer': 'return=representation' },
-      body: JSON.stringify({ fixed_shifts: fixedShifts })
-    });
+    await adminApi('/api/data', { action:'update', table:'staff', id: staffId, values:{ fixed_shifts: fixedShifts } });
     const idx = allStaff.findIndex(s => s.id === staffId);
     if (idx !== -1) allStaff[idx].fixed_shifts = fixedShifts;
     showToast('曜日固定シフトを保存しました ✓', 'success');
@@ -5281,11 +5268,7 @@ async function clearFixedShifts(staffId, staffName) {
     }
 
     // fixed_shifts設定をクリア
-    await sb(`staff?id=eq.${staffId}`, {
-      method: 'PATCH',
-      headers: { 'Prefer': 'return=representation' },
-      body: JSON.stringify({ fixed_shifts: {} })
-    });
+    await adminApi('/api/data', { action:'update', table:'staff', id: staffId, values:{ fixed_shifts: {} } });
 
     const idx = allStaff.findIndex(s => s.id === staffId);
     if (idx !== -1) allStaff[idx].fixed_shifts = {};
@@ -5567,7 +5550,7 @@ document.getElementById('saveNewStaffBtn').addEventListener('click', async () =>
     // 1. staff テーブルに登録（レスポンスから新規ID取得）
     const maxCode = allStaff.filter(s => s.dept_id === deptId).reduce((m, s) => Math.max(m, s.staff_code), 0);
     const newStaffCode = maxCode + 1;
-    const staffResp = await sb('staff', { method:'POST', body:JSON.stringify([{staff_code:newStaffCode,name,dept_id:deptId,emp_type:empType,no_night:noNight,no_count:false}]) });
+    const staffResp = (await adminApi('/api/data', { action:'insert', table:'staff', values:{staff_code:newStaffCode,name,dept_id:deptId,emp_type:empType,no_night:noNight,no_count:false} })).rows;
     const newStaff = Array.isArray(staffResp) ? staffResp[0] : staffResp;
     if (!newStaff || newStaff.id == null) {
       throw new Error('スタッフ登録のレスポンスからIDを取得できませんでした');
@@ -5614,7 +5597,7 @@ async function deleteStaff(id, name) {
   if (!confirm(`${name} を削除しますか？`)) return;
   showLoading();
   try {
-    await sb(`staff?id=eq.${id}`, { method:'DELETE' });
+    await adminApi('/api/data', { action:'delete', table:'staff', id });
     await loadStaff();
     loadStaffTable();
     showToast(`${name} を削除しました`,'success');
@@ -5798,7 +5781,8 @@ async function reloadRequestsOnly() {
     const ids = deptStaff.map(s => s.id);
     const reqMap = {};
     if (ids.length > 0) {
-      const reqs = await sb(`shift_requests?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,day,request_type`);
+      const set = new Set(ids);
+      const reqs = ((await adminApi('/api/data', { action:'list', table:'shift_requests', view:'admin-month', params:{ year:shiftYear, month:shiftMonth } })).rows || []).filter(r => set.has(r.staff_id));
       reqs.forEach(r => { reqMap[`${r.staff_id}|${r.day}`] = r.request_type; });
     }
     window._shiftReqMap = reqMap;
