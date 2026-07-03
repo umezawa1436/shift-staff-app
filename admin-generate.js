@@ -106,7 +106,8 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
 
     // ★ 確定ロックチェック：生成対象（genYear/genMonth/currentDept）が確定済みなら中止
     //   現在表示中とは別の月を生成しようとした場合も保護する。
-    const confirmedCheck = await sb(`shifts?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&is_confirmed=eq.true&select=staff_id&limit=1`);
+    const _genIdSet = new Set(deptStaff.map(s => s.id));
+    const confirmedCheck = ((await adminApi('/api/data', { action:'list', table:'shifts', view:'admin-month', params:{ year:genYear, month:genMonth } })).rows || []).filter(r => _genIdSet.has(r.staff_id) && r.is_confirmed === true);
     if (confirmedCheck.length > 0) {
       hideLoading();
       const deptLabel = DEPT_NAMES[currentDept] || `部署${currentDept}`;
@@ -123,8 +124,8 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
 
     // データ取得
     const [requests, existingShifts, requirements, monthlyHoursData, staffSettingsData, specialDaysData, thursdayData2, beginnerLimitsRaw, cellLocksData] = await Promise.all([
-      sb(`shift_requests?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&select=staff_id,day,request_type`),
-      sb(`shifts?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&select=staff_id,day,shift_type_id,is_locked`),
+      adminApi('/api/data', { action:'list', table:'shift_requests', view:'admin-month', params:{ year:genYear, month:genMonth } }).then(r => (r.rows || []).filter(x => _genIdSet.has(x.staff_id))),
+      adminApi('/api/data', { action:'list', table:'shifts', view:'admin-month', params:{ year:genYear, month:genMonth } }).then(r => (r.rows || []).filter(x => _genIdSet.has(x.staff_id))),
       sb(`staffing_requirements?dept_id=eq.${currentDept}&select=period_id,day_type,min_count`),
       sb(`monthly_hours?month=eq.${genMonth}&year=eq.${genYear}&dept_id=is.null&select=hours`),
       sb(`staff_settings?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&select=*`),
@@ -132,7 +133,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       sb(`thursday_types?year=eq.${genYear}&month=eq.${genMonth}&select=day,is_open`),
       sb(`beginner_limits?dept_id=eq.${currentDept}&select=period_id,day_type,max_beginners`),
       // ★ 未選択セルのロック（cell_locks）も読み込み。テーブル未作成時は空配列。
-      sb(`cell_locks?staff_id=in.(${ids})&year=eq.${genYear}&month=eq.${genMonth}&select=staff_id,day`).catch(() => [])
+      adminApi('/api/data', { action:'list', table:'cell_locks', view:'admin-month', params:{ year:genYear, month:genMonth } }).then(r => (r.rows || []).filter(x => _genIdSet.has(x.staff_id))).catch(() => [])
     ]);
 
     // 初心者上限マップ
@@ -1094,7 +1095,8 @@ _logStep('STEP8完了');
     shiftGridContext = `${currentDept}|${shiftYear}|${shiftMonth}`;
     savedShiftSnapshot = {
       shiftData: JSON.parse(JSON.stringify(shiftData)),
-      lockedCells: JSON.parse(JSON.stringify(lockedCells))
+      lockedCells: JSON.parse(JSON.stringify(lockedCells)),
+      cellLabels: JSON.parse(JSON.stringify(cellLabels))
     };
     undoStack = [];
     redoStack = [];
@@ -1237,19 +1239,19 @@ async function approveAIPreview() {
       if (aOrder !== bOrder) return aOrder - bOrder;
       return a.staff_code - b.staff_code;
     });
-    const ids = deptStaff.map(s => `"${s.id}"`).join(',');
-
-    await sb(`shifts?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}`, { method:'DELETE' });
-
-    // ★ 空シフトは保存しない。ロックは lockedCells から再構築。
-    const inserts = Object.entries(generatedShifts)
-      .filter(([_, shiftId]) => shiftId !== '')
-      .map(([key, shiftId]) => {
-        const [staffId, day] = parseKey(key);
-        return { staff_id:staffId, year:shiftYear, month:shiftMonth, day:parseInt(day), shift_type_id:shiftId, is_locked: !!lockedCells[key] };
-      });
-    if (inserts.length > 0) {
-      await sb('shifts', { method:'POST', body:JSON.stringify(inserts) });
+    // ★ 空シフトは保存しない。ロックは lockedCells から再構築。アルバイト氏名(cellLabels)も保全。
+    const staffIds = deptStaff.map(s => s.id);
+    const insKeys = new Set([...Object.keys(generatedShifts).filter(k => generatedShifts[k] !== ''), ...Object.keys(cellLabels)]);
+    const inserts = [];
+    insKeys.forEach(key => {
+      const shiftId = generatedShifts[key] || null;
+      const label = cellLabels[key] || null;
+      if (!shiftId && !label) return;
+      const [staffId, day] = parseKey(key);
+      inserts.push({ staff_id: staffId, day: parseInt(day), shift_type_id: shiftId, is_locked: !!lockedCells[key], cell_label: label });
+    });
+    if (staffIds.length) {
+      await adminApi('/api/data', { action:'save-shift-month', year:shiftYear, month:shiftMonth, staff_ids:staffIds, confirmed:false, rows:inserts, cellLocks:buildCellLockRows() });
     }
 
     // shiftData は既に AI 結果で上書き済み。再度同期しておく。
@@ -1257,9 +1259,6 @@ async function approveAIPreview() {
     Object.entries(generatedShifts).forEach(([key, shift]) => {
       if (shift !== '') shiftData[key] = shift;
     });
-
-    // cell_locks 永続化
-    await persistCellLocks(ids, shiftYear, shiftMonth);
 
     // 保存時点スナップショット更新（保存ボタンと同じ）
     savedShiftSnapshot = {
