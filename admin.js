@@ -329,63 +329,24 @@ async function sha256(message) {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// 部門選択時に名前ドロップダウンを動的に取得
-document.getElementById('adminDeptSelect').addEventListener('change', async (e) => {
-  const deptVal = e.target.value;
-  const nameSelect = document.getElementById('adminNameSelect');
-  nameSelect.innerHTML = '<option value="">読み込み中...</option>';
-  nameSelect.disabled = true;
-
-  if (deptVal === '') {
-    nameSelect.innerHTML = '<option value="">先に部門を選択してください</option>';
-    return;
-  }
-
-  try {
-    const deptIdToSend = (deptVal === 'null') ? null : parseInt(deptVal);
-    const res = await fetch('/api/admin-names', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deptId: deptIdToSend }),
-    });
-    const data = await res.json();
-    const names = data.names || [];
-
-    if (names.length === 0) {
-      nameSelect.innerHTML = '<option value="">該当する管理者がいません</option>';
-      nameSelect.disabled = true;
-    } else {
-      nameSelect.innerHTML = '<option value="">名前を選択</option>' +
-        names.map(n => `<option value="${n}">${n}</option>`).join('');
-      nameSelect.disabled = false;
-    }
-  } catch (err) {
-    console.error('名前取得エラー:', err);
-    nameSelect.innerHTML = '<option value="">読み込みに失敗しました</option>';
-    nameSelect.disabled = true;
-  }
-});
 
 document.getElementById('adminLoginBtn').addEventListener('click', async () => {
-  const deptVal = document.getElementById('adminDeptSelect').value;
-  const name = document.getElementById('adminNameSelect').value;
+  const staffCode = document.getElementById('adminStaffCode').value.trim();
   const pw = document.getElementById('adminPassword').value;
   const errEl = document.getElementById('adminError');
 
-  if (deptVal === '' || !name || !pw) {
+  if (!staffCode || !pw) {
     errEl.style.display='block';
-    errEl.textContent='すべて選択・入力してください';
+    errEl.textContent='社員番号IDとパスワードを入力してください';
     return;
   }
-
-  const deptId = (deptVal === 'null') ? null : parseInt(deptVal);
 
   showLoading();
   try {
     const r = await fetch('/api/auth', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'admin-login', deptId, name, password: pw }),
+      body: JSON.stringify({ action: 'admin-login', staffCode, password: pw }),
     });
     const data = await r.json();
 
@@ -2518,11 +2479,15 @@ async function addAccount() {
 // アカウント紐付け用：指定部門のスタッフを<option>化（value=staff.id, data-code=現staff_code）
 function accountStaffOptions(deptId, selectedStaffId) {
   const d = Number(deptId);
-  const list = (typeof allStaff !== 'undefined' ? allStaff : []).filter(s => s.dept_id === d);
+  const all = (typeof allStaff !== 'undefined' ? allStaff : []);
+  // 部門未指定（master等）は全スタッフを部門名付きで表示
+  const list = Number.isInteger(d) && deptId !== '' && deptId !== null && deptId !== undefined ? all.filter(s => s.dept_id === d) : all;
+  const showDept = list === all;
   const opts = ['<option value="">（紐付けなし）</option>'];
   list.forEach(s => {
     const sel = (selectedStaffId && s.id === selectedStaffId) ? 'selected' : '';
-    opts.push(`<option value="${s.id}" data-code="${s.staff_code ?? ''}" ${sel}>${escapeHtml(s.name)}（現ID:${s.staff_code ?? '—'}）</option>`);
+    const deptTag = showDept ? `${DEPT_NAMES[s.dept_id] || ''}｜` : '';
+    opts.push(`<option value="${s.id}" data-code="${s.staff_code ?? ''}" ${sel}>${deptTag}${escapeHtml(s.name)}（現ID:${s.staff_code ?? '—'}）</option>`);
   });
   return opts.join('');
 }
@@ -2538,7 +2503,7 @@ function showEditAccountModal(id, name, role, deptId, staffCode, staffId) {
       <div class="modal-title">${escapeHtml(name)}のアカウント編集</div>
       <div class="form-group"><label class="form-label">名前（苗字）</label><input type="text" class="form-input" id="editAccName" value="${escapeHtml(name)}"></div>
       <div class="form-group"><label class="form-label">権限${isSelf ? '（自分自身の権限は変更できません）' : ''}</label>
-        <select class="form-select" id="editAccRole" ${isSelf ? 'disabled' : ''} onchange="document.getElementById('editAccDeptGroup').style.display=this.value==='master'?'none':'block';document.getElementById('editAccStaffLinkGroup').style.display=this.value==='staff'?'block':'none';document.getElementById('editAccStaffSelect').innerHTML=accountStaffOptions(document.getElementById('editAccDept').value,'')">
+        <select class="form-select" id="editAccRole" ${isSelf ? 'disabled' : ''} onchange="document.getElementById('editAccDeptGroup').style.display=this.value==='master'?'none':'block';document.getElementById('editAccStaffSelect').innerHTML=accountStaffOptions(this.value==='master'?null:document.getElementById('editAccDept').value,'')">
           <option value="master" ${role==='master'?'selected':''}>管理</option>
           <option value="leader" ${role==='leader'?'selected':''}>リーダー</option>
           <option value="staff" ${role==='staff'?'selected':''}>スタッフ</option>
@@ -2553,12 +2518,12 @@ function showEditAccountModal(id, name, role, deptId, staffCode, staffId) {
           <option value="3" ${deptId===3?'selected':''}>放射線</option>
         </select>
       </div>
-      <div class="form-group" id="editAccStaffLinkGroup" style="display:${role==='staff'?'block':'none'}">
+      <div class="form-group" id="editAccStaffLinkGroup">
         <label class="form-label">紐付けスタッフ</label>
-        <select class="form-select" id="editAccStaffSelect" onchange="var o=this.options[this.selectedIndex];document.getElementById('editAccStaffCode').value=o.getAttribute('data-code')||''">${accountStaffOptions(deptId, staffId || '')}</select>
-        <label class="form-label" style="margin-top:8px">スタッフID（4〜5桁・ログイン用）</label>
-        <input type="text" inputmode="numeric" class="form-input" id="editAccStaffCode" value="${staffCode ?? ''}" placeholder="例: 1042">
-        <div style="font-size:11px;color:#6b7280;margin-top:4px">スタッフを選んでIDを設定すると、シフト表側の該当スタッフ（氏名・ID）に紐付き、その番号＋部門＋パスワードでログインできます。</div>
+        <select class="form-select" id="editAccStaffSelect" onchange="var o=this.options[this.selectedIndex];document.getElementById('editAccStaffCode').value=o.getAttribute('data-code')||''">${accountStaffOptions(role==='master'?null:deptId, staffId || '')}</select>
+        <label class="form-label" style="margin-top:8px">社員番号ID（ログイン用）</label>
+        <input type="text" inputmode="numeric" class="form-input" id="editAccStaffCode" value="${staffCode ?? ''}" placeholder="例: 12">
+        <div style="font-size:11px;color:#6b7280;margin-top:4px">この社員番号ID＋パスワードでログインします（全権限共通）。スタッフを選ぶと現IDが自動入力され、保存時にシフト表側の該当スタッフにも同じIDが同期されます。</div>
       </div>
       <div class="form-group"><label class="form-label">新しいパスワード（変更する場合のみ）</label><input type="password" class="form-input" id="editAccPw" placeholder="空欄で変更なし"></div>
       <div class="modal-footer">
@@ -2580,18 +2545,18 @@ async function updateAccount(id) {
   if (!name) { showToast('名前は必須です', 'error'); return; }
   if (pw && pw.length < 4) { showToast('パスワードは4文字以上にしてください', 'error'); return; }
 
-  // スタッフ紐付け（role=staff のときのみ）
-  const staffLinkActive = !isSelf && role === 'staff';
+  // スタッフ紐付け（全権限で可能。社員番号ID＝ログインIDのため master/leader にも付与できる）
+  const staffLinkActive = true;
   let staffId = '', staffCode = '';
-  if (staffLinkActive) {
+  {
     staffId = document.getElementById('editAccStaffSelect').value || '';
     const codeRaw = (document.getElementById('editAccStaffCode').value || '').trim();
     if (staffId) {
-      if (!/^\d{1,5}$/.test(codeRaw)) { showToast('スタッフIDは数字（最大5桁）で入力してください', 'error'); return; }
+      if (!/^\d{1,5}$/.test(codeRaw)) { showToast('社員番号IDは数字（最大5桁）で入力してください', 'error'); return; }
       staffCode = parseInt(codeRaw);
-      // 同部門内 staff_code 重複チェック（選択スタッフ自身は除外）
-      const dup = allStaff.find(s => s.dept_id === deptId && s.staff_code === staffCode && s.id !== staffId);
-      if (dup) { showToast(`スタッフID ${staffCode} は同部門の「${dup.name}」が使用中です`, 'error'); return; }
+      // 全社での staff_code 重複チェック（社員番号ID＝ログインIDのため部署跨ぎ禁止・選択スタッフ自身は除外）
+      const dup = allStaff.find(s => s.staff_code === staffCode && s.id !== staffId);
+      if (dup) { showToast(`社員番号ID ${staffCode} は「${DEPT_NAMES[dup.dept_id] || ''}｜${dup.name}」が使用中です`, 'error'); return; }
     } else {
       // 紐付けなしを選択 → 解除（空で送信）
       staffCode = '';
@@ -5558,7 +5523,7 @@ document.getElementById('saveNewStaffBtn').addEventListener('click', async () =>
         await adminApi('/api/admin-accounts', {
           action: 'create-for-new-staff',
           name, password,
-          deptId, staffId: newStaff.id, staffCode: newStaffCode,
+          deptId, staffId: newStaff.id, staffCode: newStaff.staff_code,
         });
       } catch(accErr) {
         console.error('アカウント作成エラー:', accErr);
@@ -5859,9 +5824,7 @@ document.getElementById('adminLogoutBtn').addEventListener('click', () => {
   localStorage.removeItem('shift_admin_token');
   document.getElementById('appScreen').style.display = 'none';
   document.getElementById('loginScreen').style.display = 'flex';
-  document.getElementById('adminDeptSelect').value = '';
-  document.getElementById('adminNameSelect').innerHTML = '<option value="">先に部門を選択してください</option>';
-  document.getElementById('adminNameSelect').disabled = true;
+  document.getElementById('adminStaffCode').value = '';
   document.getElementById('adminPassword').value = '';
 });
 
