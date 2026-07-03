@@ -119,6 +119,8 @@ const POLICY = {
   shift_requests: {},
   shifts: {},
   cell_locks: {},
+  shift_request_drafts: {},
+  shift_breaks: {},
 };
 
 function allowed(table, action, role) {
@@ -236,6 +238,28 @@ async function listView(res, payload, table, view, params) {
         const rows = await sb(`cell_locks?year=eq.${year}&month=eq.${month}&select=staff_id,day`);
         return res.status(200).json({ rows });
       } catch { return res.status(200).json({ rows: [] }); } // テーブル未作成でも壊さない
+    }
+    return bad(res, 400, '不明なviewです');
+  }
+
+  if (table === 'shift_request_drafts') {
+    if (view === 'mine') {
+      const year = params.year, month = params.month;
+      if (!intOk(year, 2000, 2100) || !intOk(month, 1, 12)) return bad(res, 400, 'year/month が不正です');
+      const acc = await resolveAccount(payload.accountId);
+      if (!acc || !acc.staff_id) return res.status(200).json({ rows: [] });
+      const rows = await sb(`shift_request_drafts?staff_id=eq.${encodeURIComponent(acc.staff_id)}&year=eq.${year}&month=eq.${month}&select=day,request_type`);
+      return res.status(200).json({ rows });
+    }
+    return bad(res, 400, '不明なviewです');
+  }
+
+  if (table === 'shift_breaks') {
+    if (view === 'day') {
+      const year = params.year, month = params.month, day = params.day;
+      if (!intOk(year, 2000, 2100) || !intOk(month, 1, 12) || !intOk(day, 1, 31)) return bad(res, 400, 'year/month/day が不正です');
+      const rows = await sb(`shift_breaks?year=eq.${year}&month=eq.${month}&day=eq.${day}&order=staff_id,display_order&select=id,staff_id,break_start,break_end,display_order`);
+      return res.status(200).json({ rows });
     }
     return bad(res, 400, '不明なviewです');
   }
@@ -386,6 +410,204 @@ async function fixedShiftRemove(res, payload, body) {
   return res.status(200).json({ ok: true, deleted });
 }
 
+// ===== 希望の下書き（本人スコープ・staff_idはサーバ強制）=====
+const TIME_RE = /^\d{1,2}:\d{2}$/;
+
+async function draftSaveDay(res, payload, body) {
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc || !acc.staff_id) return bad(res, 400, 'スタッフ未紐付けのアカウントです');
+  const year = body.year, month = body.month, day = body.day;
+  if (!intOk(year, 2000, 2100) || !intOk(month, 1, 12) || !intOk(day, 1, 31)) return bad(res, 400, 'year/month/day が不正です');
+  const rt = String(body.request_type || '').trim().slice(0, 30);
+  if (!rt) return bad(res, 400, 'request_type が必要です');
+  const sid = encodeURIComponent(acc.staff_id);
+  await sb(`shift_request_drafts?staff_id=eq.${sid}&year=eq.${year}&month=eq.${month}&day=eq.${day}`, { method: 'DELETE' });
+  await sb('shift_request_drafts', { method: 'POST', body: JSON.stringify([{ staff_id: acc.staff_id, year, month, day, request_type: rt }]) });
+  return res.status(200).json({ ok: true });
+}
+
+async function draftDeleteDay(res, payload, body) {
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc || !acc.staff_id) return bad(res, 400, 'スタッフ未紐付けのアカウントです');
+  const year = body.year, month = body.month, day = body.day;
+  if (!intOk(year, 2000, 2100) || !intOk(month, 1, 12) || !intOk(day, 1, 31)) return bad(res, 400, 'year/month/day が不正です');
+  await sb(`shift_request_drafts?staff_id=eq.${encodeURIComponent(acc.staff_id)}&year=eq.${year}&month=eq.${month}&day=eq.${day}`, { method: 'DELETE' });
+  return res.status(200).json({ ok: true });
+}
+
+// 提出後の下書き同期（月内全削除→提出内容で再作成。items空なら削除のみ）
+async function draftSync(res, payload, body) {
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc || !acc.staff_id) return bad(res, 400, 'スタッフ未紐付けのアカウントです');
+  const year = body.year, month = body.month;
+  if (!intOk(year, 2000, 2100) || !intOk(month, 1, 12)) return bad(res, 400, 'year/month が不正です');
+  const items = Array.isArray(body.items) ? body.items.slice(0, 100) : [];
+  const clean = [];
+  for (const it of items) {
+    const day = it && it.day;
+    const rt = String((it && it.request_type) || '').trim().slice(0, 30);
+    if (!intOk(day, 1, 31) || !rt) continue;
+    clean.push({ staff_id: acc.staff_id, year, month, day, request_type: rt });
+  }
+  await sb(`shift_request_drafts?staff_id=eq.${encodeURIComponent(acc.staff_id)}&year=eq.${year}&month=eq.${month}`, { method: 'DELETE' });
+  if (clean.length) await sb('shift_request_drafts', { method: 'POST', body: JSON.stringify(clean) });
+  return res.status(200).json({ ok: true });
+}
+
+// ===== 休憩の日次保存（その日を全削除→一括INSERT）=====
+async function breaksSaveDay(res, payload, body) {
+  if (payload.role !== 'leader' && payload.role !== 'master') return bad(res, 403, '権限がありません');
+  const year = body.year, month = body.month, day = body.day;
+  if (!intOk(year, 2000, 2100) || !intOk(month, 1, 12) || !intOk(day, 1, 31)) return bad(res, 400, 'year/month/day が不正です');
+  const rawRows = Array.isArray(body.rows) ? body.rows.slice(0, 300) : [];
+  const rows = [];
+  for (const r of rawRows) {
+    if (!r || typeof r !== 'object') continue;
+    if (typeof r.staff_id !== 'string' || !UUIDISH.test(r.staff_id)) continue;
+    const bs = String(r.break_start || '').slice(0, 5);
+    const be = String(r.break_end || '').slice(0, 5);
+    if (!TIME_RE.test(bs) || !TIME_RE.test(be)) continue;
+    const ord = Number.isInteger(r.display_order) ? Math.max(0, Math.min(100, r.display_order)) : 0;
+    rows.push({ staff_id: r.staff_id, year, month, day, break_start: bs, break_end: be, display_order: ord });
+  }
+  await sb(`shift_breaks?year=eq.${year}&month=eq.${month}&day=eq.${day}`, { method: 'DELETE' });
+  if (rows.length) await sb('shift_breaks', { method: 'POST', body: JSON.stringify(rows) });
+  return res.status(200).json({ ok: true, count: rows.length });
+}
+
+// ===== 設定系テーブルの汎用ゲートウェイ =====
+// クライアントは従来の PostgREST 風パス（table?col=eq.x&...）をそのまま送る。
+// サーバ側でクエリを完全にパースし、テーブル・列・演算子のホワイトリストで検証してから
+// 安全に再構築して service_role で実行する（生文字列のパススルーはしない）。
+const SETTINGS_TABLES = {
+  staff_settings:               { cols: ['id','staff_id','year','month','planned_hours','max_night_per_month','max_late_per_month','max_long_per_month','max_mid_per_month'], ownCol: 'staff_id' },
+  monthly_hours:                { cols: ['id','year','month','dept_id','hours'] },
+  staffing_requirements:        { cols: ['id','dept_id','period_id','day_type','min_count'] },
+  special_days:                 { cols: ['id','year','month','day','is_closed','is_holiday','label'] },
+  wednesday_types:              { cols: ['id','year','month','day','wed_type'] },
+  thursday_types:               { cols: ['id','year','month','day','is_open'] },
+  shift_request_deadline_rules: { cols: ['id','dept_id','days_before','hour','minute','months_before'] },
+  shift_request_limits_default: { cols: ['id','dept_id','limit_kibou_kyu','limit_yukyu','limit_other'] },
+  beginner_limits:              { cols: ['id','dept_id','period_id','day_type','max_beginners'] },
+  app_settings:                 { cols: ['id','key','value'] },
+  dept_shift_pattern_settings:  { cols: ['id','dept_id','enabled_patterns'] },
+};
+const OPS = new Set(['eq','neq','gt','gte','lt','lte','is','in']);
+const SAFE_SCALAR = /^[\w\-.:+ %ぁ-んァ-ヶ一-龠々ー]*$/u;
+
+function parseSettingsPath(path) {
+  if (typeof path !== 'string' || path.length > 2000) return null;
+  const qi = path.indexOf('?');
+  const table = (qi === -1 ? path : path.slice(0, qi)).trim();
+  const conf = SETTINGS_TABLES[table];
+  if (!conf) return null;
+  const out = { table, conf, filters: [], select: null, order: null, limit: null };
+  if (qi === -1) return out;
+  const usp = new URLSearchParams(path.slice(qi + 1));
+  for (const [key, value] of usp.entries()) {
+    if (key === 'select') {
+      const parts = String(value).split(',').map(x => x.trim());
+      for (const p of parts) if (p !== '*' && !conf.cols.includes(p)) return null;
+      out.select = parts.join(',');
+    } else if (key === 'order') {
+      const segs = String(value).split(',').map(x => x.trim());
+      for (const seg of segs) {
+        const col = seg.split('.')[0];
+        if (!conf.cols.includes(col)) return null;
+        if (!/^[a-z_]+(\.(asc|desc))?(\.(nullslast|nullsfirst))?$/.test(seg)) return null;
+      }
+      out.order = segs.join(',');
+    } else if (key === 'limit' || key === 'offset') {
+      const n = parseInt(value);
+      if (!Number.isInteger(n) || n < 0 || n > 10000) return null;
+      out[key] = n;
+    } else {
+      if (!conf.cols.includes(key)) return null;
+      const dot = String(value).indexOf('.');
+      if (dot === -1) return null;
+      const op = value.slice(0, dot);
+      const rest = value.slice(dot + 1);
+      if (!OPS.has(op)) return null;
+      if (op === 'is') {
+        if (rest !== 'null' && rest !== 'true' && rest !== 'false') return null;
+        out.filters.push(`${key}=is.${rest}`);
+      } else if (op === 'in') {
+        const m = rest.match(/^\((.*)\)$/s);
+        if (!m) return null;
+        const items = m[1].split(',').map(x => x.trim().replace(/^"|"$/g, ''));
+        if (!items.length || items.length > 400) return null;
+        for (const it of items) if (!/^[\w\-]{1,60}$/.test(it)) return null;
+        out.filters.push(`${key}=in.(${items.map(x => `"${x}"`).join(',')})`);
+      } else {
+        const raw = decodeURIComponent(rest);
+        if (raw.length > 100 || !SAFE_SCALAR.test(raw)) return null;
+        out.filters.push(`${key}=${op}.${encodeURIComponent(raw)}`);
+      }
+    }
+  }
+  return out;
+}
+
+async function settingsGateway(res, payload, body) {
+  const method = (body.method || 'GET').toUpperCase();
+  if (!['GET', 'POST', 'PATCH', 'DELETE'].includes(method)) return bad(res, 400, 'method が不正です');
+  const parsed = parseSettingsPath(body.path);
+  if (!parsed) return bad(res, 400, '不正なクエリです');
+  const { table, conf } = parsed;
+
+  // 書き込みは leader/master のみ
+  if (method !== 'GET' && payload.role !== 'leader' && payload.role !== 'master') {
+    return bad(res, 403, '権限がありません');
+  }
+  // staff ロールの読み取りで ownCol があるテーブルは本人分に強制
+  if (method === 'GET' && conf.ownCol && payload.role === 'staff') {
+    const acc = await resolveAccount(payload.accountId);
+    if (!acc || !acc.staff_id) return res.status(200).json({ rows: [] });
+    parsed.filters = parsed.filters.filter(f => !f.startsWith(`${conf.ownCol}=`));
+    parsed.filters.push(`${conf.ownCol}=eq.${encodeURIComponent(acc.staff_id)}`);
+  }
+
+  const qs = [];
+  for (const f of parsed.filters) qs.push(f);
+  if (parsed.select) qs.push(`select=${parsed.select}`);
+  if (parsed.order) qs.push(`order=${parsed.order}`);
+  if (parsed.limit != null) qs.push(`limit=${parsed.limit}`);
+  if (parsed.offset != null) qs.push(`offset=${parsed.offset}`);
+  const pathFinal = qs.length ? `${table}?${qs.join('&')}` : table;
+
+  if (method === 'GET') {
+    const rows = await sb(pathFinal);
+    return res.status(200).json({ rows });
+  }
+
+  if (method === 'DELETE') {
+    if (!parsed.filters.length) return bad(res, 400, 'フィルタ無しの削除は許可されていません');
+    await sb(pathFinal, { method: 'DELETE' });
+    return res.status(200).json({ ok: true });
+  }
+
+  // POST / PATCH：列ホワイトリストで body を濾過
+  const raw = body.body;
+  const clean = (obj) => {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+    const o = pickCols(obj, conf.cols);
+    return Object.keys(o).length ? o : null;
+  };
+  if (method === 'POST') {
+    const arr = Array.isArray(raw) ? raw.slice(0, 500).map(clean).filter(Boolean) : [clean(raw)].filter(Boolean);
+    if (!arr.length) return bad(res, 400, '登録内容がありません');
+    const headers = body.upsert ? { 'Prefer': 'resolution=merge-duplicates,return=representation' } : {};
+    const rows = await sb(table, { method: 'POST', headers, body: JSON.stringify(arr) });
+    return res.status(200).json({ rows, ok: true });
+  }
+  // PATCH
+  if (!parsed.filters.length) return bad(res, 400, 'フィルタ無しの更新は許可されていません');
+  const values = clean(raw);
+  if (!values) return bad(res, 400, '更新内容がありません');
+  const rows = await sb(pathFinal, { method: 'PATCH', body: JSON.stringify(values) });
+  return res.status(200).json({ rows, ok: true });
+}
+
 // leader は自部門の staff にしか書き込めない
 async function assertLeaderDept(payload, targetDeptId) {
   if (payload.role !== 'leader') return true;
@@ -420,6 +642,21 @@ export default async function handler(req, res) {
     }
     if (action === 'fixed-shift-remove') {
       return await fixedShiftRemove(res, payload, body);
+    }
+    if (action === 'draft-save-day') {
+      return await draftSaveDay(res, payload, body);
+    }
+    if (action === 'draft-delete-day') {
+      return await draftDeleteDay(res, payload, body);
+    }
+    if (action === 'draft-sync') {
+      return await draftSync(res, payload, body);
+    }
+    if (action === 'breaks-save-day') {
+      return await breaksSaveDay(res, payload, body);
+    }
+    if (action === 'settings') {
+      return await settingsGateway(res, payload, body);
     }
 
     if (!table || !POLICY[table]) return bad(res, 400, '許可されていないテーブルです');
