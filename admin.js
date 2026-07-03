@@ -5493,6 +5493,38 @@ document.getElementById('closeInviteModal')?.addEventListener('click', () => {
   document.getElementById('inviteLinkModal').style.display = 'none';
 });
 
+// アカウント管理ページの「招待リンクを発行」：スタッフを選んで発行
+document.getElementById('inviteLinkBtn')?.addEventListener('click', () => {
+  if (!allStaff.length) { showToast('スタッフ情報が読み込まれていません', 'error'); return; }
+  document.getElementById('invitePickModalEl')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'invitePickModalEl';
+  modal.className = 'modal-overlay show';
+  const sorted = allStaff.slice().sort((a, b) =>
+    (a.dept_id - b.dept_id) || ((a.display_order ?? 99999) - (b.display_order ?? 99999)) || (a.staff_code - b.staff_code));
+  const opts = sorted.map(s =>
+    `<option value="${s.id}">${escapeHtml(DEPT_NAMES[s.dept_id] || '')}｜${escapeHtml(s.name)}</option>`).join('');
+  modal.innerHTML = `
+    <div class="modal">
+      <div class="modal-title">🔗 招待リンクを発行</div>
+      <div class="form-group"><label class="form-label">対象スタッフ</label>
+        <select class="form-select" id="invitePickStaff">${opts}</select></div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">選択したスタッフ用の招待リンクを発行します（7日間有効）。</div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="document.getElementById('invitePickModalEl').remove()">キャンセル</button>
+        <button class="btn btn-primary" id="invitePickGoBtn">発行する</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  document.getElementById('invitePickGoBtn').addEventListener('click', () => {
+    const sel = document.getElementById('invitePickStaff');
+    const s = allStaff.find(x => x.id === sel.value);
+    if (!s) return;
+    document.getElementById('invitePickModalEl').remove();
+    generateInviteLink(s.id, s.name);
+  });
+});
+
 document.getElementById('inviteCopyBtn')?.addEventListener('click', () => {
   const url = document.getElementById('inviteUrlText').value;
   navigator.clipboard.writeText(url).then(() => {
