@@ -761,10 +761,10 @@ async function loadRequests() {
     document.getElementById('requestsBody').innerHTML = Object.values(byStaff).map(({staff, entries}) => {
       const last = entries.length > 0 ? new Date(Math.max(...entries.map(e => new Date(e.submitted_at)))).toLocaleDateString('ja-JP') : '―';
       return `<tr>
-        <td>${staff.name}</td><td>${DEPT_NAMES[staff.dept_id]}</td><td>${last}</td>
+        <td>${escapeHtml(staff.name)}</td><td>${DEPT_NAMES[staff.dept_id]}</td><td>${last}</td>
         <td>${entries.length}日</td>
         <td><span class="badge ${entries.length > 0 ? 'badge-submitted' : 'badge-pending'}">${entries.length > 0 ? '提出済み' : '未提出'}</span></td>
-        <td><button class="btn btn-outline btn-sm" onclick="showRequestDetail('${staff.id}','${staff.name}')">詳細</button></td>
+        <td><button class="btn btn-outline btn-sm" onclick="showRequestDetail('${staff.id}','${escapeJs(staff.name)}')">詳細</button></td>
       </tr>`;
     }).join('');
   } catch(e) { console.error(e); showToast('読み込みエラー','error'); }
@@ -786,7 +786,7 @@ async function showRequestDetail(staffId, staffName) {
       const dowClass = dow===0?'color:#ef4444':dow===6?'color:#3b82f6':'';
       html += `<div style="width:48px;text-align:center">
         <div style="font-size:11px;${dowClass};margin-bottom:3px">${d}(${DOW[dow]})</div>
-        <div class="shift-cell ${SHIFT_COLORS[shift]||''}" style="min-height:30px;font-size:10px;border-radius:6px">${shift||'―'}</div>
+        <div class="shift-cell ${SHIFT_COLORS[shift]||''}" style="min-height:30px;font-size:10px;border-radius:6px">${escapeHtml(shift)||'―'}</div>
       </div>`;
     }
     html += '</div>';
@@ -1034,11 +1034,11 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
         : staff.skill_level === 'no_count' ? '<span style="margin-left:2px;font-size:11px">🌸</span>'
         : '';
       html += `<tr style="${rowLockStyle}"><td class="staff-name" style="cursor:pointer;user-select:none;white-space:nowrap" onclick="toggleRowLock('${staff.id}',${daysInMonth})" title="${rowLocked?'行ロック解除':'行ロック'}">
-        <span style="font-size:12px;font-weight:600">${staff.name}</span>${empLabel}${skillLabel}
+        <span style="font-size:12px;font-weight:600">${escapeHtml(staff.name)}</span>${empLabel}${skillLabel}
         <span class="row-lock-icon" style="margin-left:4px;font-size:10px">${rowLocked?'🔒':'<span style=\"color:#d1d5db\">🔓</span>'}</span>
       </td>`;
     } else {
-      html += `<tr><td class="staff-name">${staff.name}</td>`;
+      html += `<tr><td class="staff-name">${escapeHtml(staff.name)}</td>`;
     }
 
     for (let d = 1; d <= daysInMonth; d++) {
@@ -1480,7 +1480,15 @@ function updateCellDisplay(key) {
   }
 }
 
-function escapeJs(str) { return str.replace(/'/g, "\'"); }
+function escapeJs(str) {
+  return String(str)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '\\x3c')
+    .replace(/>/g, '\\x3e')
+    .replace(/\r?\n/g, '\\n')
+}
 
 // 列ロック（日ごと全スタッフ）
 function toggleColumnLock(day) {
@@ -2437,18 +2445,18 @@ async function loadAccountList() {
         statusHtml = '<span style="color:#10b981">正常</span>';
       }
       const unlockBtn = isLocked
-        ? `<button class="btn btn-outline btn-sm" style="color:#10b981;border-color:#10b981" onclick="unlockAccount('${a.id}','${a.name}')">解除</button>`
+        ? `<button class="btn btn-outline btn-sm" style="color:#10b981;border-color:#10b981" onclick="unlockAccount('${a.id}','${escapeJs(a.name)}')">解除</button>`
         : '';
       return `
       <tr>
-        <td>${a.name}${a.role==='staff' ? `<div style="font-size:11px;color:#6b7280;margin-top:2px">スタッフID: ${a.staff_code != null ? a.staff_code : '<span style="color:#dc2626">未設定</span>'}</div>` : ''}</td>
+        <td>${escapeHtml(a.name)}${a.role==='staff' ? `<div style="font-size:11px;color:#6b7280;margin-top:2px">スタッフID: ${a.staff_code != null ? a.staff_code : '<span style="color:#dc2626">未設定</span>'}</div>` : ''}</td>
         <td><span class="badge ${a.role==='master'?'badge-master':a.role==='leader'?'badge-leader':'badge-part'}">${ROLE_LABELS[a.role]||a.role}</span></td>
         <td>${a.dept_id !== null ? DEPT_NAMES[a.dept_id] : '全部門'}</td>
         <td>${statusHtml}</td>
         <td style="display:flex;gap:6px;flex-wrap:wrap">
           ${unlockBtn}
-          <button class="btn btn-outline btn-sm" onclick="showEditAccountModal('${a.id}','${a.name}','${a.role}',${a.dept_id},${a.staff_code != null ? a.staff_code : 'null'},'${a.staff_id || ''}')">編集</button>
-          ${a.id !== adminUser.id ? `<button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="deleteAccount('${a.id}','${a.name}')">削除</button>` : ''}
+          <button class="btn btn-outline btn-sm" onclick="showEditAccountModal('${a.id}','${escapeJs(a.name)}','${a.role}',${a.dept_id},${a.staff_code != null ? a.staff_code : 'null'},'${a.staff_id || ''}')">編集</button>
+          ${a.id !== adminUser.id ? `<button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="deleteAccount('${a.id}','${escapeJs(a.name)}')">削除</button>` : ''}
         </td>
       </tr>`;
     }).join('');
@@ -2548,8 +2556,8 @@ function showEditAccountModal(id, name, role, deptId, staffCode, staffId) {
   const isSelf = id === adminUser.id;
   modal.innerHTML = `
     <div class="modal">
-      <div class="modal-title">${name}のアカウント編集</div>
-      <div class="form-group"><label class="form-label">名前（苗字）</label><input type="text" class="form-input" id="editAccName" value="${name}"></div>
+      <div class="modal-title">${escapeHtml(name)}のアカウント編集</div>
+      <div class="form-group"><label class="form-label">名前（苗字）</label><input type="text" class="form-input" id="editAccName" value="${escapeHtml(name)}"></div>
       <div class="form-group"><label class="form-label">権限${isSelf ? '（自分自身の権限は変更できません）' : ''}</label>
         <select class="form-select" id="editAccRole" ${isSelf ? 'disabled' : ''} onchange="document.getElementById('editAccDeptGroup').style.display=this.value==='master'?'none':'block';document.getElementById('editAccStaffLinkGroup').style.display=this.value==='staff'?'block':'none';document.getElementById('editAccStaffSelect').innerHTML=accountStaffOptions(document.getElementById('editAccDept').value,'')">
           <option value="master" ${role==='master'?'selected':''}>管理</option>
@@ -3573,10 +3581,10 @@ function renderSuggestionCard(suggestion, idx) {
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:13px">
       <div style="background:#f3f4f6;color:#475569;padding:5px 12px;border-radius:8px;font-weight:600">${actualCurrent || '（空）'}</div>
       <span style="color:#94a3b8">→</span>
-      <div style="background:#dbeafe;color:#1e40af;padding:5px 12px;border-radius:8px;font-weight:600">${newShift}</div>
-      ${mismatch ? `<span style="font-size:10px;color:#f59e0b;background:#fef3c7;padding:2px 6px;border-radius:6px">⚠️ AI想定: ${aiCurrent}</span>` : ''}
+      <div style="background:#dbeafe;color:#1e40af;padding:5px 12px;border-radius:8px;font-weight:600">${escapeHtml(newShift)}</div>
+      ${mismatch ? `<span style="font-size:10px;color:#f59e0b;background:#fef3c7;padding:2px 6px;border-radius:6px">⚠️ AI想定: ${escapeHtml(aiCurrent)}</span>` : ''}
     </div>
-    <div style="font-size:12px;color:#6b7280;margin-bottom:10px;line-height:1.5">${reason}</div>
+    <div style="font-size:12px;color:#6b7280;margin-bottom:10px;line-height:1.5">${escapeHtml(reason)}</div>
     <div style="background:#f9fafb;border-radius:8px;padding:8px 10px;font-size:11px;color:#475569;margin-bottom:10px">
       労働時間: <span style="color:${diffColor};font-weight:700">${diffStr}</span> （合計 ${before}H → ${afterTotal}H）
     </div>
@@ -4855,7 +4863,7 @@ async function loadStaffTable() {
 
           <!-- 名前・部門 -->
           <div style="min-width:80px">
-            <div style="font-size:15px;font-weight:700">${staff.name}</div>
+            <div style="font-size:15px;font-weight:700">${escapeHtml(staff.name)}</div>
             <div style="font-size:11px;color:var(--text-muted)">${DEPT_NAMES[staff.dept_id]}</div>
           </div>
 
@@ -4897,13 +4905,13 @@ async function loadStaffTable() {
           </button>
 
           <!-- 招待リンク発行（masterのみ） -->
-          ${adminUser.role === 'master' ? `<button onclick="generateInviteLink('${staff.id}','${staff.name}')"
+          ${adminUser.role === 'master' ? `<button onclick="generateInviteLink('${staff.id}','${escapeJs(staff.name)}')"
             style="padding:4px 10px;border-radius:100px;font-size:12px;cursor:pointer;border:1.5px solid #a855f7;background:white;color:#7c3aed;margin-left:auto;font-weight:600">
             🔗 招待リンク
           </button>` : ''}
 
           <!-- 削除 -->
-          <button onclick="deleteStaff('${staff.id}','${staff.name}')"
+          <button onclick="deleteStaff('${staff.id}','${escapeJs(staff.name)}')"
             style="padding:4px 10px;border-radius:100px;font-size:12px;cursor:pointer;border:1.5px solid var(--border);background:white;color:var(--danger)">
             削除
           </button>
