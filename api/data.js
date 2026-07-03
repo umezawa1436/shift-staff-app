@@ -1,938 +1,319 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="管理">
-  <meta name="theme-color" content="#9333ea">
-  <link rel="manifest" href="/manifest-admin.json">
-  <link rel="apple-touch-icon" href="/apple-touch-icon-admin.png">
-  <link rel="icon" type="image/png" href="/icon-favicon.png">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="robots" content="noindex, nofollow">
-  <title>kingyo-shift 管理画面</title>
-  <link rel="stylesheet" href="admin.css?v=46">
-</head>
-<body>
+// /api/auth.js
+// kingyo-shift 認証API
+// 仕様: 部門 + 名前 + パスワード でログイン (master/leader/staff 共通方式)
+//   - staff-login    : { deptId, staffCode, password }
+//   - admin-login    : { deptId (null=master), name, password }
+//   - change-password: { currentPassword, newPassword } + Authorization header
 
-<div class="loading" id="loading"><div class="spinner"></div><div style="font-size:14px;color:var(--text-muted)">処理中...</div></div>
-<!-- 招待リンク発行モーダル -->
-<div class="modal-overlay" id="inviteLinkModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
-  <div class="modal-content" style="background:white;border-radius:16px;padding:24px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;margin-top:20px">
-    <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <span style="font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px">🔗 招待リンクを発行</span>
-      <button class="btn btn-outline" id="closeInviteModal" style="padding:6px 12px">✕</button>
-    </div>
+import crypto from 'crypto';
 
-    <div id="inviteGenerating" style="text-align:center;padding:30px">
-      <div style="display:inline-block;width:36px;height:36px;border:3px solid #e5e7eb;border-top-color:#a855f7;border-radius:50%;animation:spin 0.8s linear infinite"></div>
-      <div style="margin-top:12px;font-size:14px;color:#6b7280">招待リンクを生成中...</div>
-    </div>
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SESSION_SECRET = process.env.SESSION_SECRET;
+const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-    <div id="inviteResult" style="display:none">
-      <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:14px;margin-bottom:16px">
-        <div style="font-size:12px;color:#0369a1;margin-bottom:4px">招待対象</div>
-        <div style="font-size:15px;font-weight:700;color:#0c4a6e" id="inviteTargetName"></div>
-        <div style="font-size:11px;color:#0369a1;margin-top:6px" id="inviteExpiresAt"></div>
-      </div>
+function envOk() { return SUPABASE_URL && SERVICE_ROLE_KEY && SESSION_SECRET; }
 
-      <div style="margin-bottom:16px">
-        <div style="font-size:13px;font-weight:600;color:#1f2937;margin-bottom:6px">招待リンク（LINEなどで送信してください）</div>
-        <textarea id="inviteUrlText" readonly style="width:100%;min-height:80px;padding:10px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:12px;font-family:monospace;resize:vertical;box-sizing:border-box;background:#f9fafb"></textarea>
-      </div>
+// ===== パスワードハッシュ（scrypt・ソルト付き）=====
+// 形式: s2$N$r$p$salt(base64)$hash(base64)
+// 旧形式（SHA-256 hex 64桁）はログイン成功時に自動で scrypt へ再ハッシュ（レイジー移行）。
+const SCRYPT_N = 16384, SCRYPT_R = 8, SCRYPT_P = 1, SCRYPT_KEYLEN = 64;
 
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-primary" id="inviteCopyBtn" style="font-size:13px;flex:1">📋 リンクをコピー</button>
-        <button class="btn btn-outline" id="inviteCopyMessageBtn" style="font-size:13px;flex:1">📨 メッセージごとコピー</button>
-      </div>
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16);
+  const hash = crypto.scryptSync(String(password), salt, SCRYPT_KEYLEN, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P });
+  return `s2$${SCRYPT_N}$${SCRYPT_R}$${SCRYPT_P}$${salt.toString('base64')}$${hash.toString('base64')}`;
+}
 
-      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px;margin-top:14px;font-size:11px;color:#92400e;line-height:1.6">
-        ⚠️ <strong>注意事項</strong><br>
-        ・このリンクは <strong>7日間有効</strong>です（期限切れ後は再発行が必要）<br>
-        ・一度アカウント作成に使われると、リンクは無効になります<br>
-        ・LINEなどの安全な方法で対象スタッフに送ってください
-      </div>
-    </div>
+function verifyPassword(password, stored) {
+  if (!stored || typeof stored !== 'string') return false;
+  try {
+    if (stored.startsWith('s2$')) {
+      const parts = stored.split('$');
+      if (parts.length !== 6) return false;
+      const N = parseInt(parts[1]), r = parseInt(parts[2]), p = parseInt(parts[3]);
+      const salt = Buffer.from(parts[4], 'base64');
+      const expected = Buffer.from(parts[5], 'base64');
+      if (!Number.isInteger(N) || N < 2 || N > 1048576 || !Number.isInteger(r) || !Number.isInteger(p) || !salt.length || !expected.length) return false;
+      const actual = crypto.scryptSync(String(password), salt, expected.length, { N, r, p, maxmem: 128 * 1024 * 1024 });
+      return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+    }
+    // 旧形式: SHA-256 hex
+    const legacy = crypto.createHash('sha256').update(String(password)).digest();
+    const storedBuf = Buffer.from(stored, 'hex');
+    return storedBuf.length === legacy.length && crypto.timingSafeEqual(storedBuf, legacy);
+  } catch { return false; }
+}
 
-    <div id="inviteError" style="display:none;text-align:center;padding:20px">
-      <div style="font-size:32px;margin-bottom:12px">⚠️</div>
-      <div id="inviteErrorText" style="font-size:14px;color:#dc2626;margin-bottom:16px"></div>
-    </div>
-  </div>
-</div>
+// 旧形式かどうか（ログイン成功時の自動再ハッシュ判定用）
+function isLegacyHash(stored) {
+  return typeof stored === 'string' && !stored.startsWith('s2$');
+}
+function base64url(buf) {
+  return Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function base64urlDecode(str) {
+  str = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (str.length % 4) str += '=';
+  return Buffer.from(str, 'base64').toString('utf8');
+}
+function createToken(payload) {
+  const full = { ...payload, exp: Date.now() + TOKEN_TTL_MS };
+  const body = base64url(JSON.stringify(full));
+  const sig = base64url(crypto.createHmac('sha256', SESSION_SECRET).update(body).digest());
+  return `${body}.${sig}`;
+}
+function verifyToken(token) {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [body, sig] = parts;
+  const expected = base64url(crypto.createHmac('sha256', SESSION_SECRET).update(body).digest());
+  if (sig.length !== expected.length) return null;
+  let diff = 0;
+  for (let i = 0; i < sig.length; i++) diff |= sig.charCodeAt(i) ^ expected.charCodeAt(i);
+  if (diff !== 0) return null;
+  let payload;
+  try { payload = JSON.parse(base64urlDecode(body)); } catch { return null; }
+  if (!payload.exp || payload.exp < Date.now()) return null;
+  return payload;
+}
+function extractBearer(req) {
+  const auth = req.headers['authorization'] || req.headers['Authorization'];
+  if (!auth || typeof auth !== 'string') return null;
+  const m = auth.match(/^Bearer\s+(.+)$/i);
+  return m ? m[1] : null;
+}
 
-<!-- AI相談モーダル -->
-<div class="modal-overlay" id="aiAdviceModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
-  <div class="modal-content" style="background:white;border-radius:16px;padding:24px;width:100%;max-width:720px;max-height:90vh;overflow-y:auto;margin-top:20px">
-    <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <span style="font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px">
-        <svg width="28" height="19" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
-          <g transform="translate(20, 30)">
-            <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
-            <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
-          </g>
-          <g transform="translate(50, 30)">
-            <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
-            <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
-            <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
-            <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
-            <circle cx="20" cy="-3" r="5" fill="white"/>
-            <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
-            <circle cx="22" cy="-4" r="0.8" fill="white"/>
-          </g>
-        </svg>
-        AIに相談
-      </span>
-      <button class="btn btn-outline" id="closeAiModal" style="padding:6px 12px">✕</button>
-    </div>
+async function sb(path, options = {}) {
+  const url = `${SUPABASE_URL}/rest/v1/${path}`;
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      'apikey': SERVICE_ROLE_KEY,
+      'Authorization': `Bearer ${SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': options.method === 'PATCH' || options.method === 'POST' ? 'return=representation' : '',
+      ...options.headers,
+    },
+  });
+  if (!res.ok) { const text = await res.text(); throw new Error(`Supabase ${res.status}: ${text}`); }
+  const t = await res.text();
+  return t ? JSON.parse(t) : [];
+}
 
-    <!-- 用途選択 -->
-    <div id="aiStepSelect">
-      <div style="font-size:13px;color:var(--text-muted);margin-bottom:14px">現在表示中のシフト表（<span id="aiTargetMonthLabel"></span>・<span id="aiTargetDeptLabel"></span>）について相談します。</div>
+function bad(res, status, message) { return res.status(status).json({ error: message }); }
 
-      <!-- メインボタン -->
-      <button class="ai-choice-btn ai-main-btn" data-mode="both" style="width:100%;padding:18px;border-radius:14px;border:none;background:linear-gradient(135deg,#9333ea,#2563eb);color:white;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:16px;box-shadow:0 4px 12px rgba(147,51,234,0.4);display:flex;align-items:center;justify-content:center;gap:10px">
-        <svg width="32" height="22" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
-          <g transform="translate(20, 30)">
-            <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
-            <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
-          </g>
-          <g transform="translate(50, 30)">
-            <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
-            <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
-            <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
-            <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
-            <circle cx="20" cy="-3" r="5" fill="white"/>
-            <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
-            <circle cx="22" cy="-4" r="0.8" fill="white"/>
-          </g>
-        </svg>
-        <div style="text-align:left">
-          <div style="font-weight:700;font-size:16px">問題点と修正案を確認する</div>
-          <div style="font-size:11px;opacity:0.9;margin-top:2px">問題点を見つけて、具体的な修正案を提案します</div>
-        </div>
-      </button>
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return bad(res, 405, 'Method not allowed');
+  if (!envOk()) { console.error('Missing env vars'); return bad(res, 500, 'サーバー設定エラー'); }
+  const body = req.body || {};
+  const action = body.action;
+  try {
+    if (action === 'staff-login') {
+      // 新方式: 社員番号ID + パスワード（deptId 付きの旧クライアントはレガシー処理へ）
+      if (body.deptId === undefined || body.deptId === null || body.deptId === '') return await staffLoginByCode(req, res, body);
+      return await staffLogin(req, res, body);
+    }
+    if (action === 'admin-login') {
+      if (body.name === undefined) return await adminLoginByCode(req, res, body);
+      return await adminLogin(req, res, body);
+    }
+    if (action === 'change-password') return await changePassword(req, res, body);
+    return bad(res, 400, '不明なアクション');
+  } catch (e) {
+    console.error('auth error:', e);
+    return bad(res, 500, '内部エラー');
+  }
+}
 
-      <!-- 区切り -->
-      <div style="display:flex;align-items:center;gap:12px;margin:14px 0">
-        <div style="flex:1;height:1px;background:#e5e7eb"></div>
-        <div style="font-size:11px;color:#94a3b8;font-weight:500">または</div>
-        <div style="flex:1;height:1px;background:#e5e7eb"></div>
-      </div>
+// スタッフログイン: 部門 + staff_code + password
+async function staffLogin(req, res, body) {
+  const { deptId, staffCode, password } = body;
+  if (deptId === undefined || deptId === null || !staffCode || !password) return bad(res, 400, '入力が不足しています');
+  const deptIdNum = parseInt(deptId);
+  const codeNum = parseInt(staffCode);
 
-      <!-- 自由記入 -->
-      <div style="margin-bottom:14px">
-        <div style="font-size:13px;font-weight:600;color:#1f2937;margin-bottom:6px">📝 自由に質問・相談する</div>
-        <textarea id="aiFreeText" placeholder="例：来月から育休復帰するスタッフがいるので、シフトを軽めに調整した修正案を出してください" style="width:100%;min-height:80px;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
-        <button class="ai-choice-btn" data-mode="custom" style="margin-top:10px;width:100%;padding:12px;border-radius:10px;border:1.5px solid #a855f7;background:white;color:#7c3aed;font-weight:600;font-size:13px;cursor:pointer;transition:all 0.15s">
-          📤 送信
-        </button>
-      </div>
+  // 該当アカウント取得（パスワード関係なく、ロック状態を確認するため）
+  const candidates = await sb(`accounts?staff_code=eq.${codeNum}&dept_id=eq.${deptIdNum}&role=eq.staff&select=id,name,dept_id,staff_id,staff_code,role,password_hash,failed_attempts,locked_at`);
+  if (!candidates || candidates.length === 0) return bad(res, 401, 'パスワードが正しくありません');
+  const a = candidates[0];
 
-      <div style="font-size:11px;color:#94a3b8;background:#f9fafb;padding:10px;border-radius:8px;line-height:1.6">
-        ⚠️ 個人情報保護のため、スタッフ名は「スタッフA・B・C…」に匿名化して送信されます。AIの返答は当画面でスタッフ名に戻して表示されます。
-      </div>
-    </div>
+  // ロックチェック
+  if (a.locked_at) {
+    return bad(res, 423, 'このアカウントはロックされています。管理者に解除を依頼してください。');
+  }
 
-    <!-- 処理中 -->
-    <div id="aiStepLoading" style="display:none;text-align:center;padding:40px 20px">
-      <div style="display:inline-block;width:40px;height:40px;border:3px solid #e5e7eb;border-top-color:#a855f7;border-radius:50%;animation:spin 0.8s linear infinite"></div>
-      <div style="margin-top:16px;font-size:14px;color:#6b7280">AIに相談しています...（5〜15秒）</div>
-    </div>
+  // パスワード照合（scrypt / 旧SHA-256 両対応）
+  if (!verifyPassword(password, a.password_hash)) {
+    // 失敗カウント増、5回でロック
+    const newCount = (a.failed_attempts || 0) + 1;
+    const updates = { failed_attempts: newCount };
+    if (newCount >= 5) updates.locked_at = new Date().toISOString();
+    await sb(`accounts?id=eq.${a.id}`, { method: 'PATCH', body: JSON.stringify(updates) });
+    if (newCount >= 5) {
+      return bad(res, 423, 'ログイン失敗が5回に達したため、アカウントがロックされました。管理者に解除を依頼してください。');
+    }
+    return bad(res, 401, `パスワードが正しくありません（残り${5 - newCount}回でロックされます）`);
+  }
 
-    <!-- 結果（テキスト表示） -->
-    <div id="aiStepResult" style="display:none">
-      <!-- サマリー -->
-      <div id="aiSummaryBox" style="display:none;background:linear-gradient(135deg,#faf5ff,#eff6ff);border-radius:12px;padding:14px;border:1px solid #e9d5ff;margin-bottom:14px">
-        <div style="font-size:12px;font-weight:600;color:#6b21a8;margin-bottom:4px;display:flex;align-items:center;gap:6px">
-          <svg width="20" height="14" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
-            <g transform="translate(20, 30)">
-              <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
-              <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
-            </g>
-            <g transform="translate(50, 30)">
-              <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
-              <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
-              <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
-              <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
-              <circle cx="20" cy="-3" r="5" fill="white"/>
-              <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
-              <circle cx="22" cy="-4" r="0.8" fill="white"/>
-            </g>
-          </svg>
-          <span>全体所感</span>
-        </div>
-        <div id="aiSummaryText" style="font-size:13px;color:#1f2937;line-height:1.6"></div>
-      </div>
-      <!-- 提案カードリスト -->
-      <div id="aiSuggestionsList"></div>
-      <!-- テキスト返答（problems モードのみ） -->
-      <div id="aiResultTextBox" style="display:none;background:#f8fafc;border-radius:12px;padding:14px;border:1px solid #e5e7eb;margin-bottom:12px">
-        <div style="font-size:12px;font-weight:600;color:#475569;margin-bottom:6px;display:flex;align-items:center;gap:6px">
-          <svg width="20" height="14" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
-            <g transform="translate(20, 30)">
-              <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
-              <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
-            </g>
-            <g transform="translate(50, 30)">
-              <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
-              <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
-              <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
-              <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
-              <circle cx="20" cy="-3" r="5" fill="white"/>
-              <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
-              <circle cx="22" cy="-4" r="0.8" fill="white"/>
-            </g>
-          </svg>
-          <span>Geminiからの指摘</span>
-        </div>
-        <div id="aiResultText" style="font-size:13px;line-height:1.7;color:#1f2937;white-space:pre-wrap"></div>
-      </div>
-      <!-- 操作ボタン -->
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb">
-        <button class="btn btn-outline" id="aiBackBtn" style="font-size:13px">🔄 別の相談</button>
-        <button class="btn btn-primary" id="aiCloseFinishBtn" style="font-size:13px;margin-left:auto">✓ 閉じてシフト表を確認</button>
-      </div>
-    </div>
+  if (a.staff_id == null || a.staff_code == null) return bad(res, 500, 'アカウント設定が不完全です。管理者に連絡してください');
 
-    <!-- エラー -->
-    <div id="aiStepError" style="display:none;text-align:center;padding:20px">
-      <div style="font-size:32px;margin-bottom:12px">⚠️</div>
-      <div id="aiErrorText" style="font-size:14px;color:#dc2626;margin-bottom:16px"></div>
-      <button class="btn btn-outline" id="aiErrorBackBtn" style="font-size:13px">戻る</button>
-    </div>
-  </div>
-</div>
+  // 成功: 失敗カウントをリセット＋旧形式ハッシュは scrypt へ自動移行
+  const successUpdates = {};
+  if (a.failed_attempts && a.failed_attempts > 0) successUpdates.failed_attempts = 0;
+  if (isLegacyHash(a.password_hash)) successUpdates.password_hash = hashPassword(password);
+  if (Object.keys(successUpdates).length) {
+    await sb(`accounts?id=eq.${a.id}`, { method: 'PATCH', body: JSON.stringify(successUpdates) });
+  }
 
+  const token = createToken({ accountId: a.id, role: a.role, deptId: a.dept_id });
+  return res.status(200).json({ token, user: { id: a.staff_id, accountId: a.id, staffCode: a.staff_code, name: a.name, deptId: a.dept_id, role: a.role } });
+}
 
-<div class="toast" id="toast"></div>
+// 管理者ログイン: 部門 (nullなら master) + 名前 + password
+// leaderは自部門のdept_idでログイン
+async function adminLogin(req, res, body) {
+  const { deptId, name, password } = body;
+  if (name === undefined || name === null || name === '' || !password) return bad(res, 400, '入力が不足しています');
 
-<!-- LOGIN -->
-<div id="loginScreen">
-  <div class="login-box">
-    <div class="kingyo-tank">
-      <div class="water-surface"></div>
-      <div class="bubble bubble-1"></div>
-      <div class="bubble bubble-2"></div>
-      <div class="bubble bubble-3"></div>
-      <div class="bubble bubble-4"></div>
-      <svg class="kingyo" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg">
-      <!-- 尾びれ（パターン2の流線形・揺れる） -->
-      <g class="kingyo-tail" transform="translate(20, 30)">
-        <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#ea580c"/>
-        <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fb923c"/>
-        <path d="M -5 -3 Q -22 -18, -38 -12" stroke="#dc2626" stroke-width="1" fill="none" opacity="0.6"/>
-        <path d="M -5 5 Q -22 15, -38 8" stroke="#dc2626" stroke-width="1" fill="none" opacity="0.6"/>
-      </g>
-      <!-- 体（卵型・中央線なし） -->
-      <g transform="translate(50, 30)">
-        <ellipse cx="0" cy="0" rx="30" ry="23" fill="#dc2626"/>
-        <ellipse cx="0" cy="0" rx="30" ry="23" fill="url(#bodyGradAdminHybrid)"/>
-        <!-- エラ -->
-        <path d="M 13 -8 Q 18 0, 13 9" stroke="#ea580c" stroke-width="1.3" fill="none" stroke-linecap="round"/>
-        <!-- 背びれ（二段波打ち） -->
-        <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#ea580c"/>
-        <path d="M -7 -22 Q -3 -30, 0 -27" stroke="#dc2626" stroke-width="1" fill="none" stroke-linecap="round"/>
-        <path d="M 2 -27 Q 5 -33, 8 -25" stroke="#dc2626" stroke-width="1" fill="none" stroke-linecap="round"/>
-        <path d="M 10 -25 Q 12 -30, 13 -22" stroke="#dc2626" stroke-width="1" fill="none" stroke-linecap="round"/>
-        <!-- 腹びれ -->
-        <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#ea580c"/>
-        <path d="M -1 20 Q -2 27, 4 28" stroke="#dc2626" stroke-width="0.9" fill="none"/>
-        <!-- 胸びれ -->
-        <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#ea580c"/>
-        <path d="M 4 14 Q 8 18, 11 16" stroke="#dc2626" stroke-width="0.8" fill="none"/>
-        <!-- 中央線なし -->
-        <!-- 目 -->
-        <circle cx="20" cy="-3" r="5" fill="white"/>
-        <circle cx="21" cy="-3" r="3.2" fill="#1f2937"/>
-        <circle cx="22" cy="-4" r="1" fill="white"/>
-        <!-- 口 -->
-        <path d="M 29 5 Q 31 6, 29 8" stroke="#7f1d1d" stroke-width="1.3" fill="none" stroke-linecap="round"/>
-      </g>
-      <defs>
-        <radialGradient id="bodyGradAdminHybrid" cx="0.35" cy="0.3" r="0.7">
-          <stop offset="0%" stop-color="#fecaca" stop-opacity="0.7"/>
-          <stop offset="40%" stop-color="#dc2626" stop-opacity="0"/>
-          <stop offset="100%" stop-color="#991b1b" stop-opacity="0.4"/>
-        </radialGradient>
-      </defs>
-    </svg>
-    </div>
-    <div class="login-title">kingyo-shift</div>
-    <div class="login-sub">管理者ログイン｜やちよ総合診療クリニック</div>
-    <div class="form-group">
-      <label class="form-label">社員番号ID</label>
-      <input type="number" inputmode="numeric" class="form-input" id="adminStaffCode" placeholder="例）12" autocomplete="username">
-    </div>
-    <div class="form-group">
-      <label class="form-label">パスワード</label>
-      <input type="password" class="form-input" id="adminPassword" placeholder="••••••••" autocomplete="current-password">
-    </div>
-    <button class="btn-login" id="adminLoginBtn">ログイン</button>
-    <div class="error-box" id="adminError">名前またはパスワードが正しくありません</div>
-  </div>
-</div>
+  let query;
+  if (deptId === null || deptId === undefined || deptId === 'null' || deptId === '') {
+    // master 検索
+    query = `accounts?name=eq.${encodeURIComponent(name)}&dept_id=is.null&role=eq.master&select=id,name,role,dept_id,password_hash,failed_attempts,locked_at`;
+  } else {
+    const deptIdNum = parseInt(deptId);
+    query = `accounts?name=eq.${encodeURIComponent(name)}&dept_id=eq.${deptIdNum}&role=eq.leader&select=id,name,role,dept_id,password_hash,failed_attempts,locked_at`;
+  }
+  const candidates = await sb(query);
+  if (!candidates || candidates.length === 0) return bad(res, 401, '名前またはパスワードが正しくありません');
+  const a = candidates[0];
 
-<!-- APP -->
-<div id="appScreen">
-  <div class="layout">
-    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
-    <div class="sidebar">
-      <div class="sidebar-logo">
-        <div class="sidebar-logo-title">やちよ総合診療<br>クリニック</div>
-        <div class="sidebar-logo-sub">シフト管理システム</div>
-      </div>
-      <div class="sidebar-nav">
-        <div class="nav-section">メニュー</div>
-        <div class="nav-item active" data-page="shift">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-          <span>シフト表</span>
-        </div>
-        <div class="nav-item" data-page="generate">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-          <span>自動生成</span>
-        </div>
-        <div class="nav-item" data-page="export">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
-          <span>エクスポート</span>
-        </div>
-        <div class="nav-item" data-page="dashboard">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-          <span>ダッシュボード</span>
-        </div>
-        <div class="nav-item" data-page="requests">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="m9 12 2 2 4-4"/></svg>
-          <span>希望一覧</span>
-        </div>
-        <div class="nav-item" data-page="settings">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          <span>設定</span>
-        </div>
-        <div class="nav-item" id="staffNavItem" data-page="staff">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          <span>スタッフ管理</span>
-        </div>
-        <div class="nav-item" id="accountNavItem" data-page="account">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/><path d="M16 11l2 2 4-4"/></svg>
-          <span>アカウント管理</span>
-        </div>
-        <div class="nav-item" id="kingyoNavItem" data-page="kingyo">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          <span>今日の一言</span>
-        </div>
-      </div>
-      <div class="sidebar-footer">
-        <div class="user-info" id="sidebarUserName"></div>
-        <div class="user-role" id="sidebarUserRole"></div>
-        <button class="btn-logout" id="adminLogoutBtn">ログアウト</button>
-      </div>
-    </div>
+  // ロックチェック
+  if (a.locked_at) {
+    return bad(res, 423, 'このアカウントはロックされています。管理者に解除を依頼してください。');
+  }
 
-    <div class="main">
-      <div class="topbar">
-        <button class="sidebar-toggle" id="sidebarToggle" aria-label="メニュー">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
-        </button>
-        <div>
-          <div class="page-title" id="topbarTitle">シフト表</div>
-          <div class="page-sub" id="topbarSub"></div>
-        </div>
-        <button id="shiftToolToggle" onclick="toggleShiftToolbar()">▲ 閉じる</button>
-        <div class="goldfish-tank" id="topbarGoldfish" title="🐟">
-          <div class="bubble" style="bottom:0;left:30px"></div>
-          <div class="bubble" style="bottom:0"></div>
-          <div class="bubble" style="bottom:0"></div>
-          <div class="bubble" style="bottom:0"></div>
-          <div class="goldfish-swimmer">
-            <svg width="36" height="24" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg">
-              <g transform="translate(20, 30)">
-                <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
-                <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
-              </g>
-              <g transform="translate(50, 30)">
-                <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
-                <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
-                <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
-                <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
-                <circle cx="20" cy="-3" r="5" fill="white"/>
-                <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
-                <circle cx="22" cy="-4" r="0.8" fill="white"/>
-              </g>
-            </svg>
-          </div>
-        </div>
-      </div>
+  // パスワード照合（scrypt / 旧SHA-256 両対応）
+  if (!verifyPassword(password, a.password_hash)) {
+    const newCount = (a.failed_attempts || 0) + 1;
+    const updates = { failed_attempts: newCount };
+    if (newCount >= 5) updates.locked_at = new Date().toISOString();
+    await sb(`accounts?id=eq.${a.id}`, { method: 'PATCH', body: JSON.stringify(updates) });
+    if (newCount >= 5) {
+      return bad(res, 423, 'ログイン失敗が5回に達したため、アカウントがロックされました。管理者に解除を依頼してください。');
+    }
+    return bad(res, 401, `名前またはパスワードが正しくありません（残り${5 - newCount}回でロックされます）`);
+  }
 
-      <div class="content">
+  // 成功: 失敗カウントをリセット＋旧形式ハッシュは scrypt へ自動移行
+  const successUpdates = {};
+  if (a.failed_attempts && a.failed_attempts > 0) successUpdates.failed_attempts = 0;
+  if (isLegacyHash(a.password_hash)) successUpdates.password_hash = hashPassword(password);
+  if (Object.keys(successUpdates).length) {
+    await sb(`accounts?id=eq.${a.id}`, { method: 'PATCH', body: JSON.stringify(successUpdates) });
+  }
 
-        <!-- DASHBOARD -->
-        <div class="page" id="page-dashboard">
-          <div class="month-nav">
-            <button class="btn-nav" id="dashPrevMonth">◀</button>
-            <div class="month-nav-title" id="dashMonthTitle"></div>
-            <button class="btn-nav" id="dashNextMonth">▶</button>
-          </div>
-          <div class="stats-grid" id="statsGrid"></div>
-          <div class="card">
-            <div class="card-title">今月の提出状況</div>
-            <div id="recentSubmissions">読み込み中...</div>
-          </div>
-        </div>
+  const token = createToken({ accountId: a.id, role: a.role, deptId: a.dept_id });
+  return res.status(200).json({ token, user: { id: a.id, name: a.name, role: a.role, deptId: a.dept_id } });
+}
 
-        <!-- REQUESTS -->
-        <div class="page" id="page-requests">
-          <div class="dept-tabs" id="requestDeptTabs"></div>
-          <div class="month-nav">
-            <button class="btn-nav" id="reqPrevMonth">◀</button>
-            <div class="month-nav-title" id="reqMonthTitle"></div>
-            <button class="btn-nav" id="reqNextMonth">▶</button>
-          </div>
-          <div class="card">
-            <div class="table-wrap">
-              <table class="data-table" id="requestsTable">
-                <thead><tr><th>スタッフ名</th><th>部門</th><th>最終提出日</th><th>入力日数</th><th>状況</th><th>詳細</th></tr></thead>
-                <tbody id="requestsBody"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+// ===== 社員番号ID + パスワード によるログイン中核 =====
+// staff_code は歴史的に部署内ユニーク採番のため、部署跨ぎの重複があり得る。
+// 候補全員に対して照合し、一致が1件のときだけログイン成立。複数一致は安全側で拒否。
+async function authenticateByCode(staffCode, password) {
+  const codeNum = parseInt(staffCode);
+  if (!Number.isInteger(codeNum) || codeNum < 0) {
+    return { status: 400, error: '社員番号IDを入力してください' };
+  }
+  const candidates = await sb(`accounts?staff_code=eq.${codeNum}&select=id,name,role,dept_id,staff_id,staff_code,password_hash,failed_attempts,locked_at`);
+  if (!candidates || candidates.length === 0) {
+    return { status: 401, error: '社員番号IDまたはパスワードが正しくありません' };
+  }
+  const matches = candidates.filter(a => verifyPassword(password, a.password_hash));
+  if (matches.length > 1) {
+    return { status: 409, error: '同じ社員番号IDのアカウントが複数一致しました。管理者に社員番号IDの重複解消を依頼してください' };
+  }
+  if (matches.length === 1) {
+    const a = matches[0];
+    if (a.locked_at) {
+      return { status: 423, error: 'このアカウントはロックされています。管理者に解除を依頼してください。' };
+    }
+    // 成功: 失敗カウントリセット＋旧形式ハッシュは scrypt へ自動移行
+    const upd = {};
+    if (a.failed_attempts && a.failed_attempts > 0) upd.failed_attempts = 0;
+    if (isLegacyHash(a.password_hash)) upd.password_hash = hashPassword(password);
+    if (Object.keys(upd).length) {
+      await sb(`accounts?id=eq.${a.id}`, { method: 'PATCH', body: JSON.stringify(upd) });
+    }
+    return { account: a };
+  }
+  // 全候補で不一致: 未ロック候補の失敗カウントを進める（5回でロック）
+  let minRemain = 5;
+  let anyUnlocked = false;
+  for (const a of candidates) {
+    if (a.locked_at) continue;
+    anyUnlocked = true;
+    const n = (a.failed_attempts || 0) + 1;
+    const u = { failed_attempts: n };
+    if (n >= 5) u.locked_at = new Date().toISOString();
+    await sb(`accounts?id=eq.${a.id}`, { method: 'PATCH', body: JSON.stringify(u) });
+    minRemain = Math.min(minRemain, 5 - n);
+  }
+  if (!anyUnlocked) {
+    return { status: 423, error: 'このアカウントはロックされています。管理者に解除を依頼してください。' };
+  }
+  if (minRemain <= 0) {
+    return { status: 423, error: 'ログイン失敗が5回に達したため、アカウントがロックされました。管理者に解除を依頼してください。' };
+  }
+  return { status: 401, error: `社員番号IDまたはパスワードが正しくありません（残り${minRemain}回でロックされます）` };
+}
 
-        <!-- SHIFT -->
-        <div class="page active" id="page-shift">
-          <div id="shiftToolbar">
-          <div class="dept-tabs" id="shiftDeptTabs"></div>
-          <div class="month-nav">
-            <button class="btn-nav" id="shiftPrevMonth">◀</button>
-            <div class="month-nav-title" id="shiftMonthTitle"></div>
-            <button class="btn-nav" id="shiftNextMonth">▶</button>
-            <button class="btn btn-success" id="saveShiftBtn">💾 保存</button>
-            <button class="btn btn-outline" id="undoBtn" title="一つ戻る（元に戻す / Ctrl+Z）" style="background:white;border:1.5px solid #d1d5db;color:#374151;padding:8px 10px;display:inline-flex;align-items:center">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 5 5 5 5 0 0 1-5 5h-3"/></svg>
-            </button>
-            <button class="btn btn-outline" id="redoBtn" title="一つ進む（やり直す / Ctrl+Y）" style="background:white;border:1.5px solid #d1d5db;color:#374151;padding:8px 10px;display:inline-flex;align-items:center">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0-5 5 5 5 0 0 0 5 5h3"/></svg>
-            </button>
-            <button class="btn btn-outline" id="reloadShiftBtn" title="希望をリロード（スタッフ提出の最新の希望を取り込みます。未保存の編集は保持されます）" style="background:white;border:1.5px solid #06b6d4;color:#0e7490;padding:8px 10px;display:inline-flex;align-items:center">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v5h-5"/></svg>
-            </button>
-            <button class="btn btn-primary" id="confirmShiftBtn">✅ 確定する</button>
-            <button class="btn btn-outline" id="bulkFillBtn" onclick="openBulkFillModal()" title="未選択・未ロックのセルを、選んだシフトで一括で埋めます" style="background:white;border:1.5px solid #10b981;color:#047857;font-weight:700;white-space:nowrap">🖊️ 一括埋め</button>
-            <button class="btn btn-outline" id="aiAdviceBtn" style="background:linear-gradient(135deg,#a855f7,#3b82f6);color:white;border:none;display:inline-flex;align-items:center;gap:6px">
-              <svg width="20" height="14" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
-                <g transform="translate(20, 30)">
-                  <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
-                  <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
-                </g>
-                <g transform="translate(50, 30)">
-                  <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
-                  <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
-                  <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
-                  <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
-                  <circle cx="20" cy="-3" r="5" fill="white"/>
-                  <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
-                  <circle cx="22" cy="-4" r="0.8" fill="white"/>
-                </g>
-              </svg>
-              AIに相談
-            </button>
-          </div>
-          <div id="print-header" style="display:none;margin-bottom:12px">
-            <div style="font-size:16px;font-weight:700">やちよ総合診療クリニック シフト表</div>
-            <div style="font-size:12px;color:#666" id="printHeaderSub"></div>
-          </div>
-          <!-- ★ 状況行（3行目）：公開中バッジ＋確定取消ボタン。確定済みの月で表示。スマホでは1行・横スクロール -->
-          <div class="shift-status-row" style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-            <div id="confirmStatusBadge" style="display:none;padding:6px 12px;border-radius:100px;font-size:12px;font-weight:600;white-space:nowrap"></div>
-            <div id="confirmLockBanner" style="display:none">
-              <button id="unconfirmBtn" class="btn btn-outline" style="background:white; border:1.5px solid #dc2626; color:#dc2626; font-weight:700;white-space:nowrap">✏️ 確定を取り消して編集する</button>
-            </div>
-          </div>
-          </div><!-- /#shiftToolbar -->
-          <!-- ★ 自動生成プレビュー承認バナー（自動生成直後に表示）-->
-          <div id="aiPreviewBanner" style="display:none; position:sticky; top:0; z-index:50; background:linear-gradient(135deg,#fef3c7,#fde68a); border:2px solid #f59e0b; border-radius:12px; padding:16px; margin-bottom:12px; box-shadow:0 4px 12px rgba(245,158,11,0.3)">
-            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px">
-              <div style="flex:1; min-width:200px; display:flex; align-items:flex-start; gap:10px">
-                <svg width="32" height="22" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0; margin-top:2px">
-                  <g transform="translate(20, 30)">
-                    <path d="M 0 -5 Q -20 -25, -45 -22 Q -38 -10, -42 -2 Q -45 18, -25 12 Q -10 8, 0 5 Z" fill="#fbbf24"/>
-                    <path d="M 0 -3 Q -15 -18, -35 -15 Q -30 -8, -32 -2 Q -35 12, -20 8 Q -8 5, 0 3 Z" fill="#fde68a"/>
-                  </g>
-                  <g transform="translate(50, 30)">
-                    <ellipse cx="0" cy="0" rx="30" ry="23" fill="#f87171"/>
-                    <path d="M -10 -19 Q -8 -34, -2 -28 Q 3 -36, 8 -28 Q 14 -34, 16 -20 L 14 -19 L 8 -22 L 0 -23 L -8 -20 Z" fill="#fbbf24"/>
-                    <path d="M -3 19 Q -8 30, 5 30 Q 10 24, 6 19 Z" fill="#fbbf24"/>
-                    <path d="M 0 13 Q 8 22, 12 18 Q 14 12, 8 11 Z" fill="#fbbf24"/>
-                    <circle cx="20" cy="-3" r="5" fill="white"/>
-                    <circle cx="21" cy="-3" r="3" fill="#1f2937"/>
-                    <circle cx="22" cy="-4" r="0.8" fill="white"/>
-                  </g>
-                </svg>
-                <div>
-                  <div style="font-size:15px; font-weight:700; color:#92400e; margin-bottom:4px">自動生成結果を表示中（まだ保存されていません）</div>
-                  <div style="font-size:12px; color:#78350f">内容を確認のうえ、「確定」または「生成前に戻す」を選択してください</div>
-                </div>
-              </div>
-              <div style="display:flex; gap:8px">
-                <button id="aiPreviewApproveBtn" class="btn btn-success" style="font-weight:700">✓ この内容で確定する</button>
-                <button id="aiPreviewDiscardBtn" class="btn btn-outline" style="background:white; border:1.5px solid #dc2626; color:#dc2626; font-weight:700">↩ 生成前に戻す</button>
-              </div>
-            </div>
-          </div>
-          <div class="card" style="padding:12px">
-            <div class="shift-grid-wrap">
-              <table class="shift-grid" id="shiftGrid"></table>
-            </div>
-          </div>
-        </div>
+// スタッフ画面ログイン（新方式）: どの権限でも可。スタッフ紐付け必須。
+async function staffLoginByCode(req, res, body) {
+  const { staffCode, password } = body;
+  if (staffCode === undefined || staffCode === null || staffCode === '' || !password) {
+    return bad(res, 400, '社員番号IDとパスワードを入力してください');
+  }
+  const r = await authenticateByCode(staffCode, password);
+  if (r.error) return bad(res, r.status, r.error);
+  const a = r.account;
+  if (!a.staff_id) {
+    return bad(res, 400, 'スタッフ情報が未紐付けのアカウントです。管理者に紐付けを依頼してください');
+  }
+  // 部門はスタッフ本体から解決（master/leaderはアカウント側dept_idがnullの場合があるため）
+  const staffRows = await sb(`staff?id=eq.${encodeURIComponent(a.staff_id)}&select=dept_id`);
+  const deptId = (staffRows && staffRows[0] && staffRows[0].dept_id != null) ? staffRows[0].dept_id : a.dept_id;
+  const token = createToken({ accountId: a.id, role: a.role, deptId });
+  return res.status(200).json({ token, user: { id: a.staff_id, accountId: a.id, staffCode: a.staff_code, name: a.name, deptId, role: a.role } });
+}
 
-        <!-- GENERATE -->
-        <!-- EXPORT -->
-        <div class="page" id="page-export">
-          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;max-width:640px">
-            <h2 style="font-size:18px;font-weight:700;margin:0 0 4px">エクスポート</h2>
-            <p style="font-size:13px;color:#6b7280;margin:0 0 16px;line-height:1.7">「シフト表」で選択中の部署・月を出力します。対象を変えるには、先に「シフト表」で部署・月を切り替えてください。印刷を押すとシフト表の表示に切り替わります。</p>
-            <div style="font-size:14px;font-weight:600;margin-bottom:18px">出力対象：<span id="exportContextLabel" style="color:#0e7490">―</span></div>
-            <div style="display:flex;gap:12px;flex-wrap:wrap">
-              <button class="btn btn-outline" id="exportCsvBtn">📊 CSV出力</button>
-              <button class="btn btn-outline" id="printShiftBtn">🖨️ 印刷</button>
-            </div>
-          </div>
-        </div>
+// 管理画面ログイン（新方式）: leader/master 権限が必須。
+async function adminLoginByCode(req, res, body) {
+  const { staffCode, password } = body;
+  if (staffCode === undefined || staffCode === null || staffCode === '' || !password) {
+    return bad(res, 400, '社員番号IDとパスワードを入力してください');
+  }
+  const r = await authenticateByCode(staffCode, password);
+  if (r.error) return bad(res, r.status, r.error);
+  const a = r.account;
+  if (a.role !== 'leader' && a.role !== 'master') {
+    return bad(res, 403, '管理者権限がありません。スタッフ画面からログインしてください');
+  }
+  const token = createToken({ accountId: a.id, role: a.role, deptId: a.dept_id });
+  return res.status(200).json({ token, user: { id: a.id, name: a.name, role: a.role, deptId: a.dept_id } });
+}
 
-        <div class="page" id="page-generate">
-          <div class="dept-tabs" id="genDeptTabs"></div>
-          <div class="month-nav">
-            <button class="btn-nav" id="genPrevMonth">◀</button>
-            <div class="month-nav-title" id="genMonthTitle"></div>
-            <button class="btn-nav" id="genNextMonth">▶</button>
-          </div>
-
-          <!-- 自動生成パネル -->
-          <div class="generate-panel">
-            <div class="generate-title">⚡ シフト自動生成</div>
-            <div class="generate-sub">希望データをもとに、制約条件を満たすシフトを自動で生成します</div>
-            <div class="generate-options">
-              <div class="gen-option">
-                <label><input type="checkbox" id="optNoConsecWeekend" checked> 土日連勤なし</label>
-              </div>
-            </div>
-            <!-- 以下は常時ON固定（UI非表示） -->
-            <input type="hidden" id="optRespectRequest" value="on" data-checked="true">
-            <input type="hidden" id="optRespectHours" value="on" data-checked="true">
-            <input type="hidden" id="optRespectNight" value="on" data-checked="true">
-            <input type="hidden" id="optKeepLocked" value="on" data-checked="true">
-            <input type="hidden" id="optFillRequired" value="on" data-checked="true">
-
-            <!-- シフトパターン選択 -->
-            <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
-              <div style="font-size:13px;font-weight:700;margin-bottom:10px">
-                📋 使用シフトパターン
-              </div>
-              <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">チェックしたシフトのみ自動生成に使用します（部門ごとに自動保存）</div>
-              <div id="shiftPatternOptions" style="display:flex;flex-wrap:wrap;gap:8px"></div>
-            </div>
-
-            <button class="btn-generate" id="generateBtn" style="margin-top:24px">🚀 シフトを自動生成する</button>
-          </div>
-
-          <!-- 生成結果プレビュー -->
-          <div class="card" id="previewCard" style="display:none">
-            <div class="card-title">生成結果プレビュー</div>
-            <div class="shift-grid-wrap">
-              <table class="shift-grid" id="previewGrid"></table>
-            </div>
-            <div style="display:flex;gap:10px;margin-top:16px">
-              <button class="btn btn-success" id="applyGenerateBtn">✓ シフト表に適用する</button>
-              <button class="btn btn-outline" id="discardGenerateBtn">✕ 破棄する</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- SETTINGS -->
-        <div class="page" id="page-settings">
-          <div class="card">
-            <div class="card-title">月間所定労働時間</div>
-            <div id="monthlyHoursGrid"></div>
-            <button class="btn btn-primary" style="margin-top:16px" id="saveHoursBtn">保存</button>
-            <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
-              <div style="font-size:13px;color:var(--text-muted);margin-bottom:8px">個別所定時間のリセット：特定スタッフに個別設定された所定時間を削除し、上記の基準値に統一します。基準値を変更しても反映されない場合に使用してください。</div>
-              <button class="btn btn-outline" id="clearStaffHoursBtn" style="border:1.5px solid #f59e0b;color:#92400e">⚠️ この部署・指定月の個別所定時間をクリア</button>
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-title">必要人数設定</div>
-            <div class="dept-tabs" id="reqDeptTabs"></div>
-            <div id="requirementsGrid"></div>
-            <button class="btn btn-primary" style="margin-top:16px" id="saveRequirementsBtn">保存</button>
-          </div>
-          <!-- 月別設定：祝日・木曜・水曜（全部署共通・1つの月ナビで連動）-->
-          <div class="card">
-            <div class="card-title">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-              月別の診療日設定（祝日・木曜・水曜）
-            </div>
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">下記の祝日・木曜・水曜の設定はすべて全部署共通です。月を切り替えると3つすべてが連動します。</div>
-            <div class="month-nav" style="margin-bottom:20px">
-              <button class="btn-nav" id="specialPrevMonth">◀</button>
-              <div class="month-nav-title" id="specialMonthTitle"></div>
-              <button class="btn-nav" id="specialNextMonth">▶</button>
-            </div>
-
-            <!-- 祝日・特殊日 -->
-            <div style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--primary)">📅 祝日・特殊日</div>
-            <div id="specialDaysGrid"></div>
-
-            <!-- 任意休診日 -->
-            <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
-              <div style="font-size:14px;font-weight:600;margin-bottom:8px">クリニック休診日（任意）</div>
-              <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
-                祝日・木曜以外でクリニックが休診と定める日を追加します。スタッフのシフト希望提出画面で休診表示されます。
-              </div>
-              <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
-                <select id="customClosedDaySelect" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:white;font-family:inherit"></select>
-                <input type="text" id="customClosedLabelInput" placeholder="ラベル（例：お盆休み）" maxlength="20" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;flex:1;min-width:160px;font-family:inherit">
-                <button id="addCustomClosedBtn" class="btn btn-primary" style="padding:8px 16px;font-size:13px">追加</button>
-              </div>
-              <div id="customClosedList"></div>
-            </div>
-
-            <!-- 木曜日 -->
-            <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
-              <div style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--primary)">📅 木曜日の設定</div>
-              <div id="thursdayGrid"></div>
-            </div>
-
-            <!-- 水曜日 -->
-            <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
-              <div style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--primary)">📅 水曜日の種別設定</div>
-              <div id="wedGrid"></div>
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-title">🔰 初心者上限設定</div>
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">1日の時間帯ごとに🔰スタッフが入れる最大人数を設定します。空欄＝制限なし</div>
-            <div class="dept-tabs" id="beginnerDeptTabs"></div>
-            <div id="beginnerLimitsGrid"></div>
-            <button class="btn btn-primary" style="margin-top:16px" id="saveBeginnerLimitsBtn">保存</button>
-          </div>
-
-          <!-- 希望シフト上限 -->
-          <div class="card">
-            <div class="card-title" style="display:flex;align-items:center;gap:8px">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2zM17 4h-2a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM5 19v.01M11 16v.01M19 16v.01M19 12v.01"/></svg>
-              希望シフト上限
-            </div>
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">部門ごとに「希望休／有休／その他」の月上限を設定できます。一度設定すれば毎月自動的に適用されます。空欄＝制限なし。</div>
-            <div class="dept-tabs" id="reqLimitDeptTabs"></div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:16px">
-              <div style="padding:16px;background:#fff7ed;border-radius:12px;border:1px solid #fed7aa">
-                <div style="font-size:13px;font-weight:600;color:#9a3412;margin-bottom:8px;display:flex;align-items:center;gap:6px">
-                  <span style="width:12px;height:12px;background:#fdba74;border-radius:3px"></span>
-                  希望休の月上限
-                </div>
-                <input type="number" class="form-input" id="limitKibouKyu" min="0" max="31" placeholder="空欄=制限なし" style="font-size:14px">
-                <div style="font-size:11px;color:#9a3412;margin-top:4px">日 / 月</div>
-              </div>
-              <div style="padding:16px;background:#fdf4ff;border-radius:12px;border:1px solid #f5d0fe">
-                <div style="font-size:13px;font-weight:600;color:#86198f;margin-bottom:8px;display:flex;align-items:center;gap:6px">
-                  <span style="width:12px;height:12px;background:#e879f9;border-radius:3px"></span>
-                  有休の月上限
-                </div>
-                <input type="number" class="form-input" id="limitYukyu" min="0" max="31" placeholder="空欄=制限なし" style="font-size:14px">
-                <div style="font-size:11px;color:#86198f;margin-top:4px">日 / 月</div>
-              </div>
-              <div style="padding:16px;background:#f0f9ff;border-radius:12px;border:1px solid #bae6fd">
-                <div style="font-size:13px;font-weight:600;color:#075985;margin-bottom:8px;display:flex;align-items:center;gap:6px">
-                  <span style="width:12px;height:12px;background:#7dd3fc;border-radius:3px"></span>
-                  その他の月上限
-                </div>
-                <input type="number" class="form-input" id="limitOther" min="0" max="31" placeholder="空欄=制限なし" style="font-size:14px">
-                <div style="font-size:11px;color:#075985;margin-top:4px">日 / 月（休み・希望休・有休以外）</div>
-              </div>
-            </div>
-            <button class="btn btn-primary" style="margin-top:16px" id="saveReqLimitsBtn">保存</button>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:8px">💡 設定すると、全ての月の希望提出に自動適用されます。値を変更したい場合はここを編集してください。</div>
-          </div>
-
-          <!-- 希望提出期限 -->
-          <div class="card" id="deadlineCard" style="display:none">
-            <div class="card-title" style="display:flex;align-items:center;gap:8px">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              希望提出期限
-            </div>
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">部門ごとに「毎月X日まで」のルールを設定します。一度設定すれば毎月自動的に適用されます。期限を過ぎるとスタッフは編集できなくなります。</div>
-            <div class="dept-tabs" id="deadlineDeptTabs"></div>
-            
-            <div style="margin-top:16px;padding:16px;background:#fef3c7;border-radius:12px;border:1px solid #fcd34d">
-              <div style="font-size:13px;font-weight:600;color:#92400e;margin-bottom:12px">📅 提出期限ルール（毎月適用）</div>
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px">
-                <select class="form-select" id="deadlineMonthsBefore" style="width:auto;font-size:14px;background:white">
-                  <option value="1">1ヶ月前（前月）</option>
-                  <option value="2">2ヶ月前</option>
-                  <option value="3">3ヶ月前</option>
-                </select>
-                <span style="color:#92400e">の</span>
-                <input type="number" class="form-input" id="deadlineDay" min="1" max="31" placeholder="10" style="width:70px;font-size:14px">
-                <span style="color:#92400e">日</span>
-                <input type="time" class="form-input" id="deadlineTime" value="23:59" style="width:130px;font-size:14px">
-                <span style="color:#92400e">まで</span>
-              </div>
-              <div style="font-size:11px;color:#92400e;margin-top:8px" id="deadlineExampleText">例：「1ヶ月前の10日 23:59」=5月分シフトの提出期限は4/10 23:59</div>
-              <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-                <button class="btn btn-primary" id="saveDeadlineRuleBtn" style="font-size:13px;padding:8px 16px">保存</button>
-                <button class="btn btn-outline" id="clearDeadlineRuleBtn" style="font-size:13px;padding:8px 16px;color:#dc2626">ルールを解除</button>
-              </div>
-            </div>
-
-            <div id="deadlineEffective" style="margin-top:16px;padding:12px;background:#f1f5f9;border-radius:10px;font-size:13px"></div>
-          </div>
-
-          <!-- シフトパターン管理 -->
-          <div class="card">
-            <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-              <span style="display:flex;align-items:center;gap:8px">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                シフトパターン管理
-              </span>
-              <button class="btn btn-primary" id="addCustomShiftBtn" style="font-size:13px;padding:8px 16px">＋ カスタム追加</button>
-            </div>
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">既定シフト（14種）に加えて、カスタムシフトを自由に追加できます。既定シフトは編集・削除できません。</div>
-            <div id="shiftPatternsList" style="overflow-x:auto"></div>
-          </div>
-        </div>
-
-        <!-- ACCOUNT -->
-        <div class="page" id="page-account">
-          <div class="card">
-            <div class="card-title">パスワード変更</div>
-            <div style="max-width:400px">
-              <div class="form-group" style="margin-bottom:16px">
-                <label class="form-label">現在のパスワード</label>
-                <input type="password" class="form-input" id="currentPw" placeholder="••••••••">
-              </div>
-              <div class="form-group" style="margin-bottom:16px">
-                <label class="form-label">新しいパスワード</label>
-                <input type="password" class="form-input" id="newPw" placeholder="4文字以上">
-              </div>
-              <div class="form-group" style="margin-bottom:20px">
-                <label class="form-label">新しいパスワード（確認）</label>
-                <input type="password" class="form-input" id="newPwConfirm" placeholder="もう一度入力">
-              </div>
-              <button class="btn btn-primary" id="changePwBtn">パスワードを変更する</button>
-            </div>
-          </div>
-          <div class="card" id="accountListCard" style="display:none">
-            <div class="card-title">アカウント一覧（管理のみ）</div>
-            <div class="action-row">
-              <button class="btn btn-primary" id="addAccountBtn">＋ アカウント追加</button>
-              <button class="btn btn-outline" id="inviteLinkBtn" style="color:#7c3aed;border-color:#a855f7;font-weight:600">🔗 招待リンクを発行</button>
-            </div>
-            <table class="data-table" id="accountTable">
-              <thead><tr><th>名前</th><th>権限</th><th>部門</th><th>状態</th><th>操作</th></tr></thead>
-              <tbody id="accountBody"></tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- STAFF -->
-        <div class="page" id="page-staff">
-          <div class="action-row">
-            <div class="dept-tabs" id="staffDeptTabs"></div>
-            <button class="btn btn-primary" id="addStaffBtn">＋ スタッフ追加</button>
-          </div>
-          <div class="card" style="padding:0;overflow:hidden">
-            <div id="staffListWrap"></div>
-          </div>
-        </div>
-
-        <div class="page" id="page-kingyo">
-          <div class="card">
-            <div class="card-title">今日の一言（スタッフ投稿のモデレーション）</div>
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">スタッフが登録した言葉の一覧です。元気が出ない・不適切な言葉は「非表示」にすると、金魚の「今日の一言」に出なくなります（投稿者本人の編集欄には残ります）。</div>
-            <div id="kingyoWordsWrap"></div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- MODALS -->
-<!-- カスタムシフト追加・編集モーダル -->
-<div class="modal-overlay" id="customShiftModal">
-  <div class="modal">
-    <div class="modal-title" id="customShiftModalTitle">カスタムシフト追加</div>
-    <input type="hidden" id="customShiftEditId" value="">
-    <div class="form-group">
-      <label class="form-label">シフト名（10文字以内）<span style="color:#dc2626">*</span></label>
-      <input type="text" class="form-input" id="customShiftName" placeholder="例：早番" maxlength="10">
-    </div>
-    <div class="form-group" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div>
-        <label class="form-label">開始時間 <span style="color:#dc2626">*</span></label>
-        <input type="time" class="form-input" id="customShiftStart">
-      </div>
-      <div>
-        <label class="form-label">終了時間 <span style="color:#dc2626">*</span></label>
-        <input type="time" class="form-input" id="customShiftEnd">
-      </div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">実働時間（H）<span style="color:#dc2626">*</span></label>
-      <input type="number" class="form-input" id="customShiftHours" min="0" max="24" step="0.5" placeholder="例：8.0">
-      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">休憩時間を除いた実働時間</div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">カバーする時間帯</label>
-      <div style="display:flex;gap:16px;flex-wrap:wrap">
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customCoverMorning"> 午前</label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customCoverAfternoon"> 午後</label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customCoverEvening"> 夜間</label>
-      </div>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">必要人数の充足判定で使われます</div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">分類フラグ（月間上限のカウント対象）</label>
-      <div style="display:flex;gap:16px;flex-wrap:wrap">
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customIsNight"> 夜勤</label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customIsLate"> 遅番</label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customIsLong"> 長日</label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="customIsMidBreak"> 中抜け</label>
-      </div>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">スタッフごとの月間上限（夜勤上限など）にカウントされます</div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal('customShiftModal')">キャンセル</button>
-      <button class="btn btn-primary" id="saveCustomShiftBtn">保存</button>
-    </div>
-  </div>
-</div>
-
-<!-- バーチカル表示モーダル -->
-<div class="modal-overlay" id="verticalViewModal">
-  <div class="modal" style="max-width:1400px;width:95vw">
-    <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-      <span id="verticalViewTitle">バーチカル表示</span>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button class="btn btn-outline" id="verticalPrevDay" style="padding:4px 12px">◀ 前日</button>
-        <button class="btn btn-outline" id="verticalNextDay" style="padding:4px 12px">翌日 ▶</button>
-      </div>
-    </div>
-    <div id="verticalViewContent" style="overflow:auto;max-height:70vh"></div>
-    <div class="modal-footer" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
-      <div style="font-size:12px;color:var(--text-muted)">
-        💡 帯クリックで休憩追加・編集
-      </div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-outline" onclick="closeModal('verticalViewModal')">閉じる</button>
-        <button class="btn btn-outline" id="verticalPrintBtn">🖨 印刷</button>
-        <button class="btn btn-primary" id="saveBreaksBtn">休憩保存</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- 休憩編集モーダル -->
-<div class="modal-overlay" id="breakEditModal">
-  <div class="modal">
-    <div class="modal-title" id="breakEditTitle">休憩時間を編集</div>
-    <div id="breakEditList"></div>
-    <button class="btn btn-outline" id="addBreakBtn" style="width:100%;margin-top:12px">＋ 休憩を追加</button>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal('breakEditModal')">キャンセル</button>
-      <button class="btn btn-primary" id="applyBreakEditBtn">適用</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="requestDetailModal">
-  <div class="modal modal-lg">
-    <div class="modal-title" id="requestDetailTitle"></div>
-    <div id="requestDetailContent"></div>
-    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal('requestDetailModal')">閉じる</button></div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="addStaffModal">
-  <div class="modal">
-    <div class="modal-title">スタッフ追加</div>
-    <div class="form-group"><label class="form-label">部門</label>
-      <select class="form-select" id="newStaffDept"><option value="0">医療事務</option><option value="1">看護</option><option value="2">リハビリ</option><option value="3">放射線</option></select></div>
-    <div class="form-group"><label class="form-label">名前</label><input type="text" class="form-input" id="newStaffName" placeholder="山田 太郎"></div>
-    <div class="form-group"><label class="form-label">雇用形態</label>
-      <select class="form-select" id="newStaffEmpType"><option value="full">常勤</option><option value="part">パート</option><option value="short">時短</option><option value="arbeit">アルバイト</option></select></div>
-    <div class="form-group"><label class="form-label">夜勤</label>
-      <select class="form-select" id="newStaffNoNight"><option value="false">あり</option><option value="true">なし</option></select></div>
-    <!-- アカウント作成セクション -->
-    <div style="margin:16px 0 12px;padding:12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px">
-        <input type="checkbox" id="newStaffCreateAccount" checked>
-        <span style="font-weight:600;font-size:13px;color:#0c4a6e">🔑 ログインアカウントも作成する</span>
-      </label>
-      <div id="newStaffAccountFields">
-        <div class="form-group" style="margin-bottom:0">
-          <label class="form-label" style="font-size:12px">初期パスワード（4文字以上）</label>
-          <input type="text" class="form-input" id="newStaffPassword" placeholder="後で本人が変更可能">
-        </div>
-        <div style="font-size:11px;color:#0369a1;margin-top:6px;line-height:1.5">
-          ※ ロールは「スタッフ」、部門は上で選択した部門が自動設定されます
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal('addStaffModal')">キャンセル</button>
-      <button class="btn btn-primary" id="saveNewStaffBtn">追加する</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="bulkFillModal">
-  <div class="modal" style="max-width:440px">
-    <div class="modal-title">🖊️ 未選択セルを一括で埋める</div>
-    <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.6">
-      表示中の部門・月で、<b>未選択（空）かつ未ロック</b>のセルを選んだシフトで埋めます（🌸スタッフも含む）。<br>
-      入力済み・ロック済み・休診日は対象外です（埋めたセルは未ロックのまま）。<br>
-      実行後、保存前なら「戻る」で取り消せます。
-    </div>
-    <div style="margin-bottom:14px">
-      <label class="form-label" style="display:block;margin-bottom:6px">埋めるシフト</label>
-      <select id="bulkFillShift" onchange="updateBulkFillCount()" style="width:100%;padding:10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;font-family:inherit"></select>
-    </div>
-    <div style="margin-bottom:14px">
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="bulkFillOverrideReq" onchange="updateBulkFillCount()" style="width:16px;height:16px">
-        希望休・有休などの希望がある空セルも埋める
-      </label>
-    </div>
-    <div id="bulkFillCount" style="font-size:13px;font-weight:700;color:#047857;background:#ecfdf5;border-radius:8px;padding:8px 12px;margin-bottom:16px;text-align:center">対象: 0 セル</div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal('bulkFillModal')">閉じる</button>
-      <button class="btn btn-primary" onclick="executeBulkFill()" style="background:#10b981;border-color:#10b981">埋める</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="shiftEditModal">
-  <div class="modal">
-    <div class="modal-title" id="shiftEditTitle"></div>
-    <div id="arbeitNameRow" style="display:none;margin-bottom:14px">
-      <label class="form-label" style="font-size:12px">当日の氏名（アルバイト）</label>
-      <div style="display:flex;gap:8px">
-        <input type="text" class="form-input" id="arbeitNameInput" placeholder="氏名を入力" style="flex:1">
-        <button class="btn btn-primary" id="arbeitNameSaveBtn" type="button" style="white-space:nowrap">氏名を保存</button>
-      </div>
-    </div>
-    <div id="shiftEditOptions" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;align-items:stretch"></div>
-    <div class="modal-footer">
-      <button class="btn btn-outline btn-danger" id="clearShiftBtn">クリア</button>
-      <button class="btn btn-outline" onclick="closeModal('shiftEditModal')">閉じる</button>
-    </div>
-  </div>
-</div>
-
-<script src="admin.js?v=43"></script>
-<script src="admin-generate.js?v=4"></script>
-</body>
-</html>
+async function changePassword(req, res, body) {
+  const token = extractBearer(req);
+  const payload = verifyToken(token);
+  if (!payload) return bad(res, 401, 'セッションが無効です。再ログインしてください');
+  const { currentPassword, newPassword } = body;
+  if (!currentPassword || !newPassword) return bad(res, 400, '入力が不足しています');
+  if (newPassword.length < 4) return bad(res, 400, 'パスワードは4文字以上にしてください');
+  const rows = await sb(`accounts?id=eq.${payload.accountId}&select=id,password_hash`);
+  if (!rows || rows.length === 0) return bad(res, 401, 'アカウントが見つかりません');
+  if (!verifyPassword(currentPassword, rows[0].password_hash)) return bad(res, 401, '現在のパスワードが正しくありません');
+  await sb(`accounts?id=eq.${payload.accountId}`, { method: 'PATCH', body: JSON.stringify({ password_hash: hashPassword(newPassword) }) });
+  return res.status(200).json({ ok: true });
+}
