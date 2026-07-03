@@ -15,7 +15,41 @@ const SESSION_SECRET = process.env.SESSION_SECRET;
 
 function envOk() { return SUPABASE_URL && SERVICE_ROLE_KEY && SESSION_SECRET; }
 
-async function sha256(text) { return crypto.createHash('sha256').update(text).digest('hex'); }
+// ===== パスワードハッシュ（scrypt・ソルト付き）=====
+// 形式: s2$N$r$p$salt(base64)$hash(base64)
+// 旧形式（SHA-256 hex 64桁）はログイン成功時に自動で scrypt へ再ハッシュ（レイジー移行）。
+const SCRYPT_N = 16384, SCRYPT_R = 8, SCRYPT_P = 1, SCRYPT_KEYLEN = 64;
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16);
+  const hash = crypto.scryptSync(String(password), salt, SCRYPT_KEYLEN, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P });
+  return `s2$${SCRYPT_N}$${SCRYPT_R}$${SCRYPT_P}$${salt.toString('base64')}$${hash.toString('base64')}`;
+}
+
+function verifyPassword(password, stored) {
+  if (!stored || typeof stored !== 'string') return false;
+  try {
+    if (stored.startsWith('s2$')) {
+      const parts = stored.split('$');
+      if (parts.length !== 6) return false;
+      const N = parseInt(parts[1]), r = parseInt(parts[2]), p = parseInt(parts[3]);
+      const salt = Buffer.from(parts[4], 'base64');
+      const expected = Buffer.from(parts[5], 'base64');
+      if (!Number.isInteger(N) || N < 2 || N > 1048576 || !Number.isInteger(r) || !Number.isInteger(p) || !salt.length || !expected.length) return false;
+      const actual = crypto.scryptSync(String(password), salt, expected.length, { N, r, p, maxmem: 128 * 1024 * 1024 });
+      return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+    }
+    // 旧形式: SHA-256 hex
+    const legacy = crypto.createHash('sha256').update(String(password)).digest();
+    const storedBuf = Buffer.from(stored, 'hex');
+    return storedBuf.length === legacy.length && crypto.timingSafeEqual(storedBuf, legacy);
+  } catch { return false; }
+}
+
+// 旧形式かどうか（ログイン成功時の自動再ハッシュ判定用）
+function isLegacyHash(stored) {
+  return typeof stored === 'string' && !stored.startsWith('s2$');
+}
 function base64urlDecode(str) {
   str = str.replace(/-/g, '+').replace(/_/g, '/');
   while (str.length % 4) str += '=';
@@ -124,7 +158,7 @@ async function createAccount(req, res, body) {
     return bad(res, 409, '同じ部門・名前・権限のアカウントが既に存在します');
   }
 
-  const hash = await sha256(password);
+  const hash = hashPassword(password);
   const record = {
     name,
     password_hash: hash,
@@ -158,7 +192,7 @@ async function updateAccount(req, res, body) {
   }
   if (password) {
     if (password.length < 4) return bad(res, 400, 'パスワードは4文字以上');
-    update.password_hash = await sha256(password);
+    update.password_hash = hashPassword(password);
   }
   // スタッフ紐付け: staff_code = ログインID（部門内ユニーク）, staff_id = staffレコード参照(uuid)
   // 空文字/nullで紐付け解除も可能
@@ -199,7 +233,7 @@ async function createForNewStaff(req, res, body) {
     return bad(res, 409, '同じ部門・名前のスタッフアカウントが既に存在します');
   }
 
-  const hash = await sha256(password);
+  const hash = hashPassword(password);
   await sb('accounts', {
     method: 'POST',
     body: JSON.stringify([{
