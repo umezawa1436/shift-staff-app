@@ -764,7 +764,7 @@ async function loadPlannedHours() {
     const [monthlyHoursData, staffSettingData, staffRow] = await Promise.all([
       supabaseRequest(`monthly_hours?month=eq.${currentMonth}&year=eq.${currentYear}&dept_id=is.null&select=hours`),
       supabaseRequest(`staff_settings?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}&select=planned_hours`),
-      staffEmpTypeCache != null ? Promise.resolve(null) : supabaseRequest(`staff?id=eq.${currentUser.id}&select=emp_type`)
+      staffEmpTypeCache != null ? Promise.resolve(null) : dataApi({ action:'list', table:'staff', view:'me' }).then(r => r.rows || [])
     ]);
     if (staffRow) staffEmpTypeCache = staffRow[0]?.emp_type || 'full';
     const baseHours = (monthlyHoursData && monthlyHoursData.length) ? parseFloat(monthlyHoursData[0].hours) : APP_DEFAULT_PLAN_HOURS;
@@ -904,9 +904,10 @@ let STAFF_DATA = {};
 
 async function loadStaffData() {
   try {
-    const staffList = await supabaseRequest(
-      `staff?select=id,staff_code,name,dept_id&order=dept_id,display_order.asc.nullslast,staff_code`
-    );
+    const r = await fetch('/api/staff-names', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || `API ${r.status}`);
+    const staffList = d.staff || [];
     const grouped = {};
     (staffList || []).forEach(s => {
       if (s.dept_id == null || s.staff_code == null) return;
@@ -981,9 +982,7 @@ async function openVerticalView(year, month, day) {
       return;
     }
 
-    const allDeptStaff = await supabaseRequest(
-      `staff?dept_id=eq.${currentUser.deptId}&select=id,name,emp_type&order=display_order.asc.nullslast,staff_code`
-    );
+    const allDeptStaff = (await dataApi({ action:'list', table:'staff', view:'dept', params:{ dept_id: currentUser.deptId } })).rows || [];
     const breaksData = await supabaseRequest(
       `shift_breaks?year=eq.${year}&month=eq.${month}&day=eq.${day}&order=staff_id,display_order&select=staff_id,break_start,break_end`
     );
@@ -1243,9 +1242,7 @@ async function loadRequests() {
       hasDraft = true;
     } else {
       // 下書きが無ければ提出済みを読み込む（初回や下書き未作成の場合）
-      const data = await supabaseRequest(
-        `shift_requests?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}&select=day,request_type`
-      );
+      const data = (await dataApi({ action:'list', table:'shift_requests', view:'mine', params:{ year: currentYear, month: currentMonth } })).rows || [];
       data.forEach(r => { requests[`${currentYear}-${currentMonth}-${r.day}`] = r.request_type; });
       hasDraft = false;
     }
@@ -1253,9 +1250,7 @@ async function loadRequests() {
     console.error('[loadRequests]', e);
     // 下書きテーブルが未作成などのエラー時は、従来通り提出済みを読む（フォールバック）
     try {
-      const data = await supabaseRequest(
-        `shift_requests?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}&select=day,request_type`
-      );
+      const data = (await dataApi({ action:'list', table:'shift_requests', view:'mine', params:{ year: currentYear, month: currentMonth } })).rows || [];
       requests = {};
       data.forEach(r => { requests[`${currentYear}-${currentMonth}-${r.day}`] = r.request_type; });
     } catch(e2) { console.error(e2); }
@@ -1605,28 +1600,12 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
   try {
     const monthKeys = Object.keys(requests).filter(k => k.startsWith(`${currentYear}-${currentMonth}-`));
 
-    await supabaseRequest(
-      `shift_requests?staff_id=eq.${currentUser.id}&year=eq.${currentYear}&month=eq.${currentMonth}`,
-      { method: 'DELETE' }
-    );
-
-    const inserts = monthKeys.map(k => {
-      const day = parseInt(k.split('-')[2]);
-      return {
-        staff_id: currentUser.id,
-        year: currentYear,
-        month: currentMonth,
-        day: day,
-        request_type: requests[k],
-      };
-    });
-
-    if (inserts.length > 0) {
-      await supabaseRequest('shift_requests', {
-        method: 'POST',
-        body: JSON.stringify(inserts),
-      });
-    }
+    // サーバ側で本人分の月内を全削除→一括INSERT（staff_idはトークンから強制）
+    const items = monthKeys.map(k => ({
+      day: parseInt(k.split('-')[2]),
+      request_type: requests[k],
+    }));
+    await dataApi({ action:'submit-requests', year: currentYear, month: currentMonth, items });
 
     // ★ 提出後、下書きテーブルも提出内容に同期（下書き＝提出済みの状態にする）
     try {
