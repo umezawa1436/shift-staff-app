@@ -2914,6 +2914,7 @@ async function addCustomClosedDay() {
     }])});
     customClosedData[day] = label;
     labelEl.value = '';
+    if (typeof invalidateShiftCache === 'function') invalidateShiftCache(); // シフト表キャッシュを無効化（休診はシフト描画に影響）
     await renderSpecialDaysGrid();
     showToast(`${specialMonth}/${day}を休診日に設定しました ✓`, 'success');
   } catch(e) {
@@ -2929,6 +2930,7 @@ async function removeCustomClosedDay(day) {
   try {
     await sb(`special_days?year=eq.${specialYear}&month=eq.${specialMonth}&day=eq.${day}`, {method:'DELETE'});
     delete customClosedData[day];
+    if (typeof invalidateShiftCache === 'function') invalidateShiftCache();
     await renderSpecialDaysGrid();
     showToast(`${specialMonth}/${day}の休診を解除しました ✓`, 'success');
   } catch(e) {
@@ -2994,6 +2996,7 @@ async function setHolidayStatus(day, status) {
       label: status === 'closed' ? '休診' : '診療日'
     }])});
     holidayData[day] = status;
+    if (typeof invalidateShiftCache === 'function') invalidateShiftCache();
     await renderSpecialDaysGrid();
     showToast(`${specialMonth}/${day}を${status==='closed'?'休診':'診療日'}に設定しました ✓`, 'success');
   } catch(e) { console.error(e); showToast('保存エラー','error'); }
@@ -3008,6 +3011,7 @@ async function setThursdayStatus(day, isOpen) {
       year: specialYear, month: specialMonth, day, is_open: isOpen
     }])});
     thursdayData[day] = isOpen;
+    if (typeof invalidateShiftCache === 'function') invalidateShiftCache();
     renderThursdayGrid(new Date(specialYear, specialMonth, 0).getDate());
     showToast(`${specialMonth}/${day}（木）を${isOpen?'診療日':'休診'}に設定しました ✓`, 'success');
   } catch(e) { console.error(e); showToast('保存エラー','error'); }
