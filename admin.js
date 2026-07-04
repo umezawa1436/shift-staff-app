@@ -3581,12 +3581,17 @@ document.querySelectorAll('.ai-choice-btn').forEach(btn => {
       const prompt = buildPromptForAI(aiCurrentMode);
       const res = await fetch('/api/gemini', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('shift_admin_token') || ''}`,
+        },
         body: JSON.stringify({ prompt })
       });
       const data = await res.json();
       if (!res.ok) {
-        const msg = data?.error || `エラー (${res.status})`;
+        const msg = (res.status === 401)
+          ? 'セッションの有効期限が切れています。一度ログアウトして再ログインしてください。'
+          : (data?.error || `エラー (${res.status})`);
         document.getElementById('aiErrorText').textContent = msg + (data?.detail ? '\n' + data.detail : '');
         showAiStep('aiStepError');
         return;
