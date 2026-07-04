@@ -1,16 +1,45 @@
 // Vercel Functions: Gemini API プロキシ
-// 環境変数: GEMINI_API_KEY が必要
+// 環境変数: GEMINI_API_KEY, SESSION_SECRET が必要
+// セキュリティ: HMACセッショントークン必須（master/leaderのみ）。
+//   以前は無認証＋CORS全開放だったため、第三者がAPIキーの無料枠を消費できた。
+//   同一オリジン専用のためCORSヘッダーは付与しない。
+
+import crypto from 'crypto';
+
+const SESSION_SECRET = process.env.SESSION_SECRET;
+
+// ===== セッショントークン検証（auth.js/kingyo.js と同一方式） =====
+function base64urlDecode(str) {
+  str = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (str.length % 4) str += '=';
+  return Buffer.from(str, 'base64').toString('utf8');
+}
+function base64url(buf) {
+  return Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function verifyToken(token) {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [body, sig] = parts;
+  const expected = base64url(crypto.createHmac('sha256', SESSION_SECRET).update(body).digest());
+  if (sig.length !== expected.length) return null;
+  let diff = 0;
+  for (let i = 0; i < sig.length; i++) diff |= sig.charCodeAt(i) ^ expected.charCodeAt(i);
+  if (diff !== 0) return null;
+  let payload;
+  try { payload = JSON.parse(base64urlDecode(body)); } catch { return null; }
+  if (!payload.exp || payload.exp < Date.now()) return null;
+  return payload;
+}
+function extractBearer(req) {
+  const auth = req.headers['authorization'] || req.headers['Authorization'];
+  if (!auth || typeof auth !== 'string') return null;
+  const m = auth.match(/^Bearer\s+(.+)$/i);
+  return m ? m[1] : null;
+}
 
 export default async function handler(req, res) {
-  // CORSヘッダー（同一オリジンなので基本不要だが念のため）
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -18,6 +47,18 @@ export default async function handler(req, res) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return res.status(500).json({ error: 'GEMINI_API_KEY が設定されていません。Vercel管理画面で環境変数を設定してください。' });
+  }
+  if (!SESSION_SECRET) {
+    return res.status(500).json({ error: 'サーバー設定エラー' });
+  }
+
+  // 認証: 管理画面（master/leader）のセッションのみ許可
+  const payload = verifyToken(extractBearer(req));
+  if (!payload) {
+    return res.status(401).json({ error: 'セッションが無効です。再ログインしてください。' });
+  }
+  if (payload.role !== 'master' && payload.role !== 'leader') {
+    return res.status(403).json({ error: '権限がありません' });
   }
 
   try {
