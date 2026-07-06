@@ -69,6 +69,25 @@ async function sb(path, options = {}) {
   const t = await res.text();
   return t ? JSON.parse(t) : [];
 }
+
+// ===== 1000行上限（Supabase Max Rows）対策 =====
+// PostgRESTはサーバー設定 Max Rows（既定1000）でレスポンスをサイレントに切り捨てる。
+// 月間シフト等が閾値を超えると「確定シフトが一部表示されない」事故になるため（2026-07に実発生・1049行）、
+// 大量になり得る読み込みは本関数で全件取得する。
+// 仕組み: 安定ソートを付け、実際に返った行数分だけoffsetを進めて0件になるまでループ。
+// limitを送らず「返った行数」で進めるので、サーバーのMax Rows設定値がいくつでも正しく動く。
+async function sbAll(path, order) {
+  const sep = path.includes('?') ? '&' : '?';
+  const out = [];
+  let offset = 0;
+  for (let i = 0; i < 50; i++) { // 安全弁: 最大50ページ（Max Rows=1000なら5万行）
+    const rows = await sb(`${path}${sep}order=${order}&offset=${offset}`);
+    if (!Array.isArray(rows) || rows.length === 0) break;
+    out.push(...rows);
+    offset += rows.length;
+  }
+  return out;
+}
 function bad(res, status, message) { return res.status(status).json({ error: message }); }
 
 // アカウントID → role / staff_id / dept_id を解決（クライアントの自己申告は信用しない）
@@ -173,7 +192,7 @@ async function listView(res, payload, table, view, params) {
     }
     if (view === 'admin-month') {
       if (role !== 'leader' && role !== 'master') return bad(res, 403, '権限がありません');
-      const rows = await sb(`shift_requests?year=eq.${year}&month=eq.${month}&select=staff_id,day,request_type,submitted_at`);
+      const rows = await sbAll(`shift_requests?year=eq.${year}&month=eq.${month}&select=staff_id,day,request_type,submitted_at`, 'staff_id,day');
       return res.status(200).json({ rows });
     }
     return bad(res, 400, '不明なviewです');
@@ -184,12 +203,12 @@ async function listView(res, payload, table, view, params) {
       if (role !== 'leader' && role !== 'master') return bad(res, 403, '権限がありません');
       const year = params.year, month = params.month;
       if (!intOk(year, 2000, 2100) || !intOk(month, 1, 12)) return bad(res, 400, 'year/month が不正です');
-      const rows = await sb(`shifts?year=eq.${year}&month=eq.${month}&select=staff_id,day,shift_type_id,is_locked,is_confirmed,cell_label`);
+      const rows = await sbAll(`shifts?year=eq.${year}&month=eq.${month}&select=staff_id,day,shift_type_id,is_locked,is_confirmed,cell_label`, 'staff_id,day');
       return res.status(200).json({ rows });
     }
     if (view === 'admin-confirmed-months') {
       if (role !== 'leader' && role !== 'master') return bad(res, 403, '権限がありません');
-      const rows = await sb(`shifts?is_confirmed=eq.true&select=staff_id,year,month`);
+      const rows = await sbAll(`shifts?is_confirmed=eq.true&select=staff_id,year,month`, 'year,month,staff_id');
       return res.status(200).json({ rows });
     }
     if (view === 'admin-staff-month') {
@@ -235,7 +254,7 @@ async function listView(res, payload, table, view, params) {
       const year = params.year, month = params.month;
       if (!intOk(year, 2000, 2100) || !intOk(month, 1, 12)) return bad(res, 400, 'year/month が不正です');
       try {
-        const rows = await sb(`cell_locks?year=eq.${year}&month=eq.${month}&select=staff_id,day`);
+        const rows = await sbAll(`cell_locks?year=eq.${year}&month=eq.${month}&select=staff_id,day`, 'staff_id,day');
         return res.status(200).json({ rows });
       } catch { return res.status(200).json({ rows: [] }); } // テーブル未作成でも壊さない
     }
