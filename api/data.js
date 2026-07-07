@@ -77,13 +77,16 @@ async function sb(path, options = {}) {
 // 仕組み: 安定ソートを付け、実際に返った行数分だけoffsetを進めて0件になるまでループ。
 // limitを送らず「返った行数」で進めるので、サーバーのMax Rows設定値がいくつでも正しく動く。
 async function sbAll(path, order) {
+  const PAGE = 1000; // 【不変条件】Supabase設定の Max Rows は必ず PAGE 以上にしておくこと（現在5000）。
+                     // Max Rows < PAGE だと1ページが PAGE 未満で返り、途中終了＝取りこぼしが再発する。
   const sep = path.includes('?') ? '&' : '?';
   const out = [];
   let offset = 0;
-  for (let i = 0; i < 50; i++) { // 安全弁: 最大50ページ（Max Rows=1000なら5万行）
-    const rows = await sb(`${path}${sep}order=${order}&offset=${offset}`);
+  for (let i = 0; i < 50; i++) { // 安全弁: 最大5万行
+    const rows = await sb(`${path}${sep}order=${order}&limit=${PAGE}&offset=${offset}`);
     if (!Array.isArray(rows) || rows.length === 0) break;
     out.push(...rows);
+    if (rows.length < PAGE) break; // PAGE未満＝最終ページ。空ページ確認の余分な1往復を省く
     offset += rows.length;
   }
   return out;
@@ -337,8 +340,35 @@ async function saveShiftMonth(res, payload, body) {
     });
   }
 
-  await sb(`shifts?staff_id=in.(${inFilter(staffIds)})&year=eq.${year}&month=eq.${month}`, { method: 'DELETE' });
-  if (rows.length) await sb('shifts', { method: 'POST', body: JSON.stringify(rows) });
+  // ===== UPSERT方式 =====
+  // 旧実装（全削除→INSERT）は INSERT 失敗時に対象月のシフトが全消失する事故構造だったため廃止。
+  // 前提: shifts に UNIQUE (staff_id, year, month, day)（shifts_staff_ymd_uniq）が必要。
+  // 手順: ①現状読み取り → ②UPSERT（ここで失敗しても旧データ無傷） → ③差分DELETE（失敗しても余分セルが残るだけ）
+  // どの段階で失敗してもデータ消失は起きない。
+  // ペイロード内の同一セル重複は upsert でエラーになるため、後勝ちで事前排除する。
+  const byKey = new Map();
+  for (const r of rows) byKey.set(`${r.staff_id}|${r.day}`, r);
+  const upsertRows = Array.from(byKey.values());
+
+  // ① 現状の行（差分DELETE用）
+  const current = await sbAll(`shifts?staff_id=in.(${inFilter(staffIds)})&year=eq.${year}&month=eq.${month}&select=id,staff_id,day`, 'staff_id,day');
+
+  // ② UPSERT（既存セルは更新・新規セルは挿入）
+  if (upsertRows.length) {
+    await sb(`shifts?on_conflict=staff_id,year,month,day`, {
+      method: 'POST',
+      headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(upsertRows),
+    });
+  }
+
+  // ③ 新しい状態に存在しないセルだけを id 指定で削除
+  const keep = new Set(upsertRows.map(r => `${r.staff_id}|${r.day}`));
+  const staleIds = (current || []).filter(c => !keep.has(`${c.staff_id}|${c.day}`)).map(c => c.id);
+  for (let i = 0; i < staleIds.length; i += 100) {
+    const chunk = staleIds.slice(i, i + 100);
+    await sb(`shifts?id=in.(${chunk.map(encodeURIComponent).join(',')})`, { method: 'DELETE' });
+  }
 
   // 未選択セルのロック永続化（cell_locks テーブルが無い環境でも壊さない）
   try {
@@ -354,7 +384,7 @@ async function saveShiftMonth(res, payload, body) {
     if (locks.length) await sb('cell_locks', { method: 'POST', body: JSON.stringify(locks) });
   } catch (e) { console.warn('cell_locks skip:', e.message); }
 
-  return res.status(200).json({ ok: true, count: rows.length });
+  return res.status(200).json({ ok: true, count: upsertRows.length });
 }
 
 // ===== 月次の確定フラグ変更（確定取り消し等）=====
