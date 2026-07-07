@@ -1851,40 +1851,53 @@ function kingyoTierStatus() {
   return `あと <b>${next.min - n}</b>語で次の色！`;
 }
 
-function getDailyQuote() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), 0, 0);
-  const day = Math.floor((now - start) / 86400000);
-  // 登録された言葉があれば偶数日はみんなの言葉（日替わり巡回）、奇数日はキュレーション。半分は仲間の言葉が出る。
-  if (allSharedWords.length && day % 2 === 0) {
-    const w = allSharedWords[Math.floor(day / 2) % allSharedWords.length];
-    const by = w.anonymous ? '匿名' : ((w.staff_id === currentUser?.id) ? null : (w.name || null)); // 匿名は「匿名」、自分の言葉は無記名、それ以外は名前
-    return { text: w.text, by };
-  }
-  const t = DAILY_QUOTES[((day % DAILY_QUOTES.length) + DAILY_QUOTES.length) % DAILY_QUOTES.length];
-  return { text: t, by: null };
+// ===== 今日の言葉セット（1日5語・日替わり） =====
+// 方針: スタッフが手入力した「みんなの言葉」を最優先で出す。
+//   - みんなの言葉が5語以上 → その日の5語は全部みんなの言葉（窓が毎日5語ずれて、全語が数日で一巡）
+//   - 5語未満 → ある分は毎日出し、不足分だけキュレーション(DAILY_QUOTES)を日替わりで補完
+// タップはその日の5語の中だけを巡回する（1日で全語を喋り切らない）。
+const KINGYO_WORDS_PER_DAY = 5;
+
+function kingyoDayIndex() {
+  // 年を跨いでも巻き戻らない通し日数
+  return Math.floor(Date.now() / 86400000);
 }
 
-// タップするたびに次の言葉へ巡回（1日に何パターンも喋る）。
-// キュレーション＋仲間の共有語を1つのプールにして順に出す。
+// arr から day 日目の窓（count語）を取り出す。窓は毎日 count ずつ進み、全語を順に一巡する。
+function pickRotating(arr, count, day) {
+  const out = [];
+  if (!arr.length || count <= 0) return out;
+  const take = Math.min(count, arr.length);
+  const start = ((day * count) % arr.length + arr.length) % arr.length;
+  for (let i = 0; i < take; i++) out.push(arr[(start + i) % arr.length]);
+  return out;
+}
+
+function todaysQuoteSet() {
+  const day = kingyoDayIndex();
+  const shared = allSharedWords.map(w => ({
+    text: w.text,
+    by: w.anonymous ? '匿名' : ((w.staff_id === currentUser?.id) ? null : (w.name || null)), // 匿名は「匿名」、自分の言葉は無記名、それ以外は名前
+  }));
+  const set = pickRotating(shared, KINGYO_WORDS_PER_DAY, day);
+  if (set.length < KINGYO_WORDS_PER_DAY) {
+    set.push(...pickRotating(DAILY_QUOTES.map(t => ({ text: t, by: null })), KINGYO_WORDS_PER_DAY - set.length, day));
+  }
+  if (!set.length) set.push({ text: '今日もおつかれさま。', by: null });
+  return set;
+}
+
+function getDailyQuote() {
+  // 今日の代表の一言 ＝ 今日の5語の先頭（手入力があれば必ず手入力）
+  return todaysQuoteSet()[0];
+}
+
+// タップするたびに「今日の5語」の中を巡回
 let kingyoQuoteSeq = -1;
 function getRotatingQuote() {
-  const pool = DAILY_QUOTES.map(t => ({ text: t, by: null }));
-  for (const w of allSharedWords) {
-    const by = w.anonymous ? '匿名' : ((w.staff_id === currentUser?.id) ? null : (w.name || null));
-    pool.push({ text: w.text, by });
-  }
-  if (!pool.length) return { text: '今日もおつかれさま。', by: null };
-  if (kingyoQuoteSeq < 0) {
-    // 初回は日替わりで開始位置を決める（日によって始まりが変わる）
-    const now = new Date();
-    const start = new Date(now.getFullYear(), 0, 0);
-    const day = Math.floor((now - start) / 86400000);
-    kingyoQuoteSeq = ((day % pool.length) + pool.length) % pool.length;
-  } else {
-    kingyoQuoteSeq = (kingyoQuoteSeq + 1) % pool.length;
-  }
-  return pool[kingyoQuoteSeq];
+  const set = todaysQuoteSet();
+  kingyoQuoteSeq = (kingyoQuoteSeq + 1) % set.length;
+  return set[kingyoQuoteSeq];
 }
 
 // 金魚の見た目：チーム全体の登録語数が増えるほど色が育つ（速度は一定のゆっくり）
