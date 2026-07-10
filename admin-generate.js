@@ -946,8 +946,11 @@ _logStep('STEP8完了');
     deptStaff.filter(s => isNoCount(s)).forEach(s => {
       const planH = getStaffPlanHours(s);
       if (planH <= 0) return;
+      // 【修正】旧実装は planH - 2 で打ち切っており、🌸だけ最大2時間の取りこぼしが常態化していた。
+      //   通常スタッフ(STEP8)と同じく planH - 0.1 まで詰める。
+      //   （🌸は「初心者マーク」であり、必要人数に数えないだけで労働時間の扱いは他と同じ）
       let guard9 = 0;
-      while ((staffHours[s.id]||0) < planH - 2 && guard9++ < daysInMonth + 5) {
+      while ((staffHours[s.id]||0) < planH - 0.1 && guard9++ < daysInMonth + 5) {
         let placed = false;
         for (let d = 1; d <= daysInMonth; d++) {
           const key = `${s.id}|${d}`;
@@ -961,6 +964,8 @@ _logStep('STEP8完了');
           // 通常水曜は午前のみ診療 → 午後をカバーしないシフトを使う
           const sh9 = s.emp_type === 'short' ? '時短'
             : (dt9 === 'wed_cc' ? 'CC' : dt9 === 'wed_cho' ? 'CHO' : dt9 === 'wed_normal' ? '午前' : '日勤');
+          // 所定時間 +2H を超える配置はしない（STEP8と同じ許容幅）
+          if ((staffHours[s.id]||0) + (SHIFT_HOURS[sh9]||0) > planH + 2) continue;
           result[key] = sh9;
           staffHours[s.id] = (staffHours[s.id]||0) + (SHIFT_HOURS[sh9]||0);
           placed = true;
@@ -1011,8 +1016,11 @@ _logStep('STEP8完了');
       const weekKeys = Object.keys(weekDays).map(Number).sort((a, b) => a - b)
         .filter(w => weekDays[w].length >= 3); // 端数週は週次評価から除外
 
-      // 均等化の対象スタッフ（🌸・所定0Hは除外）
-      const targets = deptStaff.filter(s => !isNoCount(s) && getStaffPlanHours(s) > 0);
+      // 均等化の対象スタッフ（所定0Hのみ除外）
+      // 🌸スタッフ（初心者マーク）も含める。必要人数に数えないだけで、労働者としての扱いは同じ。
+      //   ただし日別の休み人数(offOnDay)には寄与させない＝「人数に数えない」原則は維持し、
+      //   各人の週別の偏り(offInWeek)だけを均等化する。
+      const targets = deptStaff.filter(s => getStaffPlanHours(s) > 0);
 
       // その日の休み人数（🌸は人数カウント外）
       const offCountOnDay = (d) => deptStaff.filter(s =>
@@ -1042,11 +1050,17 @@ _logStep('STEP8完了');
       const dayTerm = (n) => n * n;
       const weekTerm = (w, n) => { const r = n / weekDays[w].length; return r * r * WEEK_WEIGHT; };
 
+      // 🌸は日別の休み人数にカウントされない（＝日別コストに寄与しない）
+      const countsForDay = {};
+      targets.forEach(s => { countsForDay[s.id] = !isNoCount(s); });
+
       // od(休み→勤務) / wd(勤務→休み) に入れ替えたときのコスト減少量
       const gainOf = (sid, od, wd) => {
         let delta = 0;
-        delta += dayTerm(offOnDay[od] - 1) - dayTerm(offOnDay[od]);
-        delta += dayTerm(offOnDay[wd] + 1) - dayTerm(offOnDay[wd]);
+        if (countsForDay[sid]) {  // 🌸以外のみ日別コストへ寄与
+          delta += dayTerm(offOnDay[od] - 1) - dayTerm(offOnDay[od]);
+          delta += dayTerm(offOnDay[wd] + 1) - dayTerm(offOnDay[wd]);
+        }
         const wo = weekOf(od), ww = weekOf(wd);
         if (weekSet.has(wo)) { const n = offInWeek[sid][wo]; delta += weekTerm(wo, n - 1) - weekTerm(wo, n); }
         if (weekSet.has(ww)) { const n = offInWeek[sid][ww]; delta += weekTerm(ww, n + 1) - weekTerm(ww, n); }
@@ -1057,7 +1071,8 @@ _logStep('STEP8完了');
       const applySwap = (sid, od, wd, sh) => {
         result[`${sid}|${od}`] = sh;
         result[`${sid}|${wd}`] = '休み';
-        offOnDay[od]--; offOnDay[wd]++;
+        // 🌸は offCountOnDay に含まれないため、日別集計も更新しない（整合を保つ）
+        if (countsForDay[sid]) { offOnDay[od]--; offOnDay[wd]++; }
         const wo = weekOf(od), ww = weekOf(wd);
         if (weekSet.has(wo)) offInWeek[sid][wo]--;
         if (weekSet.has(ww)) offInWeek[sid][ww]++;
@@ -1082,6 +1097,9 @@ _logStep('STEP8完了');
       const canRemoveWork = (sid, d) => {
         const sh = result[`${sid}|${d}`];
         if (!sh) return false;
+        // 🌸は countCoverage に含まれない＝抜いても充足数は減らないので、人数制約を課さない。
+        //   （旧実装は一律 -1 していたため、🌸の移動が不当にブロックされていた）
+        if (!countsForDay[sid]) return true;
         for (const period of ['morning', 'afternoon', 'evening']) {
           if (!SHIFT_COVERS[sh]?.includes(period)) continue;
           const req = getRequired(period, d);
