@@ -1009,6 +1009,11 @@ _logStep('STEP8完了');
       });
       const weekKeys = Object.keys(weekDays).map(Number).sort((a, b) => a - b);
 
+      // その日に休んでいる人数（🌸スタッフは人数カウント対象外なので除外）
+      const offCountOnDay = (d) => deptStaff.filter(s =>
+        !isNoCount(s) && OFF_SHIFTS.includes(result[`${s.id}|${d}`])
+      ).length;
+
       // 交換してよい「勤務」か（ロック・希望休・有休などは対象外）
       const isMovableWork = (sid, d) => {
         const key = `${sid}|${d}`;
@@ -1083,9 +1088,14 @@ _logStep('STEP8完了');
 
           // hi週の「休み」を lo週の「勤務」と交換する
           //   = lo週から勤務を1つ抜いて hi週に移す
+          // 【重要】日付順に走査すると全スタッフが同じ日を掴み、休みが同一日に集中する。
+          //   srcD（休みに変える日）: その日の休み人数が少ない日を優先 → 休みを散らす
+          //   dstD（勤務に変える日）: その日の休み人数が多い日を優先 → 混雑日から引き剥がす
           let swapped = false;
-          const loWorks = lo.days.filter(d => isMovableWork(staff.id, d));
-          const hiOffs = hi.days.filter(d => isMovableOff(staff.id, d));
+          const loWorks = lo.days.filter(d => isMovableWork(staff.id, d))
+            .sort((a, b) => (offCountOnDay(a) - offCountOnDay(b)) || (a - b));
+          const hiOffs = hi.days.filter(d => isMovableOff(staff.id, d))
+            .sort((a, b) => (offCountOnDay(b) - offCountOnDay(a)) || (a - b));
 
           outer:
           for (const srcD of loWorks) {
@@ -1112,6 +1122,118 @@ _logStep('STEP8完了');
       });
     }
     _logStep('STEP10完了（週次休み均等化）');
+
+    // ===== STEP11: 日ごとの休み人数を平準化 =====
+    // 背景: STEP6/8/10 はスタッフ個人の都合だけで日を選ぶため、全員が同じ日に休みやすい。
+    // 方針: 同一スタッフ・同一週内で「休み」と「勤務」を入れ替える。
+    //       週ごとの休み数は変わらない＝STEP10の均等化を壊さずに、日別の人数だけを均す。
+    // 不変条件: ロック / 希望休・有休 / 必要人数 / 土日連勤 / 曜日タイプ / 総労働時間 を壊さない。
+    {
+      const firstDow11 = new Date(genYear, genMonth - 1, 1).getDay();
+      const weekOf11 = (d) => Math.floor((d + firstDow11 - 1) / 7);
+
+      const openDays11 = [];
+      for (let d = 1; d <= daysInMonth; d++) if (!isClosedDay(d)) openDays11.push(d);
+
+      const weekDays11 = {};
+      openDays11.forEach(d => { const w = weekOf11(d); (weekDays11[w] = weekDays11[w] || []).push(d); });
+
+      // その日の休み人数（🌸は人数カウント外）
+      const offCount11 = (d) => deptStaff.filter(s =>
+        !isNoCount(s) && OFF_SHIFTS.includes(result[`${s.id}|${d}`])
+      ).length;
+
+      // 動かせる「休み」= '休み' のみ（有休・希望休は不可侵）
+      const movableOff11 = (sid, d) =>
+        !lockedCells[`${sid}|${d}`] && result[`${sid}|${d}`] === '休み';
+
+      // 動かせる「勤務」= ロック外・希望勤務でない
+      const movableWork11 = (sid, d) => {
+        const key = `${sid}|${d}`;
+        if (lockedCells[key]) return false;
+        const sh = result[key];
+        if (!sh || OFF_SHIFTS.includes(sh)) return false;
+        if (reqMap[key] && reqMap[key] !== '希望休') return false;
+        return true;
+      };
+
+      // 勤務を抜いても必要人数を割らないか
+      const canRemove11 = (sid, d) => {
+        const sh = result[`${sid}|${d}`];
+        if (!sh) return false;
+        for (const period of ['morning', 'afternoon', 'evening']) {
+          if (!SHIFT_COVERS[sh]?.includes(period)) continue;
+          const req = getRequired(period, d);
+          if (req == null || req <= 0) continue;
+          if (countCoverage(deptStaff, d, period) - 1 < req) return false;
+        }
+        return true;
+      };
+
+      // その日にそのシフトを置けるか
+      const canPlace11 = (staff, d, sh) => {
+        if (isClosedDay(d)) return false;
+        const dt = getDayType(d);
+        if (dt === 'wed_cc' && !['CC', 'CCのみ'].includes(sh)) return false;
+        if (dt === 'wed_cho' && sh !== 'CHO') return false;
+        if (dt === 'wed_normal' && !['午前', '時短'].includes(sh)) return false;
+        if (dt !== 'wed_cc' && ['CC', 'CCのみ'].includes(sh)) return false;
+        if (dt !== 'wed_cho' && sh === 'CHO') return false;
+        if (staff.emp_type === 'short' && !['時短', 'CC', 'CCのみ', 'CHO'].includes(sh)) return false;
+        if (staff.emp_type !== 'short' && sh === '時短') return false;
+        if (isNoNightAuto(staff) && NIGHT_SHIFTS.includes(sh)) return false;
+        if (wouldCauseWeekendConsec(staff.id, d)) return false;
+        return true;
+      };
+
+      const staffById = {};
+      deptStaff.forEach(s => { staffById[s.id] = s; });
+      const targets = deptStaff.filter(s => !isNoCount(s) && getStaffPlanHours(s) > 0);
+
+      for (const w of Object.keys(weekDays11).map(Number).sort((a, b) => a - b)) {
+        const days = weekDays11[w];
+        if (days.length < 3) continue; // 端数週はスキップ
+
+        for (let iter = 0; iter < 200; iter++) {
+          const counts = days.map(d => ({ d, n: offCount11(d) }));
+          const hi = counts.reduce((a, b) => (b.n > a.n ? b : a)); // 休みが多すぎる日
+          const loSorted = counts.slice().sort((a, b) => a.n - b.n); // 休みが少ない順
+          if (hi.n - loSorted[0].n <= 1) break; // 十分平準
+
+          // hi日に休み・lo日に勤務している人を探して入れ替える（週内なので週の休み数は不変）
+          // lo候補は1つに決め打ちせず、休みが少ない日から順に試す（相手が見つからない詰まりを回避）
+          let moved = false;
+          outer11:
+          for (const lo of loSorted) {
+            if (hi.n - lo.n < 2) break; // これ以上は平準化の必要なし
+            // 走査起点を反復ごとにずらし、同じ人ばかり動かされるのを防ぐ
+            for (let ti = 0; ti < targets.length; ti++) {
+              const s = targets[(ti + iter) % targets.length];
+              if (!movableOff11(s.id, hi.d)) continue;
+              if (!movableWork11(s.id, lo.d)) continue;
+              const sh = result[`${s.id}|${lo.d}`];    // lo日の勤務を hi日へ移す
+              if (!canRemove11(s.id, lo.d)) continue;
+              if (!canPlace11(staffById[s.id], hi.d, sh)) continue;
+
+              const bkHi = result[`${s.id}|${hi.d}`];
+              const bkLo = result[`${s.id}|${lo.d}`];
+              result[`${s.id}|${hi.d}`] = sh;
+              result[`${s.id}|${lo.d}`] = '休み';
+              // 入れ替え後に土日連勤が生じたら巻き戻す
+              if (wouldCauseWeekendConsec(s.id, hi.d)) {
+                result[`${s.id}|${hi.d}`] = bkHi;
+                result[`${s.id}|${lo.d}`] = bkLo;
+                continue;
+              }
+              moved = true;
+              break outer11;
+            }
+          }
+          if (!moved) break; // これ以上動かせない
+        }
+      }
+    }
+    _logStep('STEP11完了（日別休み人数の平準化）');
 
     // 充足状況サマリーを生成
     const _coverageSummary = [];
