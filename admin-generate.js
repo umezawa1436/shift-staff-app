@@ -955,12 +955,12 @@ _logStep('STEP8完了');
           if (lockedCells[key]) continue;
           const dt9 = getDayType(d);
           if (dt9 === 'thu_closed' || dt9 === 'holiday_closed' || dt9 === 'clinic_closed') continue;
-          const dow9 = new Date(genYear, genMonth-1, d).getDay();
-          if (dow9 === 0 || dow9 === 6) continue;
-          if (dt9 === 'wed_normal') continue;
+          // 【修正】土日祝は診療日のため一律除外を撤廃。土日連勤のみ抑止。
+          if (wouldCauseWeekendConsec(s.id, d)) continue;
 
-          const need9 = planH - (staffHours[s.id]||0);
-          const sh9 = s.emp_type === 'short' ? '時短' : (dt9 === 'wed_cc' ? 'CC' : dt9 === 'wed_cho' ? 'CHO' : '日勤');
+          // 通常水曜は午前のみ診療 → 午後をカバーしないシフトを使う
+          const sh9 = s.emp_type === 'short' ? '時短'
+            : (dt9 === 'wed_cc' ? 'CC' : dt9 === 'wed_cho' ? 'CHO' : dt9 === 'wed_normal' ? '午前' : '日勤');
           result[key] = sh9;
           staffHours[s.id] = (staffHours[s.id]||0) + (SHIFT_HOURS[sh9]||0);
           placed = true;
@@ -985,7 +985,134 @@ _logStep('STEP8完了');
     });
 
     _logStep('STEP9完了');
-    
+
+    // ===== STEP10: 週ごとの休みを均等化 =====
+    // 背景: STEP6/8 は 1日目から順に埋めるため所定労働時間が先着順で消費され、
+    //       月後半に休みが集中する（日付順ループが生む構造的な偏り）。
+    // 方針: 同一スタッフ内で「休みが少ない週の勤務日」と「休みが多い週の休み日」を
+    //       シフト種別ごと入れ替える。総労働時間・シフト構成は不変（スワップのみ）。
+    // 不変条件: ロックセル / 希望休・有休等(OFF_SHIFTS以外の休み) / 必要人数 / 土日連勤 を壊さない。
+    {
+      // 週番号（その月の何週目か）: 日曜始まりで区切る
+      const firstDow = new Date(genYear, genMonth - 1, 1).getDay(); // 1日の曜日（0=日）
+      const weekOf = (d) => Math.floor((d + firstDow - 1) / 7);
+      // 稼働可能日（休診日を除く）だけを均等化の母数にする
+      const openDays = [];
+      for (let d = 1; d <= daysInMonth; d++) {
+        if (!isClosedDay(d)) openDays.push(d);
+      }
+      // 週ごとの稼働日リスト
+      const weekDays = {};
+      openDays.forEach(d => {
+        const w = weekOf(d);
+        (weekDays[w] = weekDays[w] || []).push(d);
+      });
+      const weekKeys = Object.keys(weekDays).map(Number).sort((a, b) => a - b);
+
+      // 交換してよい「勤務」か（ロック・希望休・有休などは対象外）
+      const isMovableWork = (sid, d) => {
+        const key = `${sid}|${d}`;
+        if (lockedCells[key]) return false;
+        const sh = result[key];
+        if (!sh || OFF_SHIFTS.includes(sh)) return false;
+        // 希望勤務として明示指定されたセルは動かさない（reqMap: staff_id|day -> request_type）
+        if (reqMap[key] && reqMap[key] !== '希望休') return false;
+        return true;
+      };
+      // 交換してよい「休み」か（'休み' のみ。有休・希望休は動かさない）
+      const isMovableOff = (sid, d) => {
+        const key = `${sid}|${d}`;
+        if (lockedCells[key]) return false;
+        return result[key] === '休み';
+      };
+
+      // 指定セルの勤務を抜いたとき、必要人数を割らないか
+      const canRemoveWork = (sid, d) => {
+        const sh = result[`${sid}|${d}`];
+        if (!sh) return false;
+        for (const period of ['morning', 'afternoon', 'evening']) {
+          if (!SHIFT_COVERS[sh]?.includes(period)) continue;
+          const req = getRequired(period, d);
+          if (req == null || req <= 0) continue;   // 未設定/明示ゼロ → 制約なし
+          const cov = countCoverage(deptStaff, d, period);
+          if (cov - 1 < req) return false;          // 割ってしまう
+        }
+        return true;
+      };
+
+      // 指定日に shift を置けるか（休診日・曜日タイプ・土日連勤の整合）
+      const canPlaceWork = (staff, d, sh) => {
+        if (isClosedDay(d)) return false;
+        const dt = getDayType(d);
+        // 水曜の曜日タイプ制約
+        if (dt === 'wed_cc' && !['CC', 'CCのみ'].includes(sh)) return false;
+        if (dt === 'wed_cho' && sh !== 'CHO') return false;
+        if (dt === 'wed_normal' && !['午前', '時短'].includes(sh)) return false;
+        if (dt !== 'wed_cc' && ['CC', 'CCのみ'].includes(sh)) return false;
+        if (dt !== 'wed_cho' && sh === 'CHO') return false;
+        // 時短属性の整合
+        if (staff.emp_type === 'short' && !['時短', 'CC', 'CCのみ', 'CHO'].includes(sh)) return false;
+        if (staff.emp_type !== 'short' && sh === '時短') return false;
+        // 夜勤不可
+        if (isNoNightAuto(staff) && NIGHT_SHIFTS.includes(sh)) return false;
+        // 土日連勤を作らない
+        if (wouldCauseWeekendConsec(staff.id, d)) return false;
+        return true;
+      };
+
+      deptStaff.forEach(staff => {
+        if (isNoCount(staff)) return;
+        if (getStaffPlanHours(staff) <= 0) return;
+
+        // 収束するまで反復（安全弁付き）
+        for (let iter = 0; iter < 40; iter++) {
+          // 週ごとの休み数と、稼働日数を集計
+          const stats = weekKeys.map(w => {
+            const days = weekDays[w];
+            const offs = days.filter(d => OFF_SHIFTS.includes(result[`${staff.id}|${d}`])).length;
+            return { w, days, offs, total: days.length, rate: offs / days.length };
+          }).filter(x => x.total >= 3); // 端数週（3日未満）は母数から除外
+
+          if (stats.length < 2) break;
+
+          // 休み比率が最も高い週 / 最も低い週
+          const hi = stats.reduce((a, b) => (b.rate > a.rate ? b : a));
+          const lo = stats.reduce((a, b) => (b.rate < a.rate ? b : a));
+          // 差が小さければ十分均等（1日未満の差なら終了）
+          if (hi.offs - lo.offs <= 1) break;
+
+          // hi週の「休み」を lo週の「勤務」と交換する
+          //   = lo週から勤務を1つ抜いて hi週に移す
+          let swapped = false;
+          const loWorks = lo.days.filter(d => isMovableWork(staff.id, d));
+          const hiOffs = hi.days.filter(d => isMovableOff(staff.id, d));
+
+          outer:
+          for (const srcD of loWorks) {
+            const sh = result[`${staff.id}|${srcD}`];
+            if (!canRemoveWork(staff.id, srcD)) continue;
+            for (const dstD of hiOffs) {
+              if (!canPlaceWork(staff, dstD, sh)) continue;
+              // 仮に入れ替えて土日連勤が発生しないか最終確認
+              const bkSrc = result[`${staff.id}|${srcD}`];
+              const bkDst = result[`${staff.id}|${dstD}`];
+              result[`${staff.id}|${srcD}`] = '休み';
+              result[`${staff.id}|${dstD}`] = sh;
+              if (wouldCauseWeekendConsec(staff.id, dstD)) {
+                result[`${staff.id}|${srcD}`] = bkSrc;
+                result[`${staff.id}|${dstD}`] = bkDst;
+                continue;
+              }
+              swapped = true;
+              break outer;
+            }
+          }
+          if (!swapped) break; // これ以上動かせない
+        }
+      });
+    }
+    _logStep('STEP10完了（週次休み均等化）');
+
     // 充足状況サマリーを生成
     const _coverageSummary = [];
     let _shortageDays = 0;
