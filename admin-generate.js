@@ -1126,17 +1126,19 @@ _logStep('STEP8完了');
               // 差分でコスト改善量を先に見る（重い制約チェックの前に足切り）
               const gain = gainOf(s.id, od, wd);
               if (gain <= bestGain) continue;
-              if (!canPlaceWork(s, od, sh)) continue;
 
-              // 交換後に土日連勤が生じないか、実際に置いて確認して巻き戻す
+              // 【重要】判定は必ず「交換後の状態」で行う。
+              //   交換前に判定すると、例えば「土曜勤務・日曜休み」の人が日曜へ移れない。
+              //   （土曜がまだ勤務なので土日連勤と誤判定され、日曜が永久に全員休みになる）
+              //   実際に入れ替えてから曜日タイプ・属性・土日連勤を検証し、必ず巻き戻す。
               const bkOff = result[`${s.id}|${od}`];
               const bkWork = result[`${s.id}|${wd}`];
               result[`${s.id}|${od}`] = sh;
               result[`${s.id}|${wd}`] = '休み';
-              const bad = wouldCauseWeekendConsec(s.id, od);
+              const ok = canPlaceWork(s, od, sh);
               result[`${s.id}|${od}`] = bkOff;
               result[`${s.id}|${wd}`] = bkWork;
-              if (bad) continue;
+              if (!ok) continue;
 
               bestGain = gain; best = { sid: s.id, od, wd, sh };
             }
