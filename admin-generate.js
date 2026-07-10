@@ -544,9 +544,16 @@ _logStep('STEP3完了');
         }
 
         // 通常日の割り当て
-        const mReq = getRequired('morning', d) || 0;
-        const aReq = getRequired('afternoon', d) || 0;
-        const eReq = getRequired('evening', d) || 0;
+        // 【重要】getRequired は「未設定」を null、「明示的に0人」を 0 で返す。
+        //   null（未設定）= 人数制約なし → STEP3では充足判定を行わない（STEP8/バランスが自由に配置）
+        //   0（明示ゼロ）  = 誰も配置しない（特別日の休診表現など）
+        // 旧実装は `|| 0` で両者を 0 に潰しており、未設定の枠に永久に人が入らなかった。
+        const mReqRaw = getRequired('morning', d);
+        const aReqRaw = getRequired('afternoon', d);
+        const eReqRaw = getRequired('evening', d);
+        const mReq = (mReqRaw == null) ? 0 : mReqRaw;
+        const aReq = (aReqRaw == null) ? 0 : aReqRaw;
+        const eReq = (eReqRaw == null) ? 0 : eReqRaw;
 
         // PASS1: 遅番/遅Lで午後+夜間を充足（1人ごとに再評価）
         const eveningShifts = currentDept === 2 ? ['リハ遅'] : ['遅番','遅L'].filter(s => enabledPatterns.includes(s));
@@ -688,25 +695,16 @@ _logStep('STEP5完了');
       for (let d = 1; d <= daysInMonth; d++) {
         const key = `${staff.id}|${d}`;
         if (result[key] || lockedCells[key]) continue;
-        const dow = new Date(genYear, genMonth-1, d).getDay();
         const dt2 = getDayType(d);
-        // 日曜・休診日は休み（時短スタッフでも）
-        if (dow === 0 || dt2 === 'thu_closed' || dt2 === 'holiday_closed' || dt2 === 'clinic_closed') {
+        // 休診日のみ休み。
+        // 【修正】土日祝は診療日のため、旧実装の「日曜=一律休み」「土曜=時短以外休み」を撤廃。
+        //   土日連勤の抑止は wouldCauseWeekendConsec()（下の候補判定）が担う。
+        if (dt2 === 'thu_closed' || dt2 === 'holiday_closed' || dt2 === 'clinic_closed') {
           result[key] = '休み';
           continue;
         }
-        // 土曜：常勤・パートは休み、時短は必要人数を超えない範囲で勤務可
-        if (dow === 6) {
-          if (staff.emp_type === 'short' && (staffHours[staff.id]||0) + SHIFT_HOURS['時短'] <= planH + 2) {
-            // 土曜の午前必要人数を確認（超過しないように）
-            const satMReq = getRequired('morning', d) || 0;
-            const satMCov = countCoverage(deptStaff, d, 'morning');
-            if (satMCov < satMReq + 1) {
-              result[key] = '時短';
-              staffHours[staff.id] = (staffHours[staff.id]||0) + (SHIFT_HOURS['時短']||0);
-              continue;
-            }
-          }
+        // 土日連勤になる日は配置しない
+        if (wouldCauseWeekendConsec(staff.id, d)) {
           result[key] = '休み';
           continue;
         }
@@ -720,9 +718,10 @@ _logStep('STEP5完了');
           if (dt2 === 'wed_cc') {
             const ccShift = 'CC';
             // 必要人数を超過させないよう確認
-            const ccReq = getRequired('morning', d) || 0;
+            const ccReqRaw = getRequired('morning', d);   // null=未設定（人数制約なし）
             const ccCov = countCoverage(deptStaff, d, 'morning');
-            if (ccCov < ccReq + 1 && (staffHours[staff.id]||0) + SHIFT_HOURS[ccShift] <= planH + 2) {
+            const ccRoom = (ccReqRaw == null) ? true : (ccCov < ccReqRaw + 1);
+            if (ccRoom && (staffHours[staff.id]||0) + SHIFT_HOURS[ccShift] <= planH + 2) {
               result[key] = ccShift;
               staffHours[staff.id] = (staffHours[staff.id]||0) + (SHIFT_HOURS[ccShift]||0);
               continue;
@@ -732,9 +731,10 @@ _logStep('STEP5完了');
           }
           if (dt2 === 'wed_cho') {
             const choShift = 'CHO';
-            const choReq = getRequired('morning', d) || 0;
+            const choReqRaw = getRequired('morning', d);  // null=未設定（人数制約なし）
             const choCov = countCoverage(deptStaff, d, 'morning');
-            if (choCov < choReq + 1 && (staffHours[staff.id]||0) + SHIFT_HOURS[choShift] <= planH + 2) {
+            const choRoom = (choReqRaw == null) ? true : (choCov < choReqRaw + 1);
+            if (choRoom && (staffHours[staff.id]||0) + SHIFT_HOURS[choShift] <= planH + 2) {
               result[key] = choShift;
               staffHours[staff.id] = (staffHours[staff.id]||0) + (SHIFT_HOURS[choShift]||0);
               continue;
@@ -743,7 +743,12 @@ _logStep('STEP5完了');
             continue;
           }
           if (dt2 === 'wed_normal') {
-            // 水曜通常は時短スタッフも休み
+            // 通常水曜は午前のみ診療 → 時短シフト（午前帯）で勤務可
+            if ((staffHours[staff.id]||0) + SHIFT_HOURS['時短'] <= planH + 2) {
+              result[key] = '時短';
+              staffHours[staff.id] = (staffHours[staff.id]||0) + (SHIFT_HOURS['時短']||0);
+              continue;
+            }
             result[key] = '休み';
             continue;
           }
@@ -756,9 +761,27 @@ _logStep('STEP5完了');
           result[key] = '休み';
           continue;
         }
-        // 常勤・パート: CC/CHO日・水曜通常は休み
-        if (dt2 === 'wed_normal' || dt2 === 'wed_cc' || dt2 === 'wed_cho') {
-          result[key] = '休み';
+        // 常勤・パート
+        // 【修正】旧実装は水曜(通常/CC/CHO)を一律「休み」にしていたため、水曜午前が選ばれなかった。
+        //   通常水曜=午前のみ診療、CC日=CC、CHO日=CHO を正しく割り当てる。
+        if (dt2 === 'wed_cc' || dt2 === 'wed_cho') {
+          const wShift = (dt2 === 'wed_cc') ? 'CC' : 'CHO';
+          if ((staffHours[staff.id]||0) + (SHIFT_HOURS[wShift]||0) <= planH + 2) {
+            result[key] = wShift;
+            staffHours[staff.id] = (staffHours[staff.id]||0) + (SHIFT_HOURS[wShift]||0);
+          } else {
+            result[key] = '休み';
+          }
+          continue;
+        }
+        if (dt2 === 'wed_normal') {
+          // 通常水曜は午前のみ診療 → 午後をカバーしない「午前」シフト
+          if ((staffHours[staff.id]||0) + (SHIFT_HOURS['午前']||0) <= planH + 2) {
+            result[key] = '午前';
+            staffHours[staff.id] = (staffHours[staff.id]||0) + (SHIFT_HOURS['午前']||0);
+          } else {
+            result[key] = '休み';
+          }
           continue;
         }
         // 日勤を追加（許容値+2H）
@@ -857,11 +880,10 @@ _logStep('STEP7完了');
           if (lockedCells[key]) continue;
           const dt8 = getDayType(d);
           if (dt8 === 'thu_closed' || dt8 === 'holiday_closed' || dt8 === 'clinic_closed') continue;
-          const dow8 = new Date(genYear, genMonth-1, d).getDay();
-          // 日曜は休み、土曜は時短スタッフのみ対象
-          if (dow8 === 0) continue;
-          if (dow8 === 6 && s.emp_type !== 'short') continue;
-          if (dt8 === 'wed_normal') continue;
+          // 【修正】土日祝は診療日のため、日曜・土曜・通常水曜の一律除外を撤廃。
+          //   旧実装は dow8===0 / dow8===6(非時短) / wed_normal を無条件スキップしており、
+          //   「所定労働時間を満たす」補填がこれらの日に一切働かなかった（土日が休みになる主因）。
+          //   土日連勤の抑止は下の wouldCauseWeekendConsec() が担う。
 
           // スコアリングで最適シフトを選択
           const candidates8 = (enabledPatterns.length > 0 ? enabledPatterns : ['日勤'])
@@ -869,6 +891,8 @@ _logStep('STEP7完了');
               // CC/CHO日の制限
               if (dt8 === 'wed_cc' && !['CC','CCのみ'].includes(sh)) return false;
               if (dt8 === 'wed_cho' && sh !== 'CHO') return false;
+              // 通常水曜は午前のみ診療 → 午後をカバーするシフトは不可
+              if (dt8 === 'wed_normal' && !['午前','時短'].includes(sh)) return false;
               // 時短属性
               if (s.emp_type === 'short' && !['時短','CC','CCのみ','CHO'].includes(sh)) return false;
               if (s.emp_type !== 'short' && sh === '時短') return false;
@@ -1113,6 +1137,13 @@ function selectDayShift(period, deptId, dayType, enabledPatterns) {
   if (period === 'morning') {
     if (dayType === 'wed_cc') return 'CC';
     if (dayType === 'wed_cho') return 'CHO';
+    // 通常水曜は午前のみ診療 → 午後をカバーする「日勤/日勤+」ではなく「午前」を使う
+    if (dayType === 'wed_normal') {
+      for (const sh of ['午前','日勤','日勤+']) {
+        if (ep.includes(sh)) return sh;
+      }
+      return '午前';
+    }
     // 午前：日勤 → 日勤+ → 午前 の順で有効なもの
     for (const sh of ['日勤','日勤+','午前']) {
       if (ep.includes(sh)) return sh;
@@ -1122,6 +1153,7 @@ function selectDayShift(period, deptId, dayType, enabledPatterns) {
   if (period === 'afternoon') {
     if (dayType === 'wed_cc') return 'CCのみ';
     if (dayType === 'wed_cho') return null;
+    if (dayType === 'wed_normal') return null; // 通常水曜の午後は診療なし
     if (deptId === 2) return ep.includes('リハ遅') ? 'リハ遅' : null;
     // 午後：遅番 → 遅L → 長日 の順で有効なもの
     for (const sh of ['遅番','遅L','長日']) {
