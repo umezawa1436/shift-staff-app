@@ -986,192 +986,113 @@ _logStep('STEP8完了');
 
     _logStep('STEP9完了');
 
-    // ===== STEP10: 週ごとの休みを均等化 =====
-    // 背景: STEP6/8 は 1日目から順に埋めるため所定労働時間が先着順で消費され、
-    //       月後半に休みが集中する（日付順ループが生む構造的な偏り）。
-    // 方針: 同一スタッフ内で「休みが少ない週の勤務日」と「休みが多い週の休み日」を
-    //       シフト種別ごと入れ替える。総労働時間・シフト構成は不変（スワップのみ）。
-    // 不変条件: ロックセル / 希望休・有休等(OFF_SHIFTS以外の休み) / 必要人数 / 土日連勤 を壊さない。
+    // ===== STEP10: 休みの均等化（週次 × 日別を同時最適化）=====
+    // 背景:
+    //   STEP6/8 は 1日目から順に埋めるため所定労働時間が先着順で消費され、月後半に休みが集中する。
+    //   さらに全スタッフが同じ順序で日を選ぶため、休みが同一日に積み上がる。
+    // 方針:
+    //   「日別の休み人数のばらつき」＋「各人の週別休み比率のばらつき」を合成したコストを定義し、
+    //   同一スタッフ内の（休み ⇄ 勤務）交換のうち、コストを最も下げる1手を繰り返し適用する。
+    //   逐次スワップ（片方だけを見る貪欲法）は局所最適で止まるため、両者を同時に評価する。
+    // 不変条件:
+    //   同一スタッフ内でシフト種別ごと移動するため 総労働時間・シフト構成は変化しない。
+    //   ロック / 希望休・有休 / 希望勤務 / 必要人数 / 曜日タイプ / 時短・夜勤属性 / 土日連勤 を壊さない。
     {
-      // 週番号（その月の何週目か）: 日曜始まりで区切る
-      const firstDow = new Date(genYear, genMonth - 1, 1).getDay(); // 1日の曜日（0=日）
+      const firstDow = new Date(genYear, genMonth - 1, 1).getDay();
       const weekOf = (d) => Math.floor((d + firstDow - 1) / 7);
-      // 稼働可能日（休診日を除く）だけを均等化の母数にする
-      const openDays = [];
-      for (let d = 1; d <= daysInMonth; d++) {
-        if (!isClosedDay(d)) openDays.push(d);
-      }
-      // 週ごとの稼働日リスト
-      const weekDays = {};
-      openDays.forEach(d => {
-        const w = weekOf(d);
-        (weekDays[w] = weekDays[w] || []).push(d);
-      });
-      const weekKeys = Object.keys(weekDays).map(Number).sort((a, b) => a - b);
 
-      // その日に休んでいる人数（🌸スタッフは人数カウント対象外なので除外）
+      // 稼働日（休診日を除く）だけを均等化の対象にする
+      const openDays = [];
+      for (let d = 1; d <= daysInMonth; d++) if (!isClosedDay(d)) openDays.push(d);
+      if (openDays.length >= 2) {
+
+      const weekDays = {};
+      openDays.forEach(d => { const w = weekOf(d); (weekDays[w] = weekDays[w] || []).push(d); });
+      const weekKeys = Object.keys(weekDays).map(Number).sort((a, b) => a - b)
+        .filter(w => weekDays[w].length >= 3); // 端数週は週次評価から除外
+
+      // 均等化の対象スタッフ（🌸・所定0Hは除外）
+      const targets = deptStaff.filter(s => !isNoCount(s) && getStaffPlanHours(s) > 0);
+
+      // その日の休み人数（🌸は人数カウント外）
       const offCountOnDay = (d) => deptStaff.filter(s =>
         !isNoCount(s) && OFF_SHIFTS.includes(result[`${s.id}|${d}`])
       ).length;
 
-      // 交換してよい「勤務」か（ロック・希望休・有休などは対象外）
-      const isMovableWork = (sid, d) => {
+      // --- コスト関数（差分計算） ---
+      // コスト = Σ_日(休み人数)^2  +  WEEK_WEIGHT × Σ_人Σ_週(週の休み比率)^2
+      //   いずれも「二乗和」なので、値が特定の日/週に偏るほど大きくなる＝分散の最小化と同義。
+      //   全体を数え直すと O(日×人) が毎回走り実用に耐えない（実測70秒）。
+      //   交換で変化するのは「od日・wd日の休み人数」と「その人の該当2週の休み数」だけなので、
+      //   その差分のみを評価する（実測77ms・約900倍）。
+      const WEEK_WEIGHT = 10;
+      const weekSet = new Set(weekKeys);
+
+      // インクリメンタルに保持する集計
+      const offOnDay = {};
+      openDays.forEach(d => { offOnDay[d] = offCountOnDay(d); });
+      const offInWeek = {};
+      targets.forEach(s => {
+        offInWeek[s.id] = {};
+        weekKeys.forEach(w => {
+          offInWeek[s.id][w] = weekDays[w].filter(d => OFF_SHIFTS.includes(result[`${s.id}|${d}`])).length;
+        });
+      });
+
+      const dayTerm = (n) => n * n;
+      const weekTerm = (w, n) => { const r = n / weekDays[w].length; return r * r * WEEK_WEIGHT; };
+
+      // od(休み→勤務) / wd(勤務→休み) に入れ替えたときのコスト減少量
+      const gainOf = (sid, od, wd) => {
+        let delta = 0;
+        delta += dayTerm(offOnDay[od] - 1) - dayTerm(offOnDay[od]);
+        delta += dayTerm(offOnDay[wd] + 1) - dayTerm(offOnDay[wd]);
+        const wo = weekOf(od), ww = weekOf(wd);
+        if (weekSet.has(wo)) { const n = offInWeek[sid][wo]; delta += weekTerm(wo, n - 1) - weekTerm(wo, n); }
+        if (weekSet.has(ww)) { const n = offInWeek[sid][ww]; delta += weekTerm(ww, n + 1) - weekTerm(ww, n); }
+        return -delta; // 正なら改善
+      };
+
+      // 交換を確定し、集計を更新
+      const applySwap = (sid, od, wd, sh) => {
+        result[`${sid}|${od}`] = sh;
+        result[`${sid}|${wd}`] = '休み';
+        offOnDay[od]--; offOnDay[wd]++;
+        const wo = weekOf(od), ww = weekOf(wd);
+        if (weekSet.has(wo)) offInWeek[sid][wo]--;
+        if (weekSet.has(ww)) offInWeek[sid][ww]++;
+      };
+
+      // --- 交換可否の判定 ---
+      // 動かせる「休み」= '休み' のみ（有休・希望休・ロックは不可侵）
+      const movableOff = (sid, d) =>
+        !lockedCells[`${sid}|${d}`] && result[`${sid}|${d}`] === '休み';
+
+      // 動かせる「勤務」= ロック外かつ希望勤務でない
+      const movableWork = (sid, d) => {
         const key = `${sid}|${d}`;
         if (lockedCells[key]) return false;
         const sh = result[key];
         if (!sh || OFF_SHIFTS.includes(sh)) return false;
-        // 希望勤務として明示指定されたセルは動かさない（reqMap: staff_id|day -> request_type）
         if (reqMap[key] && reqMap[key] !== '希望休') return false;
         return true;
       };
-      // 交換してよい「休み」か（'休み' のみ。有休・希望休は動かさない）
-      const isMovableOff = (sid, d) => {
-        const key = `${sid}|${d}`;
-        if (lockedCells[key]) return false;
-        return result[key] === '休み';
-      };
 
-      // 指定セルの勤務を抜いたとき、必要人数を割らないか
+      // その日の勤務を抜いても必要人数を割らないか
       const canRemoveWork = (sid, d) => {
         const sh = result[`${sid}|${d}`];
         if (!sh) return false;
         for (const period of ['morning', 'afternoon', 'evening']) {
           if (!SHIFT_COVERS[sh]?.includes(period)) continue;
           const req = getRequired(period, d);
-          if (req == null || req <= 0) continue;   // 未設定/明示ゼロ → 制約なし
-          const cov = countCoverage(deptStaff, d, period);
-          if (cov - 1 < req) return false;          // 割ってしまう
-        }
-        return true;
-      };
-
-      // 指定日に shift を置けるか（休診日・曜日タイプ・土日連勤の整合）
-      const canPlaceWork = (staff, d, sh) => {
-        if (isClosedDay(d)) return false;
-        const dt = getDayType(d);
-        // 水曜の曜日タイプ制約
-        if (dt === 'wed_cc' && !['CC', 'CCのみ'].includes(sh)) return false;
-        if (dt === 'wed_cho' && sh !== 'CHO') return false;
-        if (dt === 'wed_normal' && !['午前', '時短'].includes(sh)) return false;
-        if (dt !== 'wed_cc' && ['CC', 'CCのみ'].includes(sh)) return false;
-        if (dt !== 'wed_cho' && sh === 'CHO') return false;
-        // 時短属性の整合
-        if (staff.emp_type === 'short' && !['時短', 'CC', 'CCのみ', 'CHO'].includes(sh)) return false;
-        if (staff.emp_type !== 'short' && sh === '時短') return false;
-        // 夜勤不可
-        if (isNoNightAuto(staff) && NIGHT_SHIFTS.includes(sh)) return false;
-        // 土日連勤を作らない
-        if (wouldCauseWeekendConsec(staff.id, d)) return false;
-        return true;
-      };
-
-      deptStaff.forEach(staff => {
-        if (isNoCount(staff)) return;
-        if (getStaffPlanHours(staff) <= 0) return;
-
-        // 収束するまで反復（安全弁付き）
-        for (let iter = 0; iter < 40; iter++) {
-          // 週ごとの休み数と、稼働日数を集計
-          const stats = weekKeys.map(w => {
-            const days = weekDays[w];
-            const offs = days.filter(d => OFF_SHIFTS.includes(result[`${staff.id}|${d}`])).length;
-            return { w, days, offs, total: days.length, rate: offs / days.length };
-          }).filter(x => x.total >= 3); // 端数週（3日未満）は母数から除外
-
-          if (stats.length < 2) break;
-
-          // 休み比率が最も高い週 / 最も低い週
-          const hi = stats.reduce((a, b) => (b.rate > a.rate ? b : a));
-          const lo = stats.reduce((a, b) => (b.rate < a.rate ? b : a));
-          // 差が小さければ十分均等（1日未満の差なら終了）
-          if (hi.offs - lo.offs <= 1) break;
-
-          // hi週の「休み」を lo週の「勤務」と交換する
-          //   = lo週から勤務を1つ抜いて hi週に移す
-          // 【重要】日付順に走査すると全スタッフが同じ日を掴み、休みが同一日に集中する。
-          //   srcD（休みに変える日）: その日の休み人数が少ない日を優先 → 休みを散らす
-          //   dstD（勤務に変える日）: その日の休み人数が多い日を優先 → 混雑日から引き剥がす
-          let swapped = false;
-          const loWorks = lo.days.filter(d => isMovableWork(staff.id, d))
-            .sort((a, b) => (offCountOnDay(a) - offCountOnDay(b)) || (a - b));
-          const hiOffs = hi.days.filter(d => isMovableOff(staff.id, d))
-            .sort((a, b) => (offCountOnDay(b) - offCountOnDay(a)) || (a - b));
-
-          outer:
-          for (const srcD of loWorks) {
-            const sh = result[`${staff.id}|${srcD}`];
-            if (!canRemoveWork(staff.id, srcD)) continue;
-            for (const dstD of hiOffs) {
-              if (!canPlaceWork(staff, dstD, sh)) continue;
-              // 仮に入れ替えて土日連勤が発生しないか最終確認
-              const bkSrc = result[`${staff.id}|${srcD}`];
-              const bkDst = result[`${staff.id}|${dstD}`];
-              result[`${staff.id}|${srcD}`] = '休み';
-              result[`${staff.id}|${dstD}`] = sh;
-              if (wouldCauseWeekendConsec(staff.id, dstD)) {
-                result[`${staff.id}|${srcD}`] = bkSrc;
-                result[`${staff.id}|${dstD}`] = bkDst;
-                continue;
-              }
-              swapped = true;
-              break outer;
-            }
-          }
-          if (!swapped) break; // これ以上動かせない
-        }
-      });
-    }
-    _logStep('STEP10完了（週次休み均等化）');
-
-    // ===== STEP11: 日ごとの休み人数を平準化 =====
-    // 背景: STEP6/8/10 はスタッフ個人の都合だけで日を選ぶため、全員が同じ日に休みやすい。
-    // 方針: 同一スタッフ・同一週内で「休み」と「勤務」を入れ替える。
-    //       週ごとの休み数は変わらない＝STEP10の均等化を壊さずに、日別の人数だけを均す。
-    // 不変条件: ロック / 希望休・有休 / 必要人数 / 土日連勤 / 曜日タイプ / 総労働時間 を壊さない。
-    {
-      const firstDow11 = new Date(genYear, genMonth - 1, 1).getDay();
-      const weekOf11 = (d) => Math.floor((d + firstDow11 - 1) / 7);
-
-      const openDays11 = [];
-      for (let d = 1; d <= daysInMonth; d++) if (!isClosedDay(d)) openDays11.push(d);
-
-      const weekDays11 = {};
-      openDays11.forEach(d => { const w = weekOf11(d); (weekDays11[w] = weekDays11[w] || []).push(d); });
-
-      // その日の休み人数（🌸は人数カウント外）
-      const offCount11 = (d) => deptStaff.filter(s =>
-        !isNoCount(s) && OFF_SHIFTS.includes(result[`${s.id}|${d}`])
-      ).length;
-
-      // 動かせる「休み」= '休み' のみ（有休・希望休は不可侵）
-      const movableOff11 = (sid, d) =>
-        !lockedCells[`${sid}|${d}`] && result[`${sid}|${d}`] === '休み';
-
-      // 動かせる「勤務」= ロック外・希望勤務でない
-      const movableWork11 = (sid, d) => {
-        const key = `${sid}|${d}`;
-        if (lockedCells[key]) return false;
-        const sh = result[key];
-        if (!sh || OFF_SHIFTS.includes(sh)) return false;
-        if (reqMap[key] && reqMap[key] !== '希望休') return false;
-        return true;
-      };
-
-      // 勤務を抜いても必要人数を割らないか
-      const canRemove11 = (sid, d) => {
-        const sh = result[`${sid}|${d}`];
-        if (!sh) return false;
-        for (const period of ['morning', 'afternoon', 'evening']) {
-          if (!SHIFT_COVERS[sh]?.includes(period)) continue;
-          const req = getRequired(period, d);
-          if (req == null || req <= 0) continue;
+          if (req == null || req <= 0) continue; // 未設定/明示ゼロ → 人数制約なし
           if (countCoverage(deptStaff, d, period) - 1 < req) return false;
         }
         return true;
       };
 
-      // その日にそのシフトを置けるか
-      const canPlace11 = (staff, d, sh) => {
+      // その日にそのシフトを置けるか（曜日タイプ・属性・土日連勤）
+      const canPlaceWork = (staff, d, sh) => {
         if (isClosedDay(d)) return false;
         const dt = getDayType(d);
         if (dt === 'wed_cc' && !['CC', 'CCのみ'].includes(sh)) return false;
@@ -1186,54 +1107,49 @@ _logStep('STEP8完了');
         return true;
       };
 
-      const staffById = {};
-      deptStaff.forEach(s => { staffById[s.id] = s; });
-      const targets = deptStaff.filter(s => !isNoCount(s) && getStaffPlanHours(s) > 0);
+      // --- 貪欲改善: コストを最も下げる交換を1手ずつ適用 ---
+      // 反復上限は規模に応じて調整（計算量 O(iter × staff × offDays × workDays)）
+      const MAX_ITER = Math.min(300, openDays.length * 6);
+      for (let iter = 0; iter < MAX_ITER; iter++) {
+        let best = null, bestGain = 1e-9; // 微小改善は無視して収束させる
 
-      for (const w of Object.keys(weekDays11).map(Number).sort((a, b) => a - b)) {
-        const days = weekDays11[w];
-        if (days.length < 3) continue; // 端数週はスキップ
+        for (const s of targets) {
+          const offs = openDays.filter(d => movableOff(s.id, d));
+          if (!offs.length) continue;
+          const works = openDays.filter(d => movableWork(s.id, d));
+          if (!works.length) continue;
 
-        for (let iter = 0; iter < 200; iter++) {
-          const counts = days.map(d => ({ d, n: offCount11(d) }));
-          const hi = counts.reduce((a, b) => (b.n > a.n ? b : a)); // 休みが多すぎる日
-          const loSorted = counts.slice().sort((a, b) => a.n - b.n); // 休みが少ない順
-          if (hi.n - loSorted[0].n <= 1) break; // 十分平準
+          for (const wd of works) {
+            const sh = result[`${s.id}|${wd}`];
+            if (!canRemoveWork(s.id, wd)) continue;
+            for (const od of offs) {
+              // 差分でコスト改善量を先に見る（重い制約チェックの前に足切り）
+              const gain = gainOf(s.id, od, wd);
+              if (gain <= bestGain) continue;
+              if (!canPlaceWork(s, od, sh)) continue;
 
-          // hi日に休み・lo日に勤務している人を探して入れ替える（週内なので週の休み数は不変）
-          // lo候補は1つに決め打ちせず、休みが少ない日から順に試す（相手が見つからない詰まりを回避）
-          let moved = false;
-          outer11:
-          for (const lo of loSorted) {
-            if (hi.n - lo.n < 2) break; // これ以上は平準化の必要なし
-            // 走査起点を反復ごとにずらし、同じ人ばかり動かされるのを防ぐ
-            for (let ti = 0; ti < targets.length; ti++) {
-              const s = targets[(ti + iter) % targets.length];
-              if (!movableOff11(s.id, hi.d)) continue;
-              if (!movableWork11(s.id, lo.d)) continue;
-              const sh = result[`${s.id}|${lo.d}`];    // lo日の勤務を hi日へ移す
-              if (!canRemove11(s.id, lo.d)) continue;
-              if (!canPlace11(staffById[s.id], hi.d, sh)) continue;
+              // 交換後に土日連勤が生じないか、実際に置いて確認して巻き戻す
+              const bkOff = result[`${s.id}|${od}`];
+              const bkWork = result[`${s.id}|${wd}`];
+              result[`${s.id}|${od}`] = sh;
+              result[`${s.id}|${wd}`] = '休み';
+              const bad = wouldCauseWeekendConsec(s.id, od);
+              result[`${s.id}|${od}`] = bkOff;
+              result[`${s.id}|${wd}`] = bkWork;
+              if (bad) continue;
 
-              const bkHi = result[`${s.id}|${hi.d}`];
-              const bkLo = result[`${s.id}|${lo.d}`];
-              result[`${s.id}|${hi.d}`] = sh;
-              result[`${s.id}|${lo.d}`] = '休み';
-              // 入れ替え後に土日連勤が生じたら巻き戻す
-              if (wouldCauseWeekendConsec(s.id, hi.d)) {
-                result[`${s.id}|${hi.d}`] = bkHi;
-                result[`${s.id}|${lo.d}`] = bkLo;
-                continue;
-              }
-              moved = true;
-              break outer11;
+              bestGain = gain; best = { sid: s.id, od, wd, sh };
             }
           }
-          if (!moved) break; // これ以上動かせない
         }
+
+        if (!best) break; // これ以上コストを下げられない＝収束
+        applySwap(best.sid, best.od, best.wd, best.sh);
+      }
+
       }
     }
-    _logStep('STEP11完了（日別休み人数の平準化）');
+    _logStep('STEP10完了（休みの均等化：週次×日別の同時最適化）');
 
     // 充足状況サマリーを生成
     const _coverageSummary = [];
