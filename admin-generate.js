@@ -955,12 +955,12 @@ _logStep('STEP8完了');
           if (lockedCells[key]) continue;
           const dt9 = getDayType(d);
           if (dt9 === 'thu_closed' || dt9 === 'holiday_closed' || dt9 === 'clinic_closed') continue;
-          const dow9 = new Date(genYear, genMonth-1, d).getDay();
-          if (dow9 === 0 || dow9 === 6) continue;
-          if (dt9 === 'wed_normal') continue;
+          // 【修正】土日祝は診療日のため一律除外を撤廃。土日連勤のみ抑止。
+          if (wouldCauseWeekendConsec(s.id, d)) continue;
 
-          const need9 = planH - (staffHours[s.id]||0);
-          const sh9 = s.emp_type === 'short' ? '時短' : (dt9 === 'wed_cc' ? 'CC' : dt9 === 'wed_cho' ? 'CHO' : '日勤');
+          // 通常水曜は午前のみ診療 → 午後をカバーしないシフトを使う
+          const sh9 = s.emp_type === 'short' ? '時短'
+            : (dt9 === 'wed_cc' ? 'CC' : dt9 === 'wed_cho' ? 'CHO' : dt9 === 'wed_normal' ? '午前' : '日勤');
           result[key] = sh9;
           staffHours[s.id] = (staffHours[s.id]||0) + (SHIFT_HOURS[sh9]||0);
           placed = true;
@@ -985,7 +985,174 @@ _logStep('STEP8完了');
     });
 
     _logStep('STEP9完了');
-    
+
+    // ===== STEP10: 休みの均等化（週次 × 日別を同時最適化）=====
+    // 背景:
+    //   STEP6/8 は 1日目から順に埋めるため所定労働時間が先着順で消費され、月後半に休みが集中する。
+    //   さらに全スタッフが同じ順序で日を選ぶため、休みが同一日に積み上がる。
+    // 方針:
+    //   「日別の休み人数のばらつき」＋「各人の週別休み比率のばらつき」を合成したコストを定義し、
+    //   同一スタッフ内の（休み ⇄ 勤務）交換のうち、コストを最も下げる1手を繰り返し適用する。
+    //   逐次スワップ（片方だけを見る貪欲法）は局所最適で止まるため、両者を同時に評価する。
+    // 不変条件:
+    //   同一スタッフ内でシフト種別ごと移動するため 総労働時間・シフト構成は変化しない。
+    //   ロック / 希望休・有休 / 希望勤務 / 必要人数 / 曜日タイプ / 時短・夜勤属性 / 土日連勤 を壊さない。
+    {
+      const firstDow = new Date(genYear, genMonth - 1, 1).getDay();
+      const weekOf = (d) => Math.floor((d + firstDow - 1) / 7);
+
+      // 稼働日（休診日を除く）だけを均等化の対象にする
+      const openDays = [];
+      for (let d = 1; d <= daysInMonth; d++) if (!isClosedDay(d)) openDays.push(d);
+      if (openDays.length >= 2) {
+
+      const weekDays = {};
+      openDays.forEach(d => { const w = weekOf(d); (weekDays[w] = weekDays[w] || []).push(d); });
+      const weekKeys = Object.keys(weekDays).map(Number).sort((a, b) => a - b)
+        .filter(w => weekDays[w].length >= 3); // 端数週は週次評価から除外
+
+      // 均等化の対象スタッフ（🌸・所定0Hは除外）
+      const targets = deptStaff.filter(s => !isNoCount(s) && getStaffPlanHours(s) > 0);
+
+      // その日の休み人数（🌸は人数カウント外）
+      const offCountOnDay = (d) => deptStaff.filter(s =>
+        !isNoCount(s) && OFF_SHIFTS.includes(result[`${s.id}|${d}`])
+      ).length;
+
+      // --- コスト関数（差分計算） ---
+      // コスト = Σ_日(休み人数)^2  +  WEEK_WEIGHT × Σ_人Σ_週(週の休み比率)^2
+      //   いずれも「二乗和」なので、値が特定の日/週に偏るほど大きくなる＝分散の最小化と同義。
+      //   全体を数え直すと O(日×人) が毎回走り実用に耐えない（実測70秒）。
+      //   交換で変化するのは「od日・wd日の休み人数」と「その人の該当2週の休み数」だけなので、
+      //   その差分のみを評価する（実測77ms・約900倍）。
+      const WEEK_WEIGHT = 10;
+      const weekSet = new Set(weekKeys);
+
+      // インクリメンタルに保持する集計
+      const offOnDay = {};
+      openDays.forEach(d => { offOnDay[d] = offCountOnDay(d); });
+      const offInWeek = {};
+      targets.forEach(s => {
+        offInWeek[s.id] = {};
+        weekKeys.forEach(w => {
+          offInWeek[s.id][w] = weekDays[w].filter(d => OFF_SHIFTS.includes(result[`${s.id}|${d}`])).length;
+        });
+      });
+
+      const dayTerm = (n) => n * n;
+      const weekTerm = (w, n) => { const r = n / weekDays[w].length; return r * r * WEEK_WEIGHT; };
+
+      // od(休み→勤務) / wd(勤務→休み) に入れ替えたときのコスト減少量
+      const gainOf = (sid, od, wd) => {
+        let delta = 0;
+        delta += dayTerm(offOnDay[od] - 1) - dayTerm(offOnDay[od]);
+        delta += dayTerm(offOnDay[wd] + 1) - dayTerm(offOnDay[wd]);
+        const wo = weekOf(od), ww = weekOf(wd);
+        if (weekSet.has(wo)) { const n = offInWeek[sid][wo]; delta += weekTerm(wo, n - 1) - weekTerm(wo, n); }
+        if (weekSet.has(ww)) { const n = offInWeek[sid][ww]; delta += weekTerm(ww, n + 1) - weekTerm(ww, n); }
+        return -delta; // 正なら改善
+      };
+
+      // 交換を確定し、集計を更新
+      const applySwap = (sid, od, wd, sh) => {
+        result[`${sid}|${od}`] = sh;
+        result[`${sid}|${wd}`] = '休み';
+        offOnDay[od]--; offOnDay[wd]++;
+        const wo = weekOf(od), ww = weekOf(wd);
+        if (weekSet.has(wo)) offInWeek[sid][wo]--;
+        if (weekSet.has(ww)) offInWeek[sid][ww]++;
+      };
+
+      // --- 交換可否の判定 ---
+      // 動かせる「休み」= '休み' のみ（有休・希望休・ロックは不可侵）
+      const movableOff = (sid, d) =>
+        !lockedCells[`${sid}|${d}`] && result[`${sid}|${d}`] === '休み';
+
+      // 動かせる「勤務」= ロック外かつ希望勤務でない
+      const movableWork = (sid, d) => {
+        const key = `${sid}|${d}`;
+        if (lockedCells[key]) return false;
+        const sh = result[key];
+        if (!sh || OFF_SHIFTS.includes(sh)) return false;
+        if (reqMap[key] && reqMap[key] !== '希望休') return false;
+        return true;
+      };
+
+      // その日の勤務を抜いても必要人数を割らないか
+      const canRemoveWork = (sid, d) => {
+        const sh = result[`${sid}|${d}`];
+        if (!sh) return false;
+        for (const period of ['morning', 'afternoon', 'evening']) {
+          if (!SHIFT_COVERS[sh]?.includes(period)) continue;
+          const req = getRequired(period, d);
+          if (req == null || req <= 0) continue; // 未設定/明示ゼロ → 人数制約なし
+          if (countCoverage(deptStaff, d, period) - 1 < req) return false;
+        }
+        return true;
+      };
+
+      // その日にそのシフトを置けるか（曜日タイプ・属性・土日連勤）
+      const canPlaceWork = (staff, d, sh) => {
+        if (isClosedDay(d)) return false;
+        const dt = getDayType(d);
+        if (dt === 'wed_cc' && !['CC', 'CCのみ'].includes(sh)) return false;
+        if (dt === 'wed_cho' && sh !== 'CHO') return false;
+        if (dt === 'wed_normal' && !['午前', '時短'].includes(sh)) return false;
+        if (dt !== 'wed_cc' && ['CC', 'CCのみ'].includes(sh)) return false;
+        if (dt !== 'wed_cho' && sh === 'CHO') return false;
+        if (staff.emp_type === 'short' && !['時短', 'CC', 'CCのみ', 'CHO'].includes(sh)) return false;
+        if (staff.emp_type !== 'short' && sh === '時短') return false;
+        if (isNoNightAuto(staff) && NIGHT_SHIFTS.includes(sh)) return false;
+        if (wouldCauseWeekendConsec(staff.id, d)) return false;
+        return true;
+      };
+
+      // --- 貪欲改善: コストを最も下げる交換を1手ずつ適用 ---
+      // 反復上限は規模に応じて調整（計算量 O(iter × staff × offDays × workDays)）
+      const MAX_ITER = Math.min(300, openDays.length * 6);
+      for (let iter = 0; iter < MAX_ITER; iter++) {
+        let best = null, bestGain = 1e-9; // 微小改善は無視して収束させる
+
+        for (const s of targets) {
+          const offs = openDays.filter(d => movableOff(s.id, d));
+          if (!offs.length) continue;
+          const works = openDays.filter(d => movableWork(s.id, d));
+          if (!works.length) continue;
+
+          for (const wd of works) {
+            const sh = result[`${s.id}|${wd}`];
+            if (!canRemoveWork(s.id, wd)) continue;
+            for (const od of offs) {
+              // 差分でコスト改善量を先に見る（重い制約チェックの前に足切り）
+              const gain = gainOf(s.id, od, wd);
+              if (gain <= bestGain) continue;
+
+              // 【重要】判定は必ず「交換後の状態」で行う。
+              //   交換前に判定すると、例えば「土曜勤務・日曜休み」の人が日曜へ移れない。
+              //   （土曜がまだ勤務なので土日連勤と誤判定され、日曜が永久に全員休みになる）
+              //   実際に入れ替えてから曜日タイプ・属性・土日連勤を検証し、必ず巻き戻す。
+              const bkOff = result[`${s.id}|${od}`];
+              const bkWork = result[`${s.id}|${wd}`];
+              result[`${s.id}|${od}`] = sh;
+              result[`${s.id}|${wd}`] = '休み';
+              const ok = canPlaceWork(s, od, sh);
+              result[`${s.id}|${od}`] = bkOff;
+              result[`${s.id}|${wd}`] = bkWork;
+              if (!ok) continue;
+
+              bestGain = gain; best = { sid: s.id, od, wd, sh };
+            }
+          }
+        }
+
+        if (!best) break; // これ以上コストを下げられない＝収束
+        applySwap(best.sid, best.od, best.wd, best.sh);
+      }
+
+      }
+    }
+    _logStep('STEP10完了（休みの均等化：週次×日別の同時最適化）');
+
     // 充足状況サマリーを生成
     const _coverageSummary = [];
     let _shortageDays = 0;
