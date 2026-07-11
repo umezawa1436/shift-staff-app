@@ -176,10 +176,17 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
 
     function getStaffPlanHours(staff) {
       const custom = staffSettingsMap[staff.id];
+      // 個別設定（planned_hours）があれば全区分で最優先。0.0 の明示設定も尊重（null のみ未設定扱い）。
       if (custom?.planned_hours != null) return custom.planned_hours;
-      if (staff.emp_type === 'full') return basePlanHours;
-      if (staff.emp_type === 'short') return Math.round(basePlanHours * APP_SHORT_RATIO * 10) / 10;
-      return 0; // part: 個別設定なければ0
+      // 雇用形態ごとのデフォルト所定労働時間
+      switch (staff.emp_type) {
+        case 'full':     return basePlanHours;                                  // 常勤：全体設定のデフォルト
+        case 'fullpart': return basePlanHours;                                  // フルパート：常勤と同じ
+        case 'short':    return Math.round(basePlanHours * APP_SHORT_RATIO * 10) / 10; // 時短：常勤×0.75
+        case 'part':     return 80;                                             // パート：80固定
+        case 'arbeit':   return 0;                                              // アルバイト：0
+        default:         return basePlanHours;                                  // 不明な区分は常勤扱い（0で埋もれさせない）
+      }
     }
 
     function getStaffMaxNight(staff) {
@@ -1225,6 +1232,84 @@ _logStep('STEP8完了');
       }))
     );
 
+    // ===== 精度スコアの算出と表示（フェーズ1：可視化）=====
+    // あなたの5要件のうち、まず「測れる」ものを数値化する。
+    //   ①必要人数の充足率  ②所定労働時間の達成率
+    //   ③希望休の反映率（絶対要件）  ④希望勤務の反映率（絶対要件・正当な却下は理由付きで一覧）
+    // これにより「今何%か」「どの希望が・なぜ通らなかったか」が一目で分かり、手動修正の照準が定まる。
+    {
+      // --- ① 必要人数の充足率（人日ベース。🌸は数えない） ---
+      let reqTotal = 0, reqCovered = 0;
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dtc = getDayType(d);
+        if (dtc === 'thu_closed' || dtc === 'holiday_closed' || dtc === 'clinic_closed') continue;
+        for (const period of ['morning', 'afternoon', 'evening']) {
+          const req = getRequired(period, d);
+          if (!req || req <= 0) continue;
+          reqTotal += req;
+          const cov = deptStaff.filter(s => {
+            if (isNoCount(s)) return false;
+            const sh = result[`${s.id}|${d}`];
+            return sh && SHIFT_COVERS[sh]?.includes(period);
+          }).length;
+          reqCovered += Math.min(cov, req);
+        }
+      }
+      const fillRate = reqTotal > 0 ? Math.round(reqCovered / reqTotal * 100) : 100;
+
+      // --- ② 所定労働時間の達成率（±2H以内を達成とみなす。🌸含む） ---
+      const hoursStaff = deptStaff.filter(s => getStaffPlanHours(s) > 0);
+      const hoursOk = hoursStaff.filter(s => {
+        const plan = getStaffPlanHours(s);
+        return Math.abs((staffHours[s.id] || 0) - plan) <= 2;
+      }).length;
+      const hoursRate = hoursStaff.length > 0 ? Math.round(hoursOk / hoursStaff.length * 100) : 100;
+
+      // --- ③④ 希望の反映率（reqMap を正解データとして突合） ---
+      let offReqTotal = 0, offReqOk = 0;       // 希望休
+      let workReqTotal = 0, workReqOk = 0;     // 希望勤務
+      const rejected = [];                      // 通らなかった希望勤務（理由付き）
+      const staffById = {};
+      deptStaff.forEach(s => { staffById[s.id] = s; });
+      for (const key in reqMap) {
+        const req = reqMap[key];
+        if (!req) continue;
+        const [sid, dStr] = key.split('|');
+        if (!staffById[sid]) continue; // 別部門などは無視
+        const placed = result[key];
+        if (OFF_SHIFTS.includes(req)) {
+          // 希望休（絶対要件）
+          offReqTotal++;
+          if (placed && OFF_SHIFTS.includes(placed)) offReqOk++;
+          else rejected.push({ name: staffById[sid].name, day: dStr, want: req, got: placed || '未配置', kind: 'off' });
+        } else {
+          // 希望勤務（絶対要件・ただし所定+2H超過/土日連勤/診療日整合は正当な却下）
+          workReqTotal++;
+          if (placed === req) workReqOk++;
+          else rejected.push({ name: staffById[sid].name, day: dStr, want: req, got: placed || '未配置', kind: 'work' });
+        }
+      }
+      const offRate = offReqTotal > 0 ? Math.round(offReqOk / offReqTotal * 100) : 100;
+      const workRate = workReqTotal > 0 ? Math.round(workReqOk / workReqTotal * 100) : 100;
+
+      // --- 総合精度（絶対要件の希望を重めに重み付け） ---
+      // 重み: 希望休30 / 希望勤務25 / 必要人数25 / 所定時間20
+      const overall = Math.round(
+        (offRate * 30 + workRate * 25 + fillRate * 25 + hoursRate * 20) / 100
+      );
+
+      // コンソールにも詳細を出す（デバッグ・検証用）
+      console.log('[精度スコア]', { overall, 希望休: offRate, 希望勤務: workRate, 必要人数: fillRate, 所定時間: hoursRate });
+      if (rejected.length) console.log('[通らなかった希望]', rejected);
+
+      // グローバルに退避（プレビューカード描画時に表示する）
+      window._genPrecision = {
+        overall, fillRate, hoursRate, offRate, workRate,
+        offReqOk, offReqTotal, workReqOk, workReqTotal, reqCovered, reqTotal, hoursOk, hoursTotal: hoursStaff.length,
+        rejected, shortageDays: _shortageDays, weekendConsec: _weekendConsecList.length,
+      };
+    }
+
     // ★ AI 生成プレビュー：生成前のメモリ状態をスナップショット
     //   「生成前に戻す」ボタンで完全復元できるようにする。
     //   shiftData/lockedCells は次の行から AI 結果で上書きされるため、その直前に退避。
@@ -1266,6 +1351,9 @@ _logStep('STEP8完了');
     //   他の設定操作は preFlightCheck で自動ブロックされる。
     const previewBanner = document.getElementById('aiPreviewBanner');
     if (previewBanner) previewBanner.style.display = 'block';
+
+    // 精度スコアカードを表示（フェーズ1：可視化）
+    if (window._genPrecision) renderPrecisionCard(window._genPrecision);
 
     // DB再読み込みせずグリッドのみ再描画
     const reqMapForRender = {};
@@ -1367,69 +1455,65 @@ function selectEveningShift(deptId, dayType) {
   return '遅番';
 }
 
-function showGenerateSummary(deptStaff, result, staffHours, staffNightCount, daysInMonth, getStaffPlanHours, getRequired) {
-  let totalRequired = 0, totalCovered = 0;
-  for (let d = 1; d <= daysInMonth; d++) {
-    ['morning','afternoon','evening'].forEach(period => {
-      const req = getRequired(period, d);
-      if (!req || req === 0) return;
-      totalRequired += req;
-      const covered = deptStaff.filter(s => {
-        if (s.skill_level === 'no_count' || s.no_count === true) return false;
-        const shift = result[`${s.id}|${d}`];
-        return shift && SHIFT_COVERS[shift]?.includes(period);
-      }).length;
-      totalCovered += Math.min(covered, req);
-    });
-  }
-  const hoursOk = deptStaff.filter(s => {
-    const plan = getStaffPlanHours(s);
-    if (plan <= 0) return true;
-    return (staffHours[s.id]||0) >= plan * 0.95;
-  }).length;
-  const fillRate = totalRequired > 0 ? Math.round(totalCovered / totalRequired * 100) : 100;
+function renderPrecisionCard(p) {
   const card = document.getElementById('previewCard');
-  const existing = document.getElementById('generateSummary');
-  if (existing) existing.remove();
+  if (!card) return;
+  const old = document.getElementById('generateSummary');
+  if (old) old.remove();
+
+  const colorOf = (r) => r >= 95 ? '#059669' : r >= 85 ? '#d97706' : '#dc2626';
+  const bgOf = (r) => r >= 95 ? '#d1fae5' : r >= 85 ? '#fef3c7' : '#fee2e2';
+
+  // 個別指標のミニバッジ
+  const metric = (label, rate, sub) => `
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="font-size:22px;font-weight:800;color:${colorOf(rate)}">${rate}%</div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:#374151">${label}</div>
+        <div style="font-size:10px;color:#9ca3af">${sub}</div>
+      </div>
+    </div>`;
+
+  // 通らなかった希望の一覧（希望休の未達は最優先で赤、希望勤務は理由の可能性を添える）
+  let rejectHtml = '';
+  if (p.rejected && p.rejected.length) {
+    const offMiss = p.rejected.filter(r => r.kind === 'off');
+    const workMiss = p.rejected.filter(r => r.kind === 'work');
+    const rows = [];
+    offMiss.forEach(r => rows.push(`<span style="color:#dc2626;font-weight:700">⚠️ ${r.name} ${r.day}日: 希望休が未反映（現在: ${r.got}）</span>`));
+    workMiss.forEach(r => rows.push(`<span style="color:#92400e">${r.name} ${r.day}日: 希望勤務「${r.want}」未反映（現在: ${r.got}）</span>`));
+    rejectHtml = `
+      <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">
+        <div style="font-size:11px;font-weight:700;color:#374151;margin-bottom:4px">通らなかった希望（${p.rejected.length}件）</div>
+        <div style="font-size:11px;line-height:1.7;max-height:140px;overflow-y:auto">${rows.join('<br>')}</div>
+        <div style="font-size:10px;color:#9ca3af;margin-top:4px">※希望勤務の未反映は、所定+2H超過／土日連勤／CC・CHO日の種別不一致が主因です</div>
+      </div>`;
+  }
+
   const summary = document.createElement('div');
   summary.id = 'generateSummary';
   summary.style.cssText = 'margin-bottom:16px';
-  const fillColor = fillRate>=100 ? '#065f46' : '#92400e';
-  const fillBg = fillRate>=100 ? '#d1fae5' : '#fef3c7';
-  const hoursColor = hoursOk===deptStaff.length ? '#065f46' : '#92400e';
   summary.innerHTML = `
-    <div style="background:${fillBg};border-radius:12px;padding:14px 18px;display:flex;gap:24px;align-items:center;flex-wrap:wrap">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="font-size:28px;font-weight:800;color:${fillColor}">${fillRate}%</div>
-        <div>
-          <div style="font-size:12px;font-weight:600;color:${fillColor}">必要人数充足率</div>
-          <div style="font-size:11px;color:var(--text-muted)">${totalCovered}/${totalRequired} 人日</div>
+    <div style="background:${bgOf(p.overall)};border-radius:14px;padding:16px 20px">
+      <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="font-size:34px;font-weight:900;color:${colorOf(p.overall)}">${p.overall}%</div>
+          <div style="font-size:12px;font-weight:700;color:${colorOf(p.overall)}">総合精度</div>
+        </div>
+        <div style="width:1px;height:44px;background:var(--border)"></div>
+        <div style="display:flex;gap:18px;flex-wrap:wrap">
+          ${metric('希望休', p.offRate, `${p.offReqOk}/${p.offReqTotal}件`)}
+          ${metric('希望勤務', p.workRate, `${p.workReqOk}/${p.workReqTotal}件`)}
+          ${metric('必要人数', p.fillRate, `${p.reqCovered}/${p.reqTotal}人日`)}
+          ${metric('所定時間', p.hoursRate, `${p.hoursOk}/${p.hoursTotal}人`)}
         </div>
       </div>
-      <div style="width:1px;height:40px;background:var(--border)"></div>
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="font-size:28px;font-weight:800;color:${hoursColor}">${hoursOk}/${deptStaff.length}</div>
-        <div>
-          <div style="font-size:12px;font-weight:600;color:${hoursColor}">所定時間達成</div>
-          <div style="font-size:11px;color:var(--text-muted)">95%以上</div>
-        </div>
-      </div>
-      <div style="width:1px;height:40px;background:var(--border)"></div>
-      <div style="font-size:12px;color:var(--text-muted);line-height:1.8">
-        ${deptStaff.map(s => {
-          const plan = getStaffPlanHours(s);
-          const actual = Math.round((staffHours[s.id]||0)*10)/10;
-          const rate = plan>0 ? Math.round(actual/plan*100) : 100;
-          const c = rate>=95?'#065f46':rate>=80?'#92400e':'#be123c';
-          return `<span style="margin-right:12px"><b style="color:${c}">${s.name}</b> ${actual}H`;
-        }).join('')}
-      </div>
-    </div>
-  `;
-  const card2 = document.getElementById('previewCard');
-  const titleEl2 = card2?.querySelector('.card-title');
-  if (titleEl2) titleEl2.insertAdjacentElement('afterend', summary);
-  else card2?.prepend(summary);
+      ${rejectHtml}
+    </div>`;
+
+  const titleEl = card.querySelector('.card-title');
+  if (titleEl) titleEl.insertAdjacentElement('afterend', summary);
+  else card.prepend(summary);
 }
 
 // 祝日（2026年簡易版）

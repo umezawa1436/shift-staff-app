@@ -7,6 +7,22 @@ let adminUser = null;
 //   admin.js / admin-generate.js / index.html(スタッフ画面) が各自このテーブルを読むことで二重管理を解消。
 let APP_SHORT_RATIO = 0.75;
 let APP_DEFAULT_PLAN_HOURS = 171.4;
+
+// 雇用形態ごとのデフォルト所定労働時間（個別設定 planned_hours が無いときの基準値）。
+//   base = その月の全体デフォルト所定（shiftGridPlanHours / basePlanHours）。
+//   admin.js（表示）と admin-generate.js（生成）で必ず同じ値を使うための共通関数。
+//   常勤 / フルパート = base、時短 = base×0.75、パート = 80固定、アルバイト = 0。
+function empTypeBaseHours(empType, base) {
+  switch (empType) {
+    case 'full':     return base;
+    case 'fullpart': return base;
+    case 'short':    return Math.round(base * APP_SHORT_RATIO * 10) / 10;
+    case 'part':     return 80;
+    case 'arbeit':   return 0;
+    default:         return base; // 不明な区分は常勤扱い（0で埋もれさせない）
+  }
+}
+
 async function loadAppSettings() {
   try {
     const rows = await sb('app_settings?select=key,value');
@@ -438,11 +454,13 @@ document.getElementById('adminPassword').addEventListener('keydown', e => {
 async function initApp() {
   showLoading();
   try {
-    // ★ 所定算出の定数（short_ratio / default_planned_hours）をDBから先に読む
-    await loadAppSettings();
-    // 最初にshift_typesをロードして互換マップを構築（カスタムシフト対応）
-    await loadShiftTypesAndBuildMaps();
-    await loadStaff();
+    // 所定算出定数(app_settings) / shift_types / staff は互いに独立なので並列取得。
+    // （旧実装は3本を直列awaitしていた。gridはstaffに依存するので後段で待つ。）
+    await Promise.all([
+      loadAppSettings(),
+      loadShiftTypesAndBuildMaps(),
+      loadStaff(),
+    ]);
     updateMonthDisplays();
     buildAllDeptTabs();
     document.body.dataset.page = 'shift';
@@ -834,15 +852,21 @@ async function loadShiftGrid() {
     const ids = deptStaff.map(s => `"${s.id}"`).join(',');
     const daysInMonth = new Date(shiftYear, shiftMonth, 0).getDate();
 
-    const [existingShifts, requestData, requirements, monthlyHoursData, staffSettingsData, wedData, shiftSpecialDays, shiftThursdayData] = await Promise.all([
-      adminApi('/api/data', { action:'list', table:'shifts', view:'admin-month', params:{ year:shiftYear, month:shiftMonth } }).then(r => { const set = new Set(deptStaff.map(s => s.id)); return (r.rows || []).filter(x => set.has(x.staff_id)); }),
-      adminApi('/api/data', { action:'list', table:'shift_requests', view:'admin-month', params:{ year:shiftYear, month:shiftMonth } }).then(r => { const set = new Set(deptStaff.map(s => s.id)); return (r.rows || []).filter(x => set.has(x.staff_id)); }),
+    const _idSet = new Set(deptStaff.map(s => s.id));
+    const [existingShifts, requestData, requirements, monthlyHoursData, staffSettingsData, wedData, shiftSpecialDays, shiftThursdayData, cellLocksData] = await Promise.all([
+      adminApi('/api/data', { action:'list', table:'shifts', view:'admin-month', params:{ year:shiftYear, month:shiftMonth } }).then(r => (r.rows || []).filter(x => _idSet.has(x.staff_id))),
+      adminApi('/api/data', { action:'list', table:'shift_requests', view:'admin-month', params:{ year:shiftYear, month:shiftMonth } }).then(r => (r.rows || []).filter(x => _idSet.has(x.staff_id))),
       sb(`staffing_requirements?dept_id=eq.${currentDept}&select=period_id,day_type,min_count`),
       sb(`monthly_hours?month=eq.${shiftMonth}&year=eq.${shiftYear}&dept_id=is.null&select=hours`),
       sb(`staff_settings?staff_id=in.(${ids})&year=eq.${shiftYear}&month=eq.${shiftMonth}&select=staff_id,planned_hours`),
       sb(`wednesday_types?year=eq.${shiftYear}&month=eq.${shiftMonth}&select=day,wed_type`),
       sb(`special_days?year=eq.${shiftYear}&month=eq.${shiftMonth}&select=day,is_closed,is_holiday,label`),
-      sb(`thursday_types?year=eq.${shiftYear}&month=eq.${shiftMonth}&select=day,is_open`)
+      sb(`thursday_types?year=eq.${shiftYear}&month=eq.${shiftMonth}&select=day,is_open`),
+      // cell_locks も同月・同部門依存のみ＝ここで並列取得（旧実装は後段で直列awaitしていた）。
+      // テーブル未作成でも全体を壊さないよう、失敗時は空配列にフォールバック。
+      adminApi('/api/data', { action:'list', table:'cell_locks', view:'admin-month', params:{ year:shiftYear, month:shiftMonth } })
+        .then(r => (r.rows || []).filter(c => _idSet.has(c.staff_id)))
+        .catch(e => { console.warn('cell_locks 読み込みスキップ:', e); return []; })
     ]);
 
     // 木曜・祝日設定マップ
@@ -881,19 +905,11 @@ async function loadShiftGrid() {
     isCurrentMonthConfirmed = existingShifts.some(s => s.is_confirmed === true);
     updateConfirmLockUI();
 
-    // ★ 未選択セルのロックを cell_locks テーブルから復元
+    // ★ 未選択セルのロックを cell_locks から復元（上のPromise.allで並列取得済み）
     //   shifts.is_locked はシフト選択済みセルのみ保持できるため、未選択セルのロックは別管理。
-    //   テーブル未作成時は警告のみで処理継続（既存機能を壊さない）。
-    try {
-      const _clSet = new Set(deptStaff.map(s => s.id));
-      const cellLocksData = ((await adminApi('/api/data', { action:'list', table:'cell_locks', view:'admin-month', params:{ year:shiftYear, month:shiftMonth } })).rows || []).filter(c => _clSet.has(c.staff_id));
-      (cellLocksData || []).forEach(c => {
-        const key = `${c.staff_id}|${c.day}`;
-        lockedCells[key] = true;
-      });
-    } catch(e) {
-      console.warn('cell_locks 読み込みスキップ（テーブル未作成の可能性）:', e);
-    }
+    (cellLocksData || []).forEach(c => {
+      lockedCells[`${c.staff_id}|${c.day}`] = true;
+    });
 
     const reqMap = {};
     requestData.forEach(r => { reqMap[`${r.staff_id}|${r.day}`] = r.request_type; });
@@ -1121,8 +1137,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
       const setting = shiftGridStaffSettings[staff.id];
       const hasIndividual = setting?.planned_hours != null; // 個別設定の有無
       let planH = setting?.planned_hours ?? (
-        staff.emp_type === 'full' ? shiftGridPlanHours :
-        staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * APP_SHORT_RATIO * 10)/10 : 0
+        empTypeBaseHours(staff.emp_type, shiftGridPlanHours)
       );
       const actual = Math.round(totalH * 10) / 10;
       const diff = Math.round((actual - planH) * 10) / 10;
@@ -1131,9 +1146,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
       const planDays = Math.floor(planH / 8.5);
       const color = planH <= 0 ? '#6b7280' : Math.abs(diff) <= 10 ? '#10b981' : diff > 10 ? '#f97316' : '#ef4444';
       // ★ 個別設定中は薄紫背景＋「基準値からの差」を表示
-      const baseForType =
-        staff.emp_type === 'full' ? shiftGridPlanHours :
-        staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * APP_SHORT_RATIO * 10)/10 : 0;
+      const baseForType = empTypeBaseHours(staff.emp_type, shiftGridPlanHours);
       const fromBase = Math.round((planH - baseForType) * 10) / 10;
       const fromBaseStr = hasIndividual
         ? `<span style="font-size:9px;color:#8b5cf6;font-weight:700"> (基準${fromBase >= 0 ? '+' : ''}${fromBase}H)</span>`
@@ -1406,10 +1419,7 @@ function refreshHoursCell(staffId) {
   // 所定時間を取得
   const setting = shiftGridStaffSettings[staffId];
   const hasIndividual = setting?.planned_hours != null; // 個別設定の有無
-  let planH = setting?.planned_hours ?? (
-    staff.emp_type === 'full' ? shiftGridPlanHours :
-    staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * APP_SHORT_RATIO * 10)/10 : 0
-  );
+  let planH = setting?.planned_hours ?? empTypeBaseHours(staff.emp_type, shiftGridPlanHours);
 
   const actual = Math.round(totalH * 10) / 10;
   const diff = Math.round((actual - planH) * 10) / 10;
@@ -1418,9 +1428,7 @@ function refreshHoursCell(staffId) {
   const planDays = Math.floor(planH / 8.5);
   const color = planH <= 0 ? '#6b7280' : Math.abs(diff) <= 10 ? '#10b981' : diff > 10 ? '#f97316' : '#ef4444';
   // ★ 個別設定中は薄紫背景＋「基準値からの差」を表示
-  const baseForType =
-    staff.emp_type === 'full' ? shiftGridPlanHours :
-    staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * APP_SHORT_RATIO * 10)/10 : 0;
+  const baseForType = empTypeBaseHours(staff.emp_type, shiftGridPlanHours);
   const fromBase = Math.round((planH - baseForType) * 10) / 10;
   const fromBaseStr = hasIndividual
     ? `<span style="font-size:9px;color:#8b5cf6;font-weight:700"> (基準${fromBase >= 0 ? '+' : ''}${fromBase}H)</span>`
@@ -1759,10 +1767,7 @@ async function saveStaffHours(staffId, staffName, hours) {
   //   （個別設定が基準値と同値だと、基準値変更時に追従しない問題を防ぐ）
   const staff = allStaff.find(s => s.id === staffId);
   if (hours !== null && staff) {
-    const baseForType =
-      staff.emp_type === 'full' ? shiftGridPlanHours :
-      staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * APP_SHORT_RATIO * 10) / 10 :
-      0;
+    const baseForType = empTypeBaseHours(staff.emp_type, shiftGridPlanHours);
     if (Math.abs(hours - baseForType) < 0.05) {
       hours = null; // 基準値と同じ → 個別設定をクリア扱いにする
       showToast(`基準値（${baseForType}H）と同じため、個別設定をクリアします`, 'info');
@@ -3255,7 +3260,7 @@ function buildShiftDataForAI() {
     }
     return {
       id: sa.anon,
-      雇用形態: sa.empType === 'full' ? '常勤' : sa.empType === 'short' ? '時短' : 'パート',
+      雇用形態: sa.empType === 'full' ? '常勤' : sa.empType === 'fullpart' ? 'フルパート' : sa.empType === 'short' ? '時短' : sa.empType === 'arbeit' ? 'アルバイト' : 'パート',
       スキル: sa.skillLevel || '',
       シフト: days
     };
@@ -4792,7 +4797,7 @@ async function loadStaffTable() {
     if (!wrap) { hideLoading(); return; }
 
     const SKILL_LABELS = { normal:'無印', beginner:'🔰', no_count:'🌸' };
-    const EMP_LABELS = { full:'常勤', short:'時短', part:'パート', arbeit:'アルバイト' };
+    const EMP_LABELS = { full:'常勤', fullpart:'フルパート', short:'時短', part:'パート', arbeit:'アルバイト' };
     const DOW_LABELS = ['日','月','火','水','木','金','土'];
 
     wrap.innerHTML = deptStaff.map(staff => {
@@ -4855,7 +4860,7 @@ async function loadStaffTable() {
 
           <!-- 雇用形態 -->
           <div style="display:flex;gap:4px">
-            ${['full','short','part','arbeit'].map(et => `
+            ${['full','fullpart','short','part','arbeit'].map(et => `
               <button onclick="updateStaffField('${staff.id}','emp_type','${et}')"
                 style="padding:4px 10px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;
                 border:1.5px solid ${staff.emp_type===et?'var(--primary)':'var(--border)'};
@@ -5623,7 +5628,7 @@ document.getElementById('exportCsvBtn')?.addEventListener('click', () => {
 
   // スタッフ行
   deptStaff.forEach(staff => {
-    const empLabel = staff.emp_type === 'full' ? '常勤' : staff.emp_type === 'short' ? '時短' : staff.emp_type === 'arbeit' ? 'アルバイト' : 'パート';
+    const empLabel = staff.emp_type === 'full' ? '常勤' : staff.emp_type === 'fullpart' ? 'フルパート' : staff.emp_type === 'short' ? '時短' : staff.emp_type === 'arbeit' ? 'アルバイト' : 'パート';
     let totalH = 0;
     let row = `${staff.name},${empLabel}`;
     const csvHolidays = getJapaneseHolidays(shiftYear, shiftMonth);
@@ -5638,10 +5643,7 @@ document.getElementById('exportCsvBtn')?.addEventListener('click', () => {
       row += `,${shift}`;
     }
     const setting = shiftGridStaffSettings[staff.id];
-    const planH = setting?.planned_hours ?? (
-      staff.emp_type === 'full' ? shiftGridPlanHours :
-      staff.emp_type === 'short' ? Math.round(shiftGridPlanHours * APP_SHORT_RATIO * 10)/10 : 0
-    );
+    const planH = setting?.planned_hours ?? empTypeBaseHours(staff.emp_type, shiftGridPlanHours);
     row += `,${Math.round(totalH*10)/10},${planH}`;
     csv += row + '\n';
   });
