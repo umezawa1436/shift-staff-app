@@ -3260,7 +3260,7 @@ function buildShiftDataForAI() {
     }
     return {
       id: sa.anon,
-      雇用形態: sa.empType === 'full' ? '常勤' : sa.empType === 'short' ? '時短' : 'パート',
+      雇用形態: sa.empType === 'full' ? '常勤' : sa.empType === 'fullpart' ? 'フルパート' : sa.empType === 'short' ? '時短' : sa.empType === 'arbeit' ? 'アルバイト' : 'パート',
       スキル: sa.skillLevel || '',
       シフト: days
     };
@@ -4797,7 +4797,7 @@ async function loadStaffTable() {
     if (!wrap) { hideLoading(); return; }
 
     const SKILL_LABELS = { normal:'無印', beginner:'🔰', no_count:'🌸' };
-    const EMP_LABELS = { full:'常勤', short:'時短', part:'パート', arbeit:'アルバイト' };
+    const EMP_LABELS = { full:'常勤', fullpart:'フルパート', short:'時短', part:'パート', arbeit:'アルバイト' };
     const DOW_LABELS = ['日','月','火','水','木','金','土'];
 
     wrap.innerHTML = deptStaff.map(staff => {
@@ -4860,7 +4860,7 @@ async function loadStaffTable() {
 
           <!-- 雇用形態 -->
           <div style="display:flex;gap:4px">
-            ${['full','short','part','arbeit'].map(et => `
+            ${['full','fullpart','short','part','arbeit'].map(et => `
               <button onclick="updateStaffField('${staff.id}','emp_type','${et}')"
                 style="padding:4px 10px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;
                 border:1.5px solid ${staff.emp_type===et?'var(--primary)':'var(--border)'};
@@ -5628,7 +5628,7 @@ document.getElementById('exportCsvBtn')?.addEventListener('click', () => {
 
   // スタッフ行
   deptStaff.forEach(staff => {
-    const empLabel = staff.emp_type === 'full' ? '常勤' : staff.emp_type === 'short' ? '時短' : staff.emp_type === 'arbeit' ? 'アルバイト' : 'パート';
+    const empLabel = staff.emp_type === 'full' ? '常勤' : staff.emp_type === 'fullpart' ? 'フルパート' : staff.emp_type === 'short' ? '時短' : staff.emp_type === 'arbeit' ? 'アルバイト' : 'パート';
     let totalH = 0;
     let row = `${staff.name},${empLabel}`;
     const csvHolidays = getJapaneseHolidays(shiftYear, shiftMonth);
