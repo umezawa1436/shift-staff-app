@@ -176,10 +176,17 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
 
     function getStaffPlanHours(staff) {
       const custom = staffSettingsMap[staff.id];
+      // 個別設定（planned_hours）があれば全区分で最優先。0.0 の明示設定も尊重（null のみ未設定扱い）。
       if (custom?.planned_hours != null) return custom.planned_hours;
-      if (staff.emp_type === 'full') return basePlanHours;
-      if (staff.emp_type === 'short') return Math.round(basePlanHours * APP_SHORT_RATIO * 10) / 10;
-      return 0; // part: 個別設定なければ0
+      // 雇用形態ごとのデフォルト所定労働時間
+      switch (staff.emp_type) {
+        case 'full':     return basePlanHours;                                  // 常勤：全体設定のデフォルト
+        case 'fullpart': return basePlanHours;                                  // フルパート：常勤と同じ
+        case 'short':    return Math.round(basePlanHours * APP_SHORT_RATIO * 10) / 10; // 時短：常勤×0.75
+        case 'part':     return 80;                                             // パート：80固定
+        case 'arbeit':   return 0;                                              // アルバイト：0
+        default:         return basePlanHours;                                  // 不明な区分は常勤扱い（0で埋もれさせない）
+      }
     }
 
     function getStaffMaxNight(staff) {
