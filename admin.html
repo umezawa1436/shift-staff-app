@@ -12,7 +12,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
   <title>kingyo-shift 管理画面</title>
-  <link rel="stylesheet" href="admin.css?v=47">
+  <link rel="stylesheet" href="admin.css?v=48">
 </head>
 <body>
 
@@ -834,6 +834,26 @@
       </div>
     </div>
     <div id="verticalViewContent" style="overflow:auto;max-height:70vh"></div>
+
+    <!-- 日付メモ（部門×日ごと。タイトルはシフト表の日付欄に表示され、詳細はここでのみ閲覧/編集） -->
+    <div id="dayNoteBox" style="margin-top:12px;padding:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:13px;font-weight:700;color:#92400e">📝 この日のメモ</span>
+        <span id="dayNoteReadonlyHint" style="font-size:11px;color:#b45309;display:none">（閲覧のみ）</span>
+      </div>
+      <input type="text" id="dayNoteTitle" maxlength="10" placeholder="タイトル（10文字まで・シフト表に表示されます）"
+        style="width:100%;padding:8px 10px;border:1.5px solid #fcd34d;border-radius:8px;font-size:13px;font-family:inherit;margin-bottom:8px">
+      <textarea id="dayNoteDetail" maxlength="500" rows="3" placeholder="詳細（500文字まで・バーチカル表示と印刷で見られます）"
+        style="width:100%;padding:8px 10px;border:1.5px solid #fcd34d;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical"></textarea>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+        <span id="dayNoteCount" style="font-size:11px;color:#b45309">0/500</span>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-outline" id="dayNoteDeleteBtn" style="padding:4px 12px;font-size:12px">削除</button>
+          <button class="btn btn-primary" id="dayNoteSaveBtn" style="padding:4px 14px;font-size:12px">メモ保存</button>
+        </div>
+      </div>
+    </div>
+
     <div class="modal-footer" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
       <div style="font-size:12px;color:var(--text-muted)">
         💡 帯クリックで休憩追加・編集
@@ -945,7 +965,7 @@
   </div>
 </div>
 
-<script src="admin.js?v=45"></script>
+<script src="admin.js?v=46"></script>
 <script src="admin-generate.js?v=13"></script>
 </body>
 </html>
