@@ -274,7 +274,7 @@ async function loadShiftTypesAndBuildMaps() {
 
 // SUPABASE
 // 設定系テーブルは /api/data の settings ゲートウェイ経由（anonキー直叩き廃止・RLS対応）
-const API_SETTINGS_TABLES = new Set(['staff_settings','monthly_hours','staffing_requirements','special_days','wednesday_types','thursday_types','shift_request_deadline_rules','shift_request_limits_default','beginner_limits','app_settings','dept_shift_pattern_settings']);
+const API_SETTINGS_TABLES = new Set(['staff_settings','monthly_hours','staffing_requirements','special_days','wednesday_types','thursday_types','shift_request_deadline_rules','shift_request_limits_default','beginner_limits','app_settings','dept_shift_pattern_settings','day_notes']);
 
 async function sb(path, options = {}) {
   const table = String(path).split('?')[0];
@@ -866,7 +866,9 @@ async function loadShiftGrid() {
       // テーブル未作成でも全体を壊さないよう、失敗時は空配列にフォールバック。
       adminApi('/api/data', { action:'list', table:'cell_locks', view:'admin-month', params:{ year:shiftYear, month:shiftMonth } })
         .then(r => (r.rows || []).filter(c => _idSet.has(c.staff_id)))
-        .catch(e => { console.warn('cell_locks 読み込みスキップ:', e); return []; })
+        .catch(e => { console.warn('cell_locks 読み込みスキップ:', e); return []; }),
+      // 日付メモ（day_notes）も同月・同部門依存のみ＝ここで並列取得
+      loadDayNotes(shiftYear, shiftMonth, currentDept)
     ]);
 
     // 木曜・祝日設定マップ
@@ -1028,13 +1030,18 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
     const holidayLabel = (holidays.has(d) && dayType4header==='holiday_closed') ? '<div style="font-size:8px;color:#6b7280">休診</div>' : '';
     const customClosedLabelText = (window._shiftCustomClosed || {})[d];
     const clinicClosedLabel = dayType4header === 'clinic_closed' ? `<div style="font-size:8px;color:#6b7280;line-height:1.2;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(customClosedLabelText || '休診')}">${escapeHtml(customClosedLabelText || '休診')}</div>` : '';
+    // 日付メモのタイトル（休診/CC/CHOラベルの下に表示。詳細はバーチカル表示で閲覧）
+    const _note = (dayNotesCache || {})[d];
+    const noteLabel = (_note && _note.title)
+      ? `<div class="day-note-title" style="font-size:8px;color:#92400e;background:#fef3c7;border-radius:3px;padding:1px 2px;margin-top:1px;line-height:1.2;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(_note.title)}${_note.detail ? '\n' + escapeHtml(_note.detail) : ''}">📝${escapeHtml(_note.title)}</div>`
+      : '';
     if (editable) {
       html += `<th style="min-width:32px;padding:0;${colStyle}">
         <div class="day-header" style="display:flex;flex-direction:column">
           <div style="padding:4px 2px;cursor:pointer" onclick="openVerticalView(${d})" title="バーチカル表示">
             <div class="day-num ${cls}">${d}</div>
             <div class="day-dow ${cls}">${DOW[dow]}</div>
-            ${wedLabel}${thuLabel}${holidayLabel}${clinicClosedLabel}
+            ${wedLabel}${thuLabel}${holidayLabel}${clinicClosedLabel}${noteLabel}
           </div>
           <div style="border-top:1px solid #cbd5e1;background:#f8fafc;padding:2px 0;cursor:pointer" onclick="toggleColumnLock(${d})" title="${colLocked?'列ロック解除':'列ロック'}">
             <div style="font-size:9px">${colLocked?'🔒':'<span style=\"color:#d1d5db\">🔓</span>'}</div>
@@ -1042,7 +1049,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
         </div>
       </th>`;
     } else {
-      html += `<th style="min-width:32px;${colStyle}"><div class="day-header"><div class="day-num ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})" title="バーチカル表示">${d}</div><div class="day-dow ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})">${DOW[dow]}</div>${wedLabel}${thuLabel}${holidayLabel}${clinicClosedLabel}</div></th>`;
+      html += `<th style="min-width:32px;${colStyle}"><div class="day-header"><div class="day-num ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})" title="バーチカル表示">${d}</div><div class="day-dow ${cls}" style="cursor:pointer" onclick="openVerticalView(${d})">${DOW[dow]}</div>${wedLabel}${thuLabel}${holidayLabel}${clinicClosedLabel}${noteLabel}</div></th>`;
     }
   }
   if (editable) html += '<th style="min-width:160px;text-align:center;cursor:pointer" onclick="showMonthlyHoursEditor()">実働/所定 <span style="font-size:10px;opacity:0.6">✏️</span></th>';
@@ -3962,6 +3969,128 @@ async function loadDayBreaks(year, month, day) {
 }
 
 // バーチカル表示を開く
+// ===== 日付メモ（day_notes）=====
+// 部門×年月日ごとに タイトル(10字)＋詳細(500字) を保持。
+//   タイトル：シフト表の日付ヘッダ（休診/CC/CHOラベルの下）に表示
+//   詳細    ：バーチカル表示と印刷でのみ閲覧
+// 編集権限は master / leader のみ（サーバ側 settingsGateway でも強制）。スタッフは閲覧のみ。
+let dayNotesCache = {};   // { day: {title, detail} } … 表示中の年月・部門ぶん
+
+function canEditDayNote() {
+  return adminUser && (adminUser.role === 'master' || adminUser.role === 'leader');
+}
+
+// 表示中の年月・部門のメモを一括ロード（日付ヘッダ描画で使う）
+async function loadDayNotes(year, month, deptId) {
+  try {
+    const rows = await sb(`day_notes?dept_id=eq.${deptId}&year=eq.${year}&month=eq.${month}&select=day,title,detail`);
+    const map = {};
+    rows.forEach(r => { map[r.day] = { title: r.title || '', detail: r.detail || '' }; });
+    dayNotesCache = map;
+  } catch (e) {
+    console.warn('day_notes 読み込みスキップ:', e);
+    dayNotesCache = {};
+  }
+  return dayNotesCache;
+}
+
+// バーチカルモーダルへメモを反映
+async function loadDayNoteIntoModal(day) {
+  const box = document.getElementById('dayNoteBox');
+  if (!box) return;
+  const titleEl = document.getElementById('dayNoteTitle');
+  const detailEl = document.getElementById('dayNoteDetail');
+  const countEl = document.getElementById('dayNoteCount');
+  const hintEl = document.getElementById('dayNoteReadonlyHint');
+  const saveBtn = document.getElementById('dayNoteSaveBtn');
+  const delBtn = document.getElementById('dayNoteDeleteBtn');
+
+  let note = dayNotesCache[day];
+  if (note === undefined) {
+    // キャッシュに無ければ単日で取得（月キャッシュ未ロード時のフォールバック）
+    try {
+      const rows = await sb(`day_notes?dept_id=eq.${currentDept}&year=eq.${shiftYear}&month=eq.${shiftMonth}&day=eq.${day}&select=title,detail`);
+      note = rows[0] ? { title: rows[0].title || '', detail: rows[0].detail || '' } : { title: '', detail: '' };
+      dayNotesCache[day] = note;
+    } catch (e) {
+      console.warn('day_note 単日取得スキップ:', e);
+      note = { title: '', detail: '' };
+    }
+  }
+  titleEl.value = note.title || '';
+  detailEl.value = note.detail || '';
+  countEl.textContent = `${(note.detail || '').length}/500`;
+
+  const editable = canEditDayNote();
+  titleEl.disabled = !editable;
+  detailEl.disabled = !editable;
+  saveBtn.style.display = editable ? '' : 'none';
+  delBtn.style.display = editable ? '' : 'none';
+  hintEl.style.display = editable ? 'none' : '';
+}
+
+// 印刷前：メモを静的テキストに差し替え（textarea は全文が印刷されないため）
+function prepareDayNoteForPrint() {
+  const box = document.getElementById('dayNoteBox');
+  if (!box) return;
+  const title = (document.getElementById('dayNoteTitle')?.value || '').trim();
+  const detail = (document.getElementById('dayNoteDetail')?.value || '').trim();
+  // 空メモは印刷しない
+  box.classList.toggle('is-empty', !title && !detail);
+  let printEl = document.getElementById('dayNotePrint');
+  if (!printEl) {
+    printEl = document.createElement('div');
+    printEl.id = 'dayNotePrint';
+    printEl.className = 'print-only';
+    box.appendChild(printEl);
+  }
+  printEl.innerHTML = `
+    <div style="font-size:13px;font-weight:700;color:#92400e">${escapeHtml(title)}</div>
+    <div style="font-size:12px;color:#78350f;white-space:pre-wrap;line-height:1.6;margin-top:4px">${escapeHtml(detail)}</div>`;
+}
+
+// メモ保存（タイトル・詳細とも空なら削除扱い）
+window.saveDayNote = async function() {
+  if (!canEditDayNote()) return showToast('権限がありません', 'error');
+  const day = verticalCurrentDay;
+  const title = document.getElementById('dayNoteTitle').value.trim().slice(0, 10);
+  const detail = document.getElementById('dayNoteDetail').value.trim().slice(0, 500);
+  if (!title && !detail) return deleteDayNote();
+  showLoading();
+  try {
+    // UNIQUE(dept_id,year,month,day) 前提。既存を消してから作る（同時編集は最後の保存が有効）
+    await sb(`day_notes?dept_id=eq.${currentDept}&year=eq.${shiftYear}&month=eq.${shiftMonth}&day=eq.${day}`, { method: 'DELETE' });
+    await sb('day_notes', { method: 'POST', body: JSON.stringify([{ dept_id: currentDept, year: shiftYear, month: shiftMonth, day, title, detail }]) });
+    dayNotesCache[day] = { title, detail };
+    showToast('メモを保存しました', 'success');
+    renderShiftGrid();
+  } catch (e) {
+    console.error(e);
+    showToast('メモの保存に失敗しました', 'error');
+  }
+  hideLoading();
+};
+
+// メモ削除
+window.deleteDayNote = async function() {
+  if (!canEditDayNote()) return showToast('権限がありません', 'error');
+  const day = verticalCurrentDay;
+  showLoading();
+  try {
+    await sb(`day_notes?dept_id=eq.${currentDept}&year=eq.${shiftYear}&month=eq.${shiftMonth}&day=eq.${day}`, { method: 'DELETE' });
+    dayNotesCache[day] = { title: '', detail: '' };
+    document.getElementById('dayNoteTitle').value = '';
+    document.getElementById('dayNoteDetail').value = '';
+    document.getElementById('dayNoteCount').textContent = '0/500';
+    showToast('メモを削除しました', 'success');
+    renderShiftGrid();
+  } catch (e) {
+    console.error(e);
+    showToast('メモの削除に失敗しました', 'error');
+  }
+  hideLoading();
+};
+
 window.openVerticalView = async function(day) {
   verticalCurrentDay = day;
   showLoading();
@@ -3972,6 +4101,7 @@ window.openVerticalView = async function(day) {
     verticalBreaksOriginal = JSON.parse(JSON.stringify(verticalBreaksCache));
     verticalBreaksLoaded = true;
     renderVerticalView();
+    await loadDayNoteIntoModal(day);
     document.getElementById('verticalViewModal').classList.add('show');
   } catch(e) {
     console.error(e);
@@ -4288,9 +4418,21 @@ document.getElementById('applyBreakEditBtn')?.addEventListener('click', () => {
 
 // 休憩を保存（DBへ）
 // 印刷ボタン（バーチカル表示用）
+// 日付メモ：保存・削除・文字数カウンタの配線
+document.getElementById('dayNoteSaveBtn')?.addEventListener('click', () => saveDayNote());
+document.getElementById('dayNoteDeleteBtn')?.addEventListener('click', () => {
+  if (confirm('この日のメモを削除しますか？')) deleteDayNote();
+});
+document.getElementById('dayNoteDetail')?.addEventListener('input', (e) => {
+  const el = document.getElementById('dayNoteCount');
+  if (el) el.textContent = `${e.target.value.length}/500`;
+});
+
 document.getElementById('verticalPrintBtn')?.addEventListener('click', () => {
   // ★ バーチカル印刷モード時のみ body にクラスを付与（シフト表印刷との分離）
   document.body.classList.add('printing-vertical');
+  // 日付メモ：textarea は高さ固定で全文が印刷されないため、印刷時だけ静的テキストへ置換する
+  prepareDayNoteForPrint();
   // 8:30〜21:30 の全幅（名前列＋タイムライン）を A4横の用紙幅に収めるための縮小率を実幅から算出
   const content = document.getElementById('verticalViewContent');
   if (content) {

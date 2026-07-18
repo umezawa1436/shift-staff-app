@@ -150,6 +150,13 @@
     .shift-grid td.staff-name { padding:6px 10px;text-align:left;font-weight:500;white-space:nowrap;background:white;font-size:12px;height:42px;position:sticky;left:0;z-index:4;border-left:1px solid var(--border);border-right:2px solid var(--border); }
     /* 左上の角（名前列ヘッダ）：縦横ともに固定・最前面 */
     .shift-grid th.staff-col { min-width:72px;text-align:left;padding-left:10px;position:sticky;left:0;top:0;z-index:6;background:var(--bg);border-left:1px solid var(--border);border-right:2px solid var(--border); }
+    /* めり込み対策：sticky セル自身を合成レイヤーへ昇格。
+       iOSの慣性スクロールはコンポジタ側で走るため、レイヤー化されていない sticky は
+       再配置描画が1フレーム遅れ、本体セルが一瞬ヘッダ/氏名列に重なって見える（めり込み）。
+       各stickyセルを translateZ(0) でレイヤー化するとコンポジタが直接追従し、遅延が消える。 */
+    .shift-grid thead th,
+    .shift-grid td.staff-name,
+    .shift-grid th.staff-col { transform:translateZ(0); }
     .shift-grid tbody tr { height:42px; }
     .shift-cell { height:36px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:pointer;transition:background-color 0.12s ease;padding:1px;overflow:hidden; }
     #shiftEditOptions .shift-cell { height:auto;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center; }
@@ -187,6 +194,9 @@
     .sc-custom{background:#f1f5f9;color:#475569;border:1px dashed #94a3b8}
 
     /* ===== 印刷用CSS（バーチカル表示）===== */
+    /* 印刷専用要素（画面では非表示・印刷時のみ表示） */
+    .print-only { display: none; }
+
     /* body に .printing-vertical クラスが付いたときだけ適用 */
     /* visibility ではなく display ベースで「不要なものを消す」方式に変更（信頼性が高い）*/
     @media print {
@@ -202,6 +212,19 @@
         print-color-adjust: exact !important;
         color-adjust: exact !important;
       }
+
+      /* 日付メモ：印刷では入力UIを紙向きに整える（枠と操作ボタンを消し、本文をそのまま見せる） */
+      body.printing-vertical #dayNoteSaveBtn,
+      body.printing-vertical #dayNoteDeleteBtn,
+      body.printing-vertical #dayNoteCount,
+      body.printing-vertical #dayNoteReadonlyHint { display: none !important; }
+      body.printing-vertical #dayNoteBox { break-inside: avoid; page-break-inside: avoid; }
+      /* 入力欄は隠し、代わりに静的テキスト(#dayNotePrint)を印刷する（textareaは全文が出ないため） */
+      body.printing-vertical #dayNoteTitle,
+      body.printing-vertical #dayNoteDetail { display: none !important; }
+      body.printing-vertical #dayNotePrint { display: block !important; }
+      /* 空のメモは印刷しない（JS側で is-empty を付与） */
+      body.printing-vertical #dayNoteBox.is-empty { display: none !important; }
 
       /* バーチカル印刷モード時：バーチカルモーダル以外のページ要素をすべて非表示にする */
       body.printing-vertical > *:not(#verticalViewModal),

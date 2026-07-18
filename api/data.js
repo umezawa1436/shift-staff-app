@@ -540,6 +540,9 @@ const SETTINGS_TABLES = {
   beginner_limits:              { cols: ['id','dept_id','period_id','day_type','max_beginners'] },
   app_settings:                 { cols: ['id','key','value'] },
   dept_shift_pattern_settings:  { cols: ['id','dept_id','enabled_patterns'] },
+  // 日付メモ（部門×年月日ごと。タイトル10字/詳細500字）。
+  //   書き込みは settingsGateway により leader/master のみ。読み取りは全ロール（スタッフ画面の表示用）。
+  day_notes:                    { cols: ['id','dept_id','year','month','day','title','detail'] },
 };
 const OPS = new Set(['eq','neq','gt','gte','lt','lte','is','in']);
 const SAFE_SCALAR = /^[\w\-.:+ %ぁ-んァ-ヶ一-龠々ー]*$/u;
