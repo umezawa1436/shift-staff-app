@@ -3980,6 +3980,20 @@ function canEditDayNote() {
   return adminUser && (adminUser.role === 'master' || adminUser.role === 'leader');
 }
 
+// メモ保存/削除後にシフト表ヘッダ（📝タイトル）を更新するための再描画。
+// renderShiftGrid は10引数必須のため、グリッド描画時に保持されたグローバルから組み立てる（3733行と同作法）。
+function rerenderShiftGridForNotes() {
+  try {
+    const ds = allStaff.filter(s => s.dept_id === currentDept);
+    const dim = new Date(shiftYear, shiftMonth, 0).getDate();
+    renderShiftGrid('shiftGrid', ds, dim, shiftYear, shiftMonth, shiftData,
+      window._shiftReqMap || {}, lockedCells, true, window._shiftWedTypes || {});
+  } catch (e) {
+    // ヘッダ更新に失敗しても保存自体は完了している。次回のグリッド再読込で反映される。
+    console.warn('メモ表示の更新をスキップ（保存は完了しています）:', e);
+  }
+}
+
 // 表示中の年月・部門のメモを一括ロード（日付ヘッダ描画で使う）
 async function loadDayNotes(year, month, deptId) {
   try {
@@ -4063,7 +4077,7 @@ window.saveDayNote = async function() {
     await sb('day_notes', { method: 'POST', body: JSON.stringify([{ dept_id: currentDept, year: shiftYear, month: shiftMonth, day, title, detail }]) });
     dayNotesCache[day] = { title, detail };
     showToast('メモを保存しました', 'success');
-    renderShiftGrid();
+    rerenderShiftGridForNotes();
   } catch (e) {
     console.error(e);
     showToast('メモの保存に失敗しました', 'error');
@@ -4083,7 +4097,7 @@ window.deleteDayNote = async function() {
     document.getElementById('dayNoteDetail').value = '';
     document.getElementById('dayNoteCount').textContent = '0/500';
     showToast('メモを削除しました', 'success');
-    renderShiftGrid();
+    rerenderShiftGridForNotes();
   } catch (e) {
     console.error(e);
     showToast('メモの削除に失敗しました', 'error');
