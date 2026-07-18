@@ -110,6 +110,8 @@ function saveCurrentShiftStateToCache() {
     closedHolidays: window._shiftClosedHolidays ? Array.from(window._shiftClosedHolidays) : [],
     openThursdays: window._shiftOpenThursdays ? Array.from(window._shiftOpenThursdays) : [],
     customClosed: window._shiftCustomClosed ? JSON.parse(JSON.stringify(window._shiftCustomClosed)) : {}
+    // 日付メモは dayNotesByScope（部門|年|月キー）がスコープ別に常時保持するため、
+    // スナップショット/復元の対象にしない（含めると復元時の上書きでリーク/消失が起きる）。
   };
 }
 
@@ -1031,9 +1033,9 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
     const customClosedLabelText = (window._shiftCustomClosed || {})[d];
     const clinicClosedLabel = dayType4header === 'clinic_closed' ? `<div style="font-size:8px;color:#6b7280;line-height:1.2;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(customClosedLabelText || '休診')}">${escapeHtml(customClosedLabelText || '休診')}</div>` : '';
     // 日付メモのタイトル（休診/CC/CHOラベルの下に表示。詳細はバーチカル表示で閲覧）
-    const _note = (dayNotesCache || {})[d];
+    const _note = getDayNotesMap()[d];
     const noteLabel = (_note && _note.title)
-      ? `<div class="day-note-title" style="font-size:8px;color:#92400e;background:#fef3c7;border-radius:3px;padding:1px 2px;margin-top:1px;line-height:1.2;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(_note.title)}${_note.detail ? '\n' + escapeHtml(_note.detail) : ''}">📝${escapeHtml(_note.title)}</div>`
+      ? `<div class="day-note-title" style="font-size:8px;color:#92400e;background:#fef3c7;border-radius:3px;padding:1px 2px;margin-top:1px;line-height:1.2;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(_note.title)}${_note.detail ? '\n' + escapeHtml(_note.detail) : ''}">${escapeHtml(_note.title)}</div>`
       : '';
     if (editable) {
       html += `<th style="min-width:32px;padding:0;${colStyle}">
@@ -3974,7 +3976,11 @@ async function loadDayBreaks(year, month, day) {
 //   タイトル：シフト表の日付ヘッダ（休診/CC/CHOラベルの下）に表示
 //   詳細    ：バーチカル表示と印刷でのみ閲覧
 // 編集権限は master / leader のみ（サーバ側 settingsGateway でも強制）。スタッフは閲覧のみ。
-let dayNotesCache = {};   // { day: {title, detail} } … 表示中の年月・部門ぶん
+// スコープ（部門|年|月）ごとにメモを保持する。フラットな1箱だと部門切替時に
+// 前部門のメモが残留（全部署に表示）/ 空で上書き（消える）が起きるため、キー分離で構造的に防ぐ。
+let dayNotesByScope = {};   // { 'dept|year|month': { day: {title, detail} } }
+function dayNotesScopeKey(deptId, year, month) { return `${deptId}|${year}|${month}`; }
+function getDayNotesMap() { return dayNotesByScope[dayNotesScopeKey(currentDept, shiftYear, shiftMonth)] || {}; }
 
 function canEditDayNote() {
   return adminUser && (adminUser.role === 'master' || adminUser.role === 'leader');
@@ -3996,16 +4002,17 @@ function rerenderShiftGridForNotes() {
 
 // 表示中の年月・部門のメモを一括ロード（日付ヘッダ描画で使う）
 async function loadDayNotes(year, month, deptId) {
+  const key = dayNotesScopeKey(deptId, year, month);
   try {
     const rows = await sb(`day_notes?dept_id=eq.${deptId}&year=eq.${year}&month=eq.${month}&select=day,title,detail`);
     const map = {};
     rows.forEach(r => { map[r.day] = { title: r.title || '', detail: r.detail || '' }; });
-    dayNotesCache = map;
+    dayNotesByScope[key] = map;
   } catch (e) {
     console.warn('day_notes 読み込みスキップ:', e);
-    dayNotesCache = {};
+    if (!dayNotesByScope[key]) dayNotesByScope[key] = {};
   }
-  return dayNotesCache;
+  return dayNotesByScope[key];
 }
 
 // バーチカルモーダルへメモを反映
@@ -4019,13 +4026,15 @@ async function loadDayNoteIntoModal(day) {
   const saveBtn = document.getElementById('dayNoteSaveBtn');
   const delBtn = document.getElementById('dayNoteDeleteBtn');
 
-  let note = dayNotesCache[day];
+  const scopeKey = dayNotesScopeKey(currentDept, shiftYear, shiftMonth);
+  if (!dayNotesByScope[scopeKey]) dayNotesByScope[scopeKey] = {};
+  let note = dayNotesByScope[scopeKey][day];
   if (note === undefined) {
     // キャッシュに無ければ単日で取得（月キャッシュ未ロード時のフォールバック）
     try {
       const rows = await sb(`day_notes?dept_id=eq.${currentDept}&year=eq.${shiftYear}&month=eq.${shiftMonth}&day=eq.${day}&select=title,detail`);
       note = rows[0] ? { title: rows[0].title || '', detail: rows[0].detail || '' } : { title: '', detail: '' };
-      dayNotesCache[day] = note;
+      dayNotesByScope[scopeKey][day] = note;
     } catch (e) {
       console.warn('day_note 単日取得スキップ:', e);
       note = { title: '', detail: '' };
@@ -4075,7 +4084,9 @@ window.saveDayNote = async function() {
     // UNIQUE(dept_id,year,month,day) 前提。既存を消してから作る（同時編集は最後の保存が有効）
     await sb(`day_notes?dept_id=eq.${currentDept}&year=eq.${shiftYear}&month=eq.${shiftMonth}&day=eq.${day}`, { method: 'DELETE' });
     await sb('day_notes', { method: 'POST', body: JSON.stringify([{ dept_id: currentDept, year: shiftYear, month: shiftMonth, day, title, detail }]) });
-    dayNotesCache[day] = { title, detail };
+    const sk = dayNotesScopeKey(currentDept, shiftYear, shiftMonth);
+    if (!dayNotesByScope[sk]) dayNotesByScope[sk] = {};
+    dayNotesByScope[sk][day] = { title, detail };
     showToast('メモを保存しました', 'success');
     rerenderShiftGridForNotes();
   } catch (e) {
@@ -4092,7 +4103,9 @@ window.deleteDayNote = async function() {
   showLoading();
   try {
     await sb(`day_notes?dept_id=eq.${currentDept}&year=eq.${shiftYear}&month=eq.${shiftMonth}&day=eq.${day}`, { method: 'DELETE' });
-    dayNotesCache[day] = { title: '', detail: '' };
+    const sk = dayNotesScopeKey(currentDept, shiftYear, shiftMonth);
+    if (!dayNotesByScope[sk]) dayNotesByScope[sk] = {};
+    dayNotesByScope[sk][day] = { title: '', detail: '' };
     document.getElementById('dayNoteTitle').value = '';
     document.getElementById('dayNoteDetail').value = '';
     document.getElementById('dayNoteCount').textContent = '0/500';
