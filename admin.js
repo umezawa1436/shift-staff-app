@@ -109,7 +109,12 @@ function saveCurrentShiftStateToCache() {
     wedTypes: window._shiftWedTypes ? JSON.parse(JSON.stringify(window._shiftWedTypes)) : {},
     closedHolidays: window._shiftClosedHolidays ? Array.from(window._shiftClosedHolidays) : [],
     openThursdays: window._shiftOpenThursdays ? Array.from(window._shiftOpenThursdays) : [],
-    customClosed: window._shiftCustomClosed ? JSON.parse(JSON.stringify(window._shiftCustomClosed)) : {}
+    customClosed: window._shiftCustomClosed ? JSON.parse(JSON.stringify(window._shiftCustomClosed)) : {},
+    // ★ 月依存の表示基準データ。含めないと月/部署の切替復元時に直前の月の値が残留し、
+    //   所定労働時間・個別設定・必要人数が「前の画面の値」で表示される（例: 8月→7月で7月が160Hになる）。
+    planHours: shiftGridPlanHours,
+    staffSettings: shiftGridStaffSettings ? JSON.parse(JSON.stringify(shiftGridStaffSettings)) : {},
+    requirements: shiftGridRequirements ? JSON.parse(JSON.stringify(shiftGridRequirements)) : {}
     // 日付メモは dayNotesByScope（部門|年|月キー）がスコープ別に常時保持するため、
     // スナップショット/復元の対象にしない（含めると復元時の上書きでリーク/消失が起きる）。
   };
@@ -134,6 +139,10 @@ function tryRestoreShiftStateFromCache(ctx) {
   window._shiftClosedHolidays = new Set(c.closedHolidays || []);
   window._shiftOpenThursdays = new Set(c.openThursdays || []);
   window._shiftCustomClosed = c.customClosed ? JSON.parse(JSON.stringify(c.customClosed)) : {};
+  // ★ 月依存の表示基準データも復元（undefined は旧スナップショット＝存在しない場合のフォールバック）
+  if (c.planHours !== undefined) shiftGridPlanHours = c.planHours;
+  shiftGridStaffSettings = c.staffSettings ? JSON.parse(JSON.stringify(c.staffSettings)) : {};
+  shiftGridRequirements = c.requirements ? JSON.parse(JSON.stringify(c.requirements)) : {};
   shiftGridContext = ctx;
   return true;
 }
