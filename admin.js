@@ -1069,8 +1069,10 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
 
   // スタッフ行
   const staffTotalHours = {};
+  const staffWorkedDays = {};
   deptStaff.forEach(staff => {
     let totalH = 0;
+    let workedDays = 0;
     let lateCnt = 0, longCnt = 0; // 遅番系(遅番+遅L)・長日の月間回数
     // 行ロック状態チェック
     const rowLocked = editable && Array.from({length:daysInMonth},(_,i)=>i+1).every(d => lockedCells[`${staff.id}|${d}`]);
@@ -1114,6 +1116,8 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
 
       const shiftH = SHIFT_HOURS[confirmedShift] || 0;
       totalH += shiftH;
+      // 実勤務日数：シフトが入っていて休み系（OFF_SHIFTS）でない日を1日と数える（1時間でも勤務なら1日）
+      if (confirmedShift && !OFF_SHIFTS.includes(confirmedShift)) workedDays++;
       // 有休/半有休の所定加算（有休は土日祝9H、平日8.5H）
       const dateOfDay = new Date(shiftYear, shiftMonth - 1, d);
       const dowOfDay = dateOfDay.getDay();
@@ -1149,6 +1153,7 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
       }
     }
     staffTotalHours[staff.id] = totalH;
+    staffWorkedDays[staff.id] = workedDays;
 
     // 右端：労働時間列
     if (editable) {
@@ -1160,8 +1165,8 @@ function renderShiftGrid(gridId, deptStaff, daysInMonth, year, month, shifts, re
       const actual = Math.round(totalH * 10) / 10;
       const diff = Math.round((actual - planH) * 10) / 10;
       const diffStr = diff >= 0 ? `+${diff}H` : `${diff}H`;
-      const workDays = Math.floor(actual / 8.5);
-      const planDays = Math.floor(planH / 8.5);
+      const workDays = workedDays; // 実勤務日数（時間換算ではなく、勤務シフトが入っている日数）
+      const planDays = Math.floor(planH / 8.5); // 所定側は基準として時間換算のまま
       const color = planH <= 0 ? '#6b7280' : Math.abs(diff) <= 10 ? '#10b981' : diff > 10 ? '#f97316' : '#ef4444';
       // ★ 個別設定中は薄紫背景＋「基準値からの差」を表示
       const baseForType = empTypeBaseHours(staff.emp_type, shiftGridPlanHours);
@@ -1424,9 +1429,12 @@ function refreshHoursCell(staffId) {
   // 累計時間を再計算
   const holidaysForCalc = getJapaneseHolidays(shiftYear, shiftMonth);
   let totalH = 0;
+  let workedDays = 0;
   for (let d = 1; d <= daysInMonth; d++) {
     const shift = shiftData[`${staffId}|${d}`] || '';
     totalH += SHIFT_HOURS[shift] || 0;
+    // 実勤務日数：シフトが入っていて休み系でない日（グリッド描画側と同一定義）
+    if (shift && !OFF_SHIFTS.includes(shift)) workedDays++;
     if (PAID_LEAVE_SHIFTS.includes(shift)) {
       const dt = new Date(shiftYear, shiftMonth - 1, d);
       totalH += getYukyuHours(dt.getDay(), holidaysForCalc.has(d));
@@ -1442,7 +1450,7 @@ function refreshHoursCell(staffId) {
   const actual = Math.round(totalH * 10) / 10;
   const diff = Math.round((actual - planH) * 10) / 10;
   const diffStr = diff >= 0 ? `+${diff}H` : `${diff}H`;
-  const workDays = Math.floor(actual / 8.5);
+  const workDays = workedDays; // 実勤務日数（グリッド描画側と同一定義）
   const planDays = Math.floor(planH / 8.5);
   const color = planH <= 0 ? '#6b7280' : Math.abs(diff) <= 10 ? '#10b981' : diff > 10 ? '#f97316' : '#ef4444';
   // ★ 個別設定中は薄紫背景＋「基準値からの差」を表示
