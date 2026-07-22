@@ -2104,7 +2104,25 @@ async function loadConfirmedShifts() {
   grid.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:20px">読み込み中...</div>';
 
   try {
-    const shifts = (await dataApi({ action:'list', table:'shifts', view:'my-month-confirmed', params:{ year: confYear, month: confMonth } })).rows || [];
+    const [shifts, confSpecialRows, confThuRows] = await Promise.all([
+      dataApi({ action:'list', table:'shifts', view:'my-month-confirmed', params:{ year: confYear, month: confMonth } }).then(r => r.rows || []),
+      // 休診判定：確定タブは独自の月ナビを持つため、自月ぶんの休診設定を取得する
+      supabaseRequest(`special_days?year=eq.${confYear}&month=eq.${confMonth}&select=day,is_closed,label`)
+        .catch(e => { console.warn('special_days 読み込みスキップ:', e); return []; }),
+      supabaseRequest(`thursday_types?year=eq.${confYear}&month=eq.${confMonth}&select=day,is_open`)
+        .catch(e => { console.warn('thursday_types 読み込みスキップ:', e); return []; })
+    ]);
+    // 管理画面と同じ休診判定（special_days の is_closed + 木曜デフォルト休診）
+    const confClosedDays = {};
+    (confSpecialRows || []).forEach(r => { if (r.is_closed) confClosedDays[r.day] = r.label || '休診'; });
+    const confThuOpen = new Set();
+    (confThuRows || []).forEach(t => { if (t.is_open) confThuOpen.add(t.day); });
+    const confClosedInfo = (d) => {
+      if (confClosedDays[d]) return { closed: true, label: confClosedDays[d] };
+      const dow = new Date(confYear, confMonth - 1, d).getDay();
+      if (dow === 4 && !confThuOpen.has(d)) return { closed: true, label: '休診' };
+      return { closed: false };
+    };
 
     const daysInMonth = new Date(confYear, confMonth, 0).getDate();
     const shiftMap = {};
@@ -2162,6 +2180,15 @@ async function loadConfirmedShifts() {
 
     for (let d = 1; d <= daysInMonth; d++) {
       const dow = new Date(confYear, confMonth-1, d).getDay();
+      const closedC = confClosedInfo(d);
+      // 休診日（夏休み・木曜など）：管理画面と同じくシフトデータがあっても表示しない（グレーのラベル表示）
+      if (closedC.closed) {
+        html += `<div data-day="${d}" class="conf-day-cell" style="border-radius:10px;padding:6px 4px;text-align:center;background:#f3f4f6;border:1.5px solid var(--border);cursor:pointer;opacity:0.75">
+          <div style="font-size:12px;font-weight:600;color:#9ca3af">${d}</div>
+          <div style="font-size:9px;font-weight:600;color:#9ca3af;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(closedC.label)}</div>
+        </div>`;
+        continue;
+      }
       const shift = shiftMap[d] || '';
       let bg = SHIFT_COLORS_MAP[shift] || (shift ? '#f1f5f9' : 'white');
       let color = SHIFT_TEXT_COLORS[shift] || (shift ? '#475569' : 'var(--text-muted)');
@@ -2179,6 +2206,8 @@ async function loadConfirmedShifts() {
     let workCount = 0;
     const confHolidays = getJpHolidaysStaff(confYear, confMonth);
     shifts.forEach(s => {
+      // 休診日（夏休み・木曜など）に残っている確定データは集計に含めない（管理画面の表示と一致させる）
+      if (confClosedInfo(s.day).closed) return;
       const st = shiftTypesMap[s.shift_type_id];
       const h = st ? (parseFloat(st.work_hours) || 0) : 0;
       const dow = new Date(confYear, confMonth - 1, s.day).getDay();
