@@ -5538,15 +5538,27 @@ async function applyFixedShiftsToGrid(staffId, fixedShifts) {
       const daysInMonth = new Date(curYear, curMonth, 0).getDate();
       const inserts = [];
 
-      // 既存シフトを取得
-      const existing = (await adminApi('/api/data', { action:'list', table:'shifts', view:'admin-staff-month', params:{ staff_id:staffId, year:curYear, month:curMonth } })).rows || [];
+      // 既存シフトと休診設定を取得
+      const [existing, spRows, thRows] = await Promise.all([
+        adminApi('/api/data', { action:'list', table:'shifts', view:'admin-staff-month', params:{ staff_id:staffId, year:curYear, month:curMonth } }).then(r => r.rows || []),
+        sb(`special_days?year=eq.${curYear}&month=eq.${curMonth}&select=day,is_closed`).catch(() => []),
+        sb(`thursday_types?year=eq.${curYear}&month=eq.${curMonth}&select=day,is_open`).catch(() => [])
+      ]);
       const existingMap = {};
       existing.forEach(s => { existingMap[s.day] = s; });
+      // 休診日（夏休み等の特別休診＋木曜デフォルト休診）には固定シフトを書き込まない。
+      //   旧実装はこのチェックが無く、夏休みの日に日勤+が残存する原因になっていた。
+      const closedSet = new Set();
+      (spRows || []).forEach(r => { if (r.is_closed) closedSet.add(r.day); });
+      const thuOpen = new Set();
+      (thRows || []).forEach(t => { if (t.is_open) thuOpen.add(t.day); });
 
       for (let d = 1; d <= daysInMonth; d++) {
         const dow = new Date(curYear, curMonth-1, d).getDay();
         const fixedShift = fixedShifts[dow];
         if (!fixedShift) continue;
+        // 休診日はスキップ
+        if (closedSet.has(d) || (dow === 4 && !thuOpen.has(d))) continue;
         // ロック済みはスキップ（上書きしない）
         if (existingMap[d]?.is_locked) continue;
         inserts.push({
