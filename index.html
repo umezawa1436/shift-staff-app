@@ -2177,7 +2177,6 @@ async function loadConfirmedShifts() {
     let totalHours = 0;   // 実働時間（勤務のみ）
     let shiftHours = 0;   // シフト時間（有給込み・管理画面の労働予定時間と一致）
     let workCount = 0;
-    let restCount = 0;
     const confHolidays = getJpHolidaysStaff(confYear, confMonth);
     shifts.forEach(s => {
       const st = shiftTypesMap[s.shift_type_id];
@@ -2190,9 +2189,12 @@ async function loadConfirmedShifts() {
         if (h > 0) workCount++;
       } else {
         shiftHours += getRestShiftHoursStaff(s.shift_type_id, dow, isHol);
-        if (st?.is_off) restCount++;
       }
     });
+    // 休日数 = 月の日数 − 勤務日数。
+    //   休み系シフトの日だけでなく、木曜休診・夏休み等の休診日（シフトレコード自体が無い日）も
+    //   「実際に勤務していない日」としてすべて含める。
+    const restCount = daysInMonth - workCount;
 
     html += `<div style="background:var(--bg);border-radius:14px;padding:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;text-align:center">
       <div>
