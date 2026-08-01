@@ -679,8 +679,8 @@
 
 <script>
 // ===== CONFIG =====
-const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
+const SUPABASE_URL = 'https://YOUR_PROJECT_ID.supabase.co';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
 
 async function sha256(message) {
   const msgBuffer = new TextEncoder().encode(message);
@@ -1124,7 +1124,10 @@ function renderVerticalView(year, month, day, workingStaff, shiftMap, breaksMap,
     const empBadge = staff.emp_type === 'short' ? '<span style="font-size:9px;color:#0f766e;background:#ccfbf1;padding:1px 4px;border-radius:3px;margin-left:4px">時短</span>' 
       : staff.emp_type === 'part' ? '<span style="font-size:9px;color:#6b7280;background:#f3f4f6;padding:1px 4px;border-radius:3px;margin-left:4px">パート</span>'
       : staff.emp_type === 'arbeit' ? '<span style="font-size:9px;color:#1e40af;background:#dbeafe;padding:1px 4px;border-radius:3px;margin-left:4px">アルバイト</span>' : '';
-    const dispName = staff.emp_type === 'arbeit' ? ((staff._cellLabel||'').trim() || 'アルバイト') : staff.name;
+    // アルバイトの表示名: セル記入の氏名（cell_label）＞スタッフ登録名 の優先で表示。
+    //   旧実装は登録名を無視して一律「アルバイト」にしていたため、実名登録済みの
+    //   アルバイトまで匿名表示になっていた。汎用枠（登録名が「アルバイト」）は従来どおり。
+    const dispName = staff.emp_type === 'arbeit' ? ((staff._cellLabel||'').trim() || staff.name || 'アルバイト') : staff.name;
 
     rows += `<div class="v-row${isSelf?' is-self':''}">
       <div class="v-name">
