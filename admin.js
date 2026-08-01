@@ -4264,9 +4264,11 @@ function renderVerticalView() {
       : staff.emp_type === 'part' ? '<span style="font-size:9px;color:#6b7280;background:#f3f4f6;padding:1px 4px;border-radius:3px;margin-left:4px">パート</span>'
       : staff.emp_type === 'arbeit' ? '<span style="font-size:9px;color:#1e40af;background:#dbeafe;padding:1px 4px;border-radius:3px;margin-left:4px">アルバイト</span>'
       : '';
-    // アルバイトはセルに入力された当日氏名を名前として表示
+    // アルバイトの表示名: セル記入の当日氏名（cell_label）＞スタッフ登録名 の優先で表示。
+    //   実名登録済みのアルバイトまで「アルバイト」と匿名表示されるのを防ぐ。
+    //   汎用枠（登録名が「アルバイト」）は従来どおりの表示になる。
     const dispName = staff.emp_type === 'arbeit'
-      ? ((cellLabels[`${staff.id}|${day}`] || '').trim() || 'アルバイト')
+      ? ((cellLabels[`${staff.id}|${day}`] || '').trim() || staff.name || 'アルバイト')
       : staff.name;
 
     rows += `<div style="display:flex;align-items:stretch;border-bottom:1px solid #e2e8f0">
@@ -4992,6 +4994,7 @@ async function loadStaffTable() {
         staff.emp_type === 'full' ? '―（一括）' :
         staff.emp_type === 'short' ? '―（3/4）' : '未設定'
       );
+
       const fixedShifts = staff.fixed_shifts || {};
       const fixedStr = Object.entries(fixedShifts).map(([dow, shift]) => `${DOW_LABELS[dow]}:${shift}`).join(' ') || '―';
 
