@@ -893,7 +893,8 @@ async function loadShiftTypesFromDB() {
 
     // カスタムシフトをSHIFTSに追加
     const defaults = ['日勤','日勤+','午前','午後','遅番','遅L','リハ遅','夜勤','長日','中抜け','時短','CC','CHO','CCのみ','休み','有休','半有休','個夏休','希望休'];
-    const customs = types.filter(s => !defaults.includes(s.id));
+    // 削除済み（is_active=false）は希望の選択肢に出さない（過去表示用の shiftTypesMap には全件残す）
+    const customs = types.filter(s => !defaults.includes(s.id) && s.is_active !== false);
     if (customs.length > 0) {
       const customCategory = {
         category: 'カスタム',

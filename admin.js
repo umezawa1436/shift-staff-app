@@ -216,7 +216,8 @@ async function loadShiftTypesAndBuildMaps() {
   try {
     const types = (await adminApi('/api/data', { action: 'list', table: 'shift_types' })).rows || [];
     shiftTypesAll = types;
-    shiftTypesActive = types.filter(s => !s.is_off);
+    // 選択UI用: 休み系と削除済みを除外。時間・カバー等のマップは全件維持（過去シフトの表示/計算用）
+    shiftTypesActive = types.filter(s => !s.is_off && s.is_active !== false);
 
     // SHIFT_HOURS をクリアして再構築
     Object.keys(SHIFT_HOURS).forEach(k => delete SHIFT_HOURS[k]);
@@ -247,8 +248,9 @@ async function loadShiftTypesAndBuildMaps() {
       if (s.is_long) LONG_SHIFTS.push(s.id);
       if (s.is_mid_break) MID_BREAK_SHIFTS.push(s.id);
       if (s.is_off) OFF_SHIFTS.push(s.id);
-      // SHIFT_OPTIONS は表示順で全シフトを並べる（is_offも含む）
-      SHIFT_OPTIONS.push(s.id);
+      // SHIFT_OPTIONS（セル編集の選択肢）: 削除済みは出さない。
+      //   分類フラグ(NIGHT等)とSHIFT_HOURSは全件維持＝過去に使われた削除済みシフトの表示・集計は正常のまま
+      if (s.is_active !== false) SHIFT_OPTIONS.push(s.id);
     });
 
     // SHIFT_COLORS にカスタムシフトのデフォルトクラスを追加
@@ -264,6 +266,7 @@ async function loadShiftTypesAndBuildMaps() {
     SHIFT_PATTERN_OPTIONS.length = 0;
     types.forEach(s => {
       if (s.is_off) return; // 休み系は除外
+      if (s.is_active === false) return; // 削除済みは自動生成の選択肢に出さない
       if (['CC','CHO','CCのみ'].includes(s.id)) return; // CC/CHO関連は除外
       const time = (s.start_time && s.end_time) ? `${s.start_time}-${s.end_time}` : '';
       SHIFT_PATTERN_OPTIONS.push({ id: s.id, label: s.label || s.id, time: time });
@@ -4538,8 +4541,8 @@ async function loadShiftPatterns() {
 }
 
 function renderShiftPatternsList() {
-  // 休み系（is_off=true）は除外して表示（管理対象外）
-  const list = shiftPatternsCache.filter(s => !s.is_off);
+  // 休み系（is_off=true）と削除済み（is_active=false）は除外して表示
+  const list = shiftPatternsCache.filter(s => !s.is_off && s.is_active !== false);
   if (!list.length) {
     document.getElementById('shiftPatternsList').innerHTML = '<div style="color:var(--text-muted);padding:16px">シフトパターンがありません</div>';
     return;
@@ -4630,10 +4633,14 @@ window.deleteCustomShift = async function(id) {
   if (s.is_default) { showToast('既定シフトは削除できません', 'error'); return; }
   if (!confirm(`カスタムシフト「${s.label || s.id}」を削除しますか？
 
-注意：既にこのシフトを使っている既存のシフト表データには影響しませんが、新規割り当てができなくなります。`)) return;
+・過去のシフト表での表示や時間計算はそのまま残ります
+・新規の割り当てはできなくなります
+・同じ名前で改めて作成することは可能です`)) return;
   showLoading();
   try {
-    await adminApi('/api/data', { action: 'delete', table: 'shift_types', id });
+    // 物理削除はしない（過去シフトの表示・時間計算が壊れるため）。
+    // is_active=false の無効化とし、選択肢からだけ消す。同名での再作成時はこの行を復活させる。
+    await adminApi('/api/data', { action: 'update', table: 'shift_types', id, values: { is_active: false } });
     showToast('削除しました', 'success');
     await loadShiftPatterns();
     await loadShiftTypesAndBuildMaps();
@@ -4658,10 +4665,12 @@ document.getElementById('saveCustomShiftBtn')?.addEventListener('click', async (
   if (!start || !end) { showToast('開始・終了時間を入力してください', 'error'); return; }
   if (isNaN(hours) || hours < 0 || hours > 24) { showToast('実働時間は0〜24Hで入力してください', 'error'); return; }
   
-  // 新規追加時の重複チェック
+  // 新規追加時の重複チェック（無効化済みの同名は「復活」として扱う）
+  let reviveId = null;
   if (!editId) {
-    const exists = shiftPatternsCache.some(s => s.id === name || s.label === name);
-    if (exists) { showToast('同じ名前のシフトが既に存在します', 'error'); return; }
+    const dup = shiftPatternsCache.find(s => s.id === name || s.label === name);
+    if (dup && dup.is_active !== false) { showToast('同じ名前のシフトが既に存在します', 'error'); return; }
+    if (dup && dup.is_active === false) reviveId = dup.id; // 削除済みの同名 → 新パラメータで復活
   }
   
   const payload = {
@@ -4687,8 +4696,14 @@ document.getElementById('saveCustomShiftBtn')?.addEventListener('click', async (
       // 更新
       await adminApi('/api/data', { action: 'update', table: 'shift_types', id: editId, values: payload });
       showToast('更新しました', 'success');
+    } else if (reviveId) {
+      // 同名の削除済みシフトを新パラメータで復活（idが名前と同一のため、物理再作成ではなく更新で衝突を回避）
+      payload.is_active = true;
+      await adminApi('/api/data', { action: 'update', table: 'shift_types', id: reviveId, values: payload });
+      showToast('追加しました', 'success');
     } else {
       // 新規追加（idは名前と同じにする）
+      payload.is_active = true;
       payload.id = name;
       // display_orderは既存の最大値+1
       const maxOrder = Math.max(50, ...shiftPatternsCache.filter(s => !s.is_off).map(s => s.display_order || 0));
