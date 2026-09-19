@@ -303,6 +303,8 @@
     .submit-count span { font-weight: 700; color: var(--primary); font-size: 16px; }
     .btn-submit { width: 100%; padding: 16px; background: linear-gradient(135deg, var(--success), #059669); color: white; border: none; border-radius: 14px; font-size: 16px; font-weight: 700; font-family: inherit; cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px; }
     .btn-submit:active { transform: scale(0.98); }
+    /* 提出済み（再提出）状態：薄い赤。:disabled はこの後に定義され同値の詳細度なので、無効時はグレーが勝つ */
+    .btn-submit.resubmit { background: linear-gradient(135deg, #fca5a5, #f87171); }
     .btn-submit:disabled { background: #d1d5db; cursor: not-allowed; transform: none; }
 
     /* ===== BOTTOM SHEET ===== */
@@ -679,8 +681,8 @@
 
 <script>
 // ===== CONFIG =====
-const SUPABASE_URL = 'https://YOUR_PROJECT_ID.supabase.co';
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const SUPABASE_URL = 'https://plbbofopqgkwwogfonrs.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYmJvZm9wcWdrd3dvZ2ZvbnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4MDcsImV4cCI6MjA5MzY0NDgwN30.n1HPR_Ipcg79fYrWkr3D76zQGuTFO0gji5T7kqlt5QE';
 
 async function sha256(message) {
   const msgBuffer = new TextEncoder().encode(message);
@@ -696,6 +698,7 @@ let clinicClosedDays = {}; // {day: label} — special_daysでis_closed=trueの�
 let thursdayOpenDays = new Set(); // 木曜だが診療日として設定された日
 let requests = {};
 let hasDraft = false; // 未提出の下書きがあるか
+let hasSubmittedThisMonth = false; // 表示中の月を提出済みか（提出ボタンの表示切替用）
 let selectedDay = null;
 let shiftTypesAll = [];
 let shiftTypesMap = {};
@@ -1254,17 +1257,23 @@ async function showApp() {
 async function loadRequests() {
   if (!currentUser?.id) return;
   try {
-    // ★ まず下書き（自動保存）を読み込む。提出前の入力もここから復元される。
-    const draftData = (await dataApi({ action:'list', table:'shift_request_drafts', view:'mine', params:{ year: currentYear, month: currentMonth } })).rows || [];
+    // ★ 下書き（自動保存）と提出済みを並列取得。
+    //   提出済みは「この月を提出したことがあるか」の判定（提出ボタンの表示切替）に
+    //   下書きの有無へ関わらず必要なため、常に取得する。
+    const [draftData, submittedData] = await Promise.all([
+      dataApi({ action:'list', table:'shift_request_drafts', view:'mine', params:{ year: currentYear, month: currentMonth } }).then(r => r.rows || []),
+      dataApi({ action:'list', table:'shift_requests', view:'mine', params:{ year: currentYear, month: currentMonth } }).then(r => r.rows || [])
+    ]);
+    hasSubmittedThisMonth = submittedData.length > 0;
+    updateSubmitBtnUI();
     requests = {};
     if (draftData && draftData.length > 0) {
       // 下書きがあればそれを使う（最新の作業状態）
       draftData.forEach(r => { requests[`${currentYear}-${currentMonth}-${r.day}`] = r.request_type; });
       hasDraft = true;
     } else {
-      // 下書きが無ければ提出済みを読み込む（初回や下書き未作成の場合）
-      const data = (await dataApi({ action:'list', table:'shift_requests', view:'mine', params:{ year: currentYear, month: currentMonth } })).rows || [];
-      data.forEach(r => { requests[`${currentYear}-${currentMonth}-${r.day}`] = r.request_type; });
+      // 下書きが無ければ提出済みを表示（初回や下書き未作成の場合）
+      submittedData.forEach(r => { requests[`${currentYear}-${currentMonth}-${r.day}`] = r.request_type; });
       hasDraft = false;
     }
   } catch(e) {
@@ -1274,8 +1283,18 @@ async function loadRequests() {
       const data = (await dataApi({ action:'list', table:'shift_requests', view:'mine', params:{ year: currentYear, month: currentMonth } })).rows || [];
       requests = {};
       data.forEach(r => { requests[`${currentYear}-${currentMonth}-${r.day}`] = r.request_type; });
+      hasSubmittedThisMonth = data.length > 0;
+      updateSubmitBtnUI();
     } catch(e2) { console.error(e2); }
   }
+}
+
+// 提出ボタンの表示切替：提出済みの月は薄い赤＋「再提出する」、未提出は従来表示
+function updateSubmitBtnUI() {
+  const btn = document.getElementById('submitBtn');
+  if (!btn) return;
+  btn.classList.toggle('resubmit', hasSubmittedThisMonth);
+  btn.textContent = hasSubmittedThisMonth ? '再提出する' : '希望を提出する';
 }
 
 // ★ 下書きを1日分だけ自動保存（選択のたびに呼ばれる・その人のアカウント専用）
@@ -1621,6 +1640,10 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
       await dataApi({ action:'draft-sync', year: currentYear, month: currentMonth, items });
       hasDraft = false;
     } catch(e) { console.error('[draft sync after submit]', e); }
+
+    // 提出済み状態へ即時切替（薄い赤＋「再提出する」）
+    hasSubmittedThisMonth = true;
+    updateSubmitBtnUI();
 
     showToast(`${currentMonth}月の希望を提出しました ✓`, 'success');
   } catch(e) {
