@@ -995,6 +995,12 @@ async function eventsSave(res, payload, body) {
   if (endTime != null && !EVENT_TIME_RE.test(endTime)) return bad(res, 400, '終了時刻が不正です');
   if (startTime == null) endTime = null; // 開始時刻なし = 終日
 
+  // URL（任意）。リンクとして表示するため http/https のみ許可（javascript: 等の注入を遮断）
+  const url = String(ev.url || '').trim().slice(0, 300);
+  if (url && !/^https?:\/\/\S+$/i.test(url)) {
+    return bad(res, 400, 'URLは http:// または https:// で始まる形式で入力してください');
+  }
+
   // 投稿先カレンダーの権限チェック
   const cal = (await sb(`calendars?id=eq.${encodeURIComponent(ev.calendar_id)}&select=id,owner_account_id,visibility,color,deleted_at`))[0];
   if (!cal || cal.deleted_at) return bad(res, 404, 'カレンダーが見つかりません');
@@ -1015,6 +1021,7 @@ async function eventsSave(res, payload, body) {
     start_time: startTime,
     end_time: endTime,
     location: String(ev.location || '').slice(0, 100) || null,
+    url: url || null,
     memo: String(ev.memo || '').slice(0, 500) || null,
     color: CAL_COLORS.includes(ev.color) ? ev.color : (cal.color || 'blue'),
     updated_at: new Date().toISOString(),
