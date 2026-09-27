@@ -832,6 +832,7 @@ async function purgeExpiredCalendars() {
       await sb(`events?calendar_id=eq.${eid}`, { method: 'DELETE' });
       await sb(`calendar_members?calendar_id=eq.${eid}`, { method: 'DELETE' });
       await sb(`calendar_prefs?calendar_id=eq.${eid}`, { method: 'DELETE' });
+      await sb(`ical_feed_excludes?calendar_id=eq.${eid}`, { method: 'DELETE' });
       await sb(`calendars?id=eq.${eid}`, { method: 'DELETE' });
     }
   } catch (e) { console.error('calendar purge:', e); }
@@ -1104,7 +1105,15 @@ async function icalSettingsGet(res, payload) {
       body: JSON.stringify([{ staff_id: acc.staff_id, token: newFeedToken() }]),
     }))[0];
   }
-  return res.status(200).json({ linked: true, settings: row });
+  // フィード対象の選択UI用: 見えるカレンダー一覧と除外済みID
+  const tier = await calendarEffectiveTier(payload);
+  const cals = await fetchVisibleCalendars(acc, tier);
+  const excl = await sb(`ical_feed_excludes?staff_id=eq.${encodeURIComponent(acc.staff_id)}&select=calendar_id`);
+  return res.status(200).json({
+    linked: true, settings: row,
+    calendars: cals.map(c => ({ id: c.id, name: c.name, color: c.color, visibility: c.visibility })),
+    excluded: (excl || []).map(x => x.calendar_id),
+  });
 }
 
 async function icalSettingsSave(res, payload, body) {
@@ -1114,6 +1123,19 @@ async function icalSettingsSave(res, payload, body) {
   const upd = { updated_at: new Date().toISOString() };
   for (const k of ['include_shifts', 'enabled']) {
     if (typeof body[k] === 'boolean') upd[k] = body[k];
+  }
+  // フィードから除外するカレンダー（配列ごと置き換え。行がない = 送信する）
+  if (Array.isArray(body.excluded_calendar_ids)) {
+    const ids = body.excluded_calendar_ids;
+    if (ids.length > 200) return bad(res, 400, '選択が多すぎます');
+    for (const x of ids) {
+      if (typeof x !== 'string' || !UUIDISH.test(x)) return bad(res, 400, 'calendar_id が不正です');
+    }
+    await sb(`ical_feed_excludes?staff_id=eq.${encodeURIComponent(acc.staff_id)}`, { method: 'DELETE' });
+    if (ids.length) {
+      await sb('ical_feed_excludes', { method: 'POST',
+        body: JSON.stringify(ids.map(cid => ({ staff_id: acc.staff_id, calendar_id: cid }))) });
+    }
   }
   const rows = await sb(`ical_feed_settings?staff_id=eq.${encodeURIComponent(acc.staff_id)}`, {
     method: 'PATCH', body: JSON.stringify(upd),
@@ -1260,6 +1282,8 @@ export default async function handler(req, res) {
         if (table === 'staff') {
           try { await sb(`ical_feed_settings?staff_id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }); }
           catch (e) { console.error('ical feed cascade delete:', e); }
+          try { await sb(`ical_feed_excludes?staff_id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }); }
+          catch (e) { console.error('ical excludes cascade delete:', e); }
         }
         await sb(`${table}?${p.idCol}=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
         return res.status(200).json({ ok: true });
