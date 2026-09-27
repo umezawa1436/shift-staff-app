@@ -296,6 +296,9 @@
     .bottom-nav { position: sticky; bottom: 0; background: white; border-top: 1px solid var(--border); display: flex; z-index: 100; padding-bottom: env(safe-area-inset-bottom); }
     .nav-tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 10px 8px; border: none; background: white; color: var(--text-muted); font-size: 11px; font-family: inherit; cursor: pointer; transition: all 0.15s; border-top: 2px solid transparent; }
     .nav-tab.active { color: var(--primary); border-top-color: var(--primary); font-weight: 600; }
+    /* 3タブ化の狭幅対策（仕様v3）: 320px幅でも折り返しを構造的に起こさない */
+    .nav-tab { min-width: 0; white-space: nowrap; overflow: hidden; }
+    .nav-tab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 
     .submit-bar { background: white; padding: 16px 20px; padding-bottom: calc(16px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); box-shadow: 0 -4px 20px rgba(0,0,0,0.08); }
     .submit-info { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
@@ -544,6 +547,36 @@
     <div id="confirmedGrid"></div>
   </div>
 
+  <!-- カレンダータブ（Phase1: シフト×予定の統合表示。段階公開 calendar_release で制御） -->
+  <div id="calTabWrap" style="display:none;padding:16px;flex:1;overflow-y:auto">
+    <div style="display:flex;gap:12px;margin-bottom:12px;align-items:center">
+      <button class="month-btn" id="calTabPrev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg></button>
+      <div style="font-size:18px;font-weight:700" id="calTabTitle"></div>
+      <button class="month-btn" id="calTabNext"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg></button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px">
+      <div style="text-align:center;font-size:11px;font-weight:600;color:#ef4444;padding:4px 0">日</div>
+      <div style="text-align:center;font-size:11px;font-weight:600;color:var(--text-muted);padding:4px 0">月</div>
+      <div style="text-align:center;font-size:11px;font-weight:600;color:var(--text-muted);padding:4px 0">火</div>
+      <div style="text-align:center;font-size:11px;font-weight:600;color:var(--text-muted);padding:4px 0">水</div>
+      <div style="text-align:center;font-size:11px;font-weight:600;color:var(--text-muted);padding:4px 0">木</div>
+      <div style="text-align:center;font-size:11px;font-weight:600;color:var(--text-muted);padding:4px 0">金</div>
+      <div style="text-align:center;font-size:11px;font-weight:600;color:#3b82f6;padding:4px 0">土</div>
+    </div>
+    <div id="calTabGrid"></div>
+    <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:10px">日付タップで詳細</div>
+  </div>
+
+  <!-- カレンダー日別シート（閲覧） -->
+  <div id="calDayOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:300" onclick="closeCalDaySheet()"></div>
+  <div id="calDaySheet" style="display:none;position:fixed;left:0;right:0;bottom:0;background:white;border-radius:20px 20px 0 0;z-index:301;max-height:70vh;overflow-y:auto;padding:20px 20px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,0.15)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-size:16px;font-weight:700" id="calDayTitle"></div>
+      <button onclick="closeCalDaySheet()" style="border:none;background:var(--bg);border-radius:8px;padding:6px 14px;font-size:13px;font-family:inherit;cursor:pointer">閉じる</button>
+    </div>
+    <div id="calDayBody"></div>
+  </div>
+
   <div class="calendar-wrap" id="calendarWrap">
     <div class="weekdays">
       <div class="weekday sun">日</div><div class="weekday">月</div><div class="weekday">火</div><div class="weekday">水</div><div class="weekday">木</div><div class="weekday">金</div><div class="weekday sat">土</div>
@@ -559,6 +592,10 @@
     <button class="nav-tab" id="tabConfirmed" onclick="switchTab('confirmed')">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 14h8M8 18h5"/></svg>
       <span>確定シフト</span>
+    </button>
+    <button class="nav-tab" id="tabCalendar" onclick="switchTab('calendar')" style="display:none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><circle cx="12" cy="16" r="2.5"/></svg>
+      <span>カレンダー</span>
     </button>
   </div>
 
@@ -716,6 +753,7 @@ async function loadAppSettings() {
     (rows || []).forEach(r => {
       if (r.key === 'short_ratio' && r.value != null) APP_SHORT_RATIO = parseFloat(r.value);
       if (r.key === 'default_planned_hours' && r.value != null) APP_DEFAULT_PLAN_HOURS = parseFloat(r.value);
+      if (r.key === 'calendar_release' && r.value != null) CALENDAR_RELEASE = parseFloat(r.value) || 0;
     });
   } catch(e) {
     console.warn('app_settings 読み込みスキップ（デフォルト値を使用）:', e);
@@ -1236,6 +1274,9 @@ async function showApp() {
   // appSettings（所定時間の定数 APP_SHORT_RATIO/APP_DEFAULT_PLAN_HOURS）は
   // loadClinicSettings→loadPlannedHours が参照するため、これだけ先に取得
   await loadAppSettings();
+  // カレンダータブの表示判定（段階公開: 0=masterのみ/1=leaderまで/2=全員。サーバ側でも同判定を強制）
+  const calTabBtn = document.getElementById('tabCalendar');
+  if (calTabBtn) calTabBtn.style.display = calendarTabAllowed() ? '' : 'none';
   // 残り6本は互いに独立 → 並列取得で直列の待ち時間を解消
   await Promise.all([
     loadSharedWords(),
@@ -2103,15 +2144,19 @@ function switchTab(tab) {
   currentTab = tab;
   const tabReq = document.getElementById('tabRequest');
   const tabConf = document.getElementById('tabConfirmed');
+  const tabCal = document.getElementById('tabCalendar');
   const calWrap = document.getElementById('calendarWrap');
   const subBar = document.getElementById('submitBar');
   const confWrap = document.getElementById('confirmedWrap');
+  const calTabWrap = document.getElementById('calTabWrap');
 
   if (tabReq) tabReq.classList.toggle('active', tab === 'request');
   if (tabConf) tabConf.classList.toggle('active', tab === 'confirmed');
+  if (tabCal) tabCal.classList.toggle('active', tab === 'calendar');
   if (calWrap) calWrap.style.display = tab === 'request' ? 'block' : 'none';
   if (subBar) subBar.style.display = tab === 'request' ? 'block' : 'none';
   if (confWrap) confWrap.style.display = tab === 'confirmed' ? 'block' : 'none';
+  if (calTabWrap) calTabWrap.style.display = tab === 'calendar' ? 'block' : 'none';
 
   if (tab === 'confirmed') {
     confYear = currentYear;
@@ -2119,7 +2164,185 @@ function switchTab(tab) {
     updateConfMonthTitle();
     loadConfirmedShifts();
   }
+  if (tab === 'calendar') {
+    calTabYear = currentYear;
+    calTabMonth = currentMonth;
+    loadCalendarTab();
+  }
 }
+
+// ===== カレンダータブ（Phase1: シフト×予定の統合表示・閲覧） =====
+let CALENDAR_RELEASE = 0;   // app_settings.calendar_release（loadAppSettings が設定）
+let calTabYear = new Date().getFullYear();
+let calTabMonth = new Date().getMonth() + 1;
+let calTabEvents = [];      // 表示月の予定（サーバ側で可視範囲フィルタ済み）
+let calTabShiftMap = {};    // day -> shift_type_id（自分の確定シフト）
+
+// role はトークンのペイロードから復元（currentUser/localStorage に無い既存ログインでも動く）
+function getMyRole() {
+  try {
+    const t = localStorage.getItem('shift_token') || '';
+    let b = t.split('.')[0].replace(/-/g, '+').replace(/_/g, '/');
+    while (b.length % 4) b += '=';
+    const json = JSON.parse(decodeURIComponent(escape(atob(b))));
+    return json.role || 'staff';
+  } catch { return 'staff'; }
+}
+function calendarTabAllowed() {
+  const role = getMyRole();
+  if (role === 'master') return true;
+  if (role === 'leader') return CALENDAR_RELEASE >= 1;
+  return CALENDAR_RELEASE >= 2;
+}
+
+const CAL_EVENT_COLORS = { blue:'#3b82f6', green:'#10b981', red:'#ef4444', orange:'#f97316', purple:'#8b5cf6', teal:'#14b8a6', pink:'#ec4899', gray:'#6b7280' };
+const CAL_SCOPE_LABELS = { private:'🔒 個人', dept:'部門', all:'全体' };
+
+async function loadCalendarTab() {
+  if (!currentUser?.id) return;
+  document.getElementById('calTabTitle').textContent = `${calTabYear}年${calTabMonth}月`;
+  const grid = document.getElementById('calTabGrid');
+  grid.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:20px">読み込み中...</div>';
+  try {
+    const [shifts, spRows, thuRows, events] = await Promise.all([
+      dataApi({ action:'list', table:'shifts', view:'my-month-confirmed', params:{ year: calTabYear, month: calTabMonth } }).then(r => r.rows || []),
+      supabaseRequest(`special_days?year=eq.${calTabYear}&month=eq.${calTabMonth}&select=day,is_closed,label`).catch(() => []),
+      supabaseRequest(`thursday_types?year=eq.${calTabYear}&month=eq.${calTabMonth}&select=day,is_open`).catch(() => []),
+      dataApi({ action:'events-list', year: calTabYear, month: calTabMonth }).then(r => r.rows || []),
+    ]);
+    calTabShiftMap = {};
+    shifts.forEach(sh => { calTabShiftMap[sh.day] = sh.shift_type_id; });
+    calTabEvents = events;
+
+    // 休診判定（確定タブと同一ロジック: special_days の is_closed ＋ 木曜デフォルト休診）
+    const closedDays = {};
+    (spRows || []).forEach(r => { if (r.is_closed) closedDays[r.day] = r.label || '休診'; });
+    const thuOpen = new Set();
+    (thuRows || []).forEach(t => { if (t.is_open) thuOpen.add(t.day); });
+    const closedInfo = (d) => {
+      if (closedDays[d]) return { closed: true, label: closedDays[d] };
+      const dow = new Date(calTabYear, calTabMonth - 1, d).getDay();
+      if (dow === 4 && !thuOpen.has(d)) return { closed: true, label: '休診' };
+      return { closed: false };
+    };
+
+    renderCalendarTab(closedInfo);
+  } catch(e) {
+    console.error('[calendar tab]', e);
+    grid.innerHTML = `<div style="text-align:center;color:#dc2626;padding:20px">読み込みエラー：${escapeHtml(e.message || '')}</div>`;
+  }
+}
+
+// 指定日に重なる予定（終日→時刻順で安定ソート）
+function calEventsOnDay(d) {
+  const ds = `${calTabYear}-${String(calTabMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  return calTabEvents
+    .filter(ev => ev.start_date <= ds && ev.end_date >= ds)
+    .sort((a, b) => (a.start_time || '') < (b.start_time || '') ? -1 : 1);
+}
+
+function renderCalendarTab(closedInfo) {
+  const daysInMonth = new Date(calTabYear, calTabMonth, 0).getDate();
+  const firstDow = new Date(calTabYear, calTabMonth - 1, 1).getDay();
+  const today = new Date();
+  const isThisMonth = today.getFullYear() === calTabYear && (today.getMonth() + 1) === calTabMonth;
+
+  let html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">';
+  for (let i = 0; i < firstDow; i++) html += '<div></div>';
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dow = new Date(calTabYear, calTabMonth - 1, d).getDay();
+    const ci = closedInfo(d);
+    const dowColor = dow === 0 ? '#ef4444' : dow === 6 ? '#3b82f6' : 'var(--text)';
+    const isToday = isThisMonth && today.getDate() === d;
+
+    // 自分のシフト（休み系はセルでは省略＝予定スペースを優先）
+    let shiftHtml = '';
+    if (!ci.closed) {
+      const shId = calTabShiftMap[d];
+      const st = shId ? shiftTypesMap[shId] : null;
+      if (st && !st.is_off) {
+        const bg = st.bg_color || '#dbeafe';
+        const fg = st.color || '#1d4ed8';
+        shiftHtml = `<div style="font-size:8px;font-weight:700;color:${fg};background:${bg};border-radius:3px;padding:0 2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(st.short_label || shId)}</div>`;
+      }
+    }
+
+    // 予定チップ（最大2件＋件数）
+    const evs = calEventsOnDay(d);
+    let evHtml = '';
+    evs.slice(0, 2).forEach(ev => {
+      const c = CAL_EVENT_COLORS[ev.color] || CAL_EVENT_COLORS.blue;
+      evHtml += `<div style="font-size:8px;line-height:1.35;color:white;background:${c};border-radius:3px;padding:0 2px;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(ev.title)}</div>`;
+    });
+    if (evs.length > 2) evHtml += `<div style="font-size:8px;color:var(--text-muted)">+${evs.length - 2}件</div>`;
+
+    const bg = ci.closed ? '#f3f4f6' : 'white';
+    const border = isToday ? '2px solid var(--primary)' : '1.5px solid var(--border)';
+    const closedLabel = ci.closed ? `<div style="font-size:8px;color:#9ca3af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(ci.label)}</div>` : '';
+
+    html += `<div onclick="openCalDaySheet(${d})" style="min-height:64px;border-radius:10px;padding:4px 3px;background:${bg};border:${border};cursor:pointer;overflow:hidden">
+      <div style="font-size:12px;font-weight:600;color:${ci.closed ? '#9ca3af' : dowColor};text-align:center;line-height:1.2">${d}</div>
+      ${closedLabel}${shiftHtml}${evHtml}
+    </div>`;
+  }
+  html += '</div>';
+  document.getElementById('calTabGrid').innerHTML = html;
+}
+
+window.openCalDaySheet = function(day) {
+  const dowJp = ['日','月','火','水','木','金','土'][new Date(calTabYear, calTabMonth - 1, day).getDay()];
+  document.getElementById('calDayTitle').textContent = `${calTabMonth}月${day}日（${dowJp}）`;
+
+  let html = '';
+  // 自分のシフト
+  const shId = calTabShiftMap[day];
+  const st = shId ? shiftTypesMap[shId] : null;
+  if (st) {
+    const time = (st.start_time && st.end_time) ? ` ${st.start_time}〜${st.end_time}` : '';
+    html += `<div style="background:${st.bg_color || '#dbeafe'};border-radius:10px;padding:10px 12px;margin-bottom:10px">
+      <span style="font-size:12px;color:var(--text-muted)">自分のシフト：</span>
+      <span style="font-weight:700;color:${st.color || '#1d4ed8'}">${escapeHtml(st.label || shId)}</span>
+      <span style="font-size:12px;color:var(--text-muted)">${time}</span>
+    </div>`;
+  }
+  // 予定一覧
+  const evs = calEventsOnDay(day);
+  if (!evs.length && !st) {
+    html += '<div style="text-align:center;color:var(--text-muted);padding:20px 0">この日の予定はありません</div>';
+  }
+  evs.forEach(ev => {
+    const c = CAL_EVENT_COLORS[ev.color] || CAL_EVENT_COLORS.blue;
+    const time = ev.start_time ? `${ev.start_time}${ev.end_time ? '〜' + ev.end_time : ''}` : '終日';
+    const multi = ev.start_date !== ev.end_date ? `（${ev.start_date.slice(5).replace('-','/')}〜${ev.end_date.slice(5).replace('-','/')}）` : '';
+    html += `<div style="display:flex;gap:10px;padding:10px 2px;border-bottom:1px solid var(--border)">
+      <div style="width:4px;border-radius:2px;background:${c};flex-shrink:0"></div>
+      <div style="min-width:0;flex:1">
+        <div style="font-weight:700;font-size:14px">${escapeHtml(ev.title)}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${time}${multi} ・ ${CAL_SCOPE_LABELS[ev.scope] || ''}${ev.owner_name ? ' ・ ' + escapeHtml(ev.owner_name) : ''}</div>
+        ${ev.location ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px">📍 ${escapeHtml(ev.location)}</div>` : ''}
+        ${ev.memo ? `<div style="font-size:12px;color:var(--text);margin-top:4px;white-space:pre-wrap;line-height:1.5">${escapeHtml(ev.memo)}</div>` : ''}
+      </div>
+    </div>`;
+  });
+
+  document.getElementById('calDayBody').innerHTML = html;
+  document.getElementById('calDayOverlay').style.display = 'block';
+  document.getElementById('calDaySheet').style.display = 'block';
+};
+window.closeCalDaySheet = function() {
+  document.getElementById('calDayOverlay').style.display = 'none';
+  document.getElementById('calDaySheet').style.display = 'none';
+};
+
+document.getElementById('calTabPrev')?.addEventListener('click', () => {
+  calTabMonth--; if (calTabMonth < 1) { calTabMonth = 12; calTabYear--; }
+  loadCalendarTab();
+});
+document.getElementById('calTabNext')?.addEventListener('click', () => {
+  calTabMonth++; if (calTabMonth > 12) { calTabMonth = 1; calTabYear++; }
+  loadCalendarTab();
+});
 
 function updateConfMonthTitle() {
   document.getElementById('confMonthTitle').textContent = `${confYear}年${confMonth}月`;
