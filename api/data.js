@@ -15,6 +15,10 @@
 //                  submit-requests: 本人分の一括提出（月内を全削除→再INSERT、staff_idはサーバ強制）
 //
 // 所有者解決: トークンの accountId → accounts テーブル → staff_id / dept_id（自己申告は信用しない）
+//
+// カレンダー機能（events-* / ical-*）:
+//   段階公開 app_settings.calendar_release（0=masterのみ/1=leaderまで/2=全員）をサーバ側で強制。
+//   個人予定(scope='private')は所有アカウント以外に絶対に返さない。
 
 import crypto from 'crypto';
 
@@ -660,6 +664,180 @@ async function settingsGateway(res, payload, body) {
   return res.status(200).json({ rows, ok: true });
 }
 
+// ===== カレンダー機能（events / ical_feed_settings）=====
+// 段階公開: app_settings.calendar_release  0=masterのみ / 1=leaderまで / 2=全員（行なし=0）
+async function calendarReleaseLevel() {
+  try {
+    const rows = await sb(`app_settings?key=eq.calendar_release&select=value`);
+    return rows && rows[0] ? (parseFloat(rows[0].value) || 0) : 0;
+  } catch { return 0; }
+}
+function calendarRoleAllowed(role, level) {
+  if (role === 'master') return true;
+  if (role === 'leader') return level >= 1;
+  return level >= 2;
+}
+// タブ非表示だけに頼らず、APIを直接叩かれても公開レベル未満なら 403 にする
+async function assertCalendarAccess(res, payload) {
+  const level = await calendarReleaseLevel();
+  if (!calendarRoleAllowed(payload.role, level)) {
+    bad(res, 403, 'カレンダー機能は公開されていません');
+    return false;
+  }
+  return true;
+}
+
+const EVENT_SCOPES = ['private', 'dept', 'all'];
+const EVENT_COLORS = ['blue', 'green', 'red', 'orange', 'purple', 'teal', 'pink', 'gray'];
+// 名称注意: TIME_RE は休憩バリデーション用に既存（467行付近）。イベント用は別名にする
+const EVENT_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const EVENT_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// 月に重なる予定を返す。可視範囲はサーバ側で強制（他人の個人予定は絶対に返さない）
+async function eventsList(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const year = body.year, month = body.month;
+  if (!intOk(year, 2000, 2100) || !intOk(month, 1, 12)) return bad(res, 400, 'year/month が不正です');
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const mm = String(month).padStart(2, '0');
+  const first = `${year}-${mm}-01`;
+  const last = `${year}-${mm}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`;
+  // 月跨ぎ対応: start<=月末 AND end>=月初。件数増に備え sbAll でページング
+  const rows = await sbAll(`events?start_date=lte.${last}&end_date=gte.${first}&select=*`, 'start_date,id');
+  const isAdmin = payload.role === 'leader' || payload.role === 'master';
+  const visible = rows.filter(ev => {
+    if (ev.scope === 'all') return true;
+    if (ev.scope === 'dept') return isAdmin || (acc.dept_id != null && ev.dept_id === acc.dept_id);
+    if (ev.scope === 'private') return ev.owner_account_id === acc.id;
+    return false;
+  });
+  return res.status(200).json({ rows: visible });
+}
+
+// 新規/更新。所有者はトークンから強制（自己申告不可）
+async function eventsSave(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const ev = body.event;
+  if (!ev || typeof ev !== 'object' || Array.isArray(ev)) return bad(res, 400, 'event が不正です');
+
+  const title = String(ev.title || '').trim().slice(0, 30);
+  if (!title) return bad(res, 400, 'タイトルを入力してください');
+  if (!EVENT_SCOPES.includes(ev.scope)) return bad(res, 400, '公開範囲が不正です');
+  const startDate = ev.start_date;
+  const endDate = ev.end_date || ev.start_date;
+  if (typeof startDate !== 'string' || !EVENT_DATE_RE.test(startDate)) return bad(res, 400, '開始日が不正です');
+  if (typeof endDate !== 'string' || !EVENT_DATE_RE.test(endDate)) return bad(res, 400, '終了日が不正です');
+  if (endDate < startDate) return bad(res, 400, '終了日は開始日以降にしてください');
+  let startTime = ev.start_time || null;
+  let endTime = ev.end_time || null;
+  if (startTime != null && !EVENT_TIME_RE.test(startTime)) return bad(res, 400, '開始時刻が不正です');
+  if (endTime != null && !EVENT_TIME_RE.test(endTime)) return bad(res, 400, '終了時刻が不正です');
+  if (startTime == null) endTime = null; // 開始時刻なし = 終日
+
+  // 部門予定の対象部門: staff は自部門を強制。leader/master は指定可（未指定は自部門）
+  let deptId = null;
+  if (ev.scope === 'dept') {
+    const isAdmin = payload.role === 'leader' || payload.role === 'master';
+    if (isAdmin && intOk(ev.dept_id, 0, 99)) deptId = ev.dept_id;
+    else if (acc.dept_id != null) deptId = acc.dept_id;
+    else return bad(res, 400, '部門が特定できないため部門予定を作成できません');
+  }
+
+  const record = {
+    scope: ev.scope,
+    dept_id: deptId,
+    title,
+    start_date: startDate,
+    end_date: endDate,
+    start_time: startTime,
+    end_time: endTime,
+    location: String(ev.location || '').slice(0, 100) || null,
+    memo: String(ev.memo || '').slice(0, 500) || null,
+    color: EVENT_COLORS.includes(ev.color) ? ev.color : 'blue',
+    updated_at: new Date().toISOString(),
+  };
+
+  if (ev.id) {
+    if (typeof ev.id !== 'string' || !UUIDISH.test(ev.id)) return bad(res, 400, 'id が不正です');
+    const cur = (await sb(`events?id=eq.${encodeURIComponent(ev.id)}&select=id,owner_account_id,scope`))[0];
+    if (!cur) return bad(res, 404, '予定が見つかりません');
+    const isAdmin = payload.role === 'leader' || payload.role === 'master';
+    const isOwner = cur.owner_account_id === acc.id;
+    // 編集権: 作成者本人、または leader/master（ただし他人の個人予定は不可）
+    if (!isOwner && !(isAdmin && cur.scope !== 'private')) return bad(res, 403, 'この予定を編集する権限がありません');
+    const rows = await sb(`events?id=eq.${encodeURIComponent(ev.id)}`, { method: 'PATCH', body: JSON.stringify(record) });
+    return res.status(200).json({ ok: true, rows });
+  }
+
+  record.owner_account_id = acc.id;
+  record.owner_staff_id = acc.staff_id || null;  // ICSの個人予定抽出用（未紐付けは null）
+  record.owner_name = acc.name || null;
+  const rows = await sb('events', { method: 'POST', body: JSON.stringify([record]) });
+  return res.status(200).json({ ok: true, rows });
+}
+
+async function eventsDelete(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const id = body.id;
+  if (typeof id !== 'string' || !UUIDISH.test(id)) return bad(res, 400, 'id が不正です');
+  const cur = (await sb(`events?id=eq.${encodeURIComponent(id)}&select=id,owner_account_id,scope`))[0];
+  if (!cur) return res.status(200).json({ ok: true }); // 既に無い＝成功扱い
+  const isAdmin = payload.role === 'leader' || payload.role === 'master';
+  const isOwner = cur.owner_account_id === acc.id;
+  if (!isOwner && !(isAdmin && cur.scope !== 'private')) return bad(res, 403, 'この予定を削除する権限がありません');
+  await sb(`events?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+  return res.status(200).json({ ok: true });
+}
+
+// ===== ICS購読フィード設定（本人分のみ）=====
+function newFeedToken() { return crypto.randomBytes(32).toString('hex'); }
+
+async function icalSettingsGet(res, payload) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  if (!acc.staff_id) return res.status(200).json({ linked: false }); // スタッフ未紐付け → 連携不可の案内表示用
+  let row = (await sb(`ical_feed_settings?staff_id=eq.${encodeURIComponent(acc.staff_id)}&select=*`))[0];
+  if (!row) {
+    // 初回アクセス時に自動生成
+    row = (await sb('ical_feed_settings', {
+      method: 'POST',
+      body: JSON.stringify([{ staff_id: acc.staff_id, token: newFeedToken() }]),
+    }))[0];
+  }
+  return res.status(200).json({ linked: true, settings: row });
+}
+
+async function icalSettingsSave(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc || !acc.staff_id) return bad(res, 400, 'スタッフ未紐付けのアカウントです');
+  const upd = { updated_at: new Date().toISOString() };
+  for (const k of ['include_shifts', 'include_private', 'include_dept', 'include_all', 'enabled']) {
+    if (typeof body[k] === 'boolean') upd[k] = body[k];
+  }
+  const rows = await sb(`ical_feed_settings?staff_id=eq.${encodeURIComponent(acc.staff_id)}`, {
+    method: 'PATCH', body: JSON.stringify(upd),
+  });
+  return res.status(200).json({ ok: true, settings: rows[0] || null });
+}
+
+// URL再発行: token を差し替え＝旧URLは即404
+async function icalTokenRotate(res, payload) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc || !acc.staff_id) return bad(res, 400, 'スタッフ未紐付けのアカウントです');
+  const rows = await sb(`ical_feed_settings?staff_id=eq.${encodeURIComponent(acc.staff_id)}`, {
+    method: 'PATCH', body: JSON.stringify({ token: newFeedToken(), updated_at: new Date().toISOString() }),
+  });
+  return res.status(200).json({ ok: true, settings: rows[0] || null });
+}
+
 // leader は自部門の staff にしか書き込めない
 async function assertLeaderDept(payload, targetDeptId) {
   if (payload.role !== 'leader') return true;
@@ -710,6 +888,13 @@ export default async function handler(req, res) {
     if (action === 'settings') {
       return await settingsGateway(res, payload, body);
     }
+    // カレンダー機能（段階公開の判定は各関数内で実施）
+    if (action === 'events-list') return await eventsList(res, payload, body);
+    if (action === 'events-save') return await eventsSave(res, payload, body);
+    if (action === 'events-delete') return await eventsDelete(res, payload, body);
+    if (action === 'ical-settings-get') return await icalSettingsGet(res, payload);
+    if (action === 'ical-settings-save') return await icalSettingsSave(res, payload, body);
+    if (action === 'ical-token-rotate') return await icalTokenRotate(res, payload);
 
     if (!table || !POLICY[table]) return bad(res, 400, '許可されていないテーブルです');
     const p = POLICY[table];
@@ -764,6 +949,12 @@ export default async function handler(req, res) {
           const target = await sb(`staff?id=eq.${encodeURIComponent(id)}&select=dept_id`);
           const deptId = target && target[0] ? target[0].dept_id : null;
           if (deptId == null || !(await assertLeaderDept(payload, deptId))) return bad(res, 403, '自部門以外は操作できません');
+        }
+        // 退職者対応: スタッフ削除に連動してICS購読フィードを失効（行ごと削除＝購読URLは即404）。
+        // 先にフィードを消す: 万一スタッフ削除が失敗してもフィードは再発行すればよいだけで害がない。
+        if (table === 'staff') {
+          try { await sb(`ical_feed_settings?staff_id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }); }
+          catch (e) { console.error('ical feed cascade delete:', e); }
         }
         await sb(`${table}?${p.idCol}=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
         return res.status(200).json({ ok: true });
