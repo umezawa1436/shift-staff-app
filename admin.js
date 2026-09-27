@@ -4767,8 +4767,8 @@ window.setCalendarRelease = async function(v) {
 // calendar-trash-list / calendar-restore / calendar-members-list / staff-directory を利用。
 // 管理者トークンは role=master をそのまま持つため、公開範囲レベルに関係なく操作できる。
 const CAL_ADMIN_COLORS = { blue:'#3b82f6', green:'#10b981', red:'#ef4444', orange:'#f97316', purple:'#8b5cf6', teal:'#14b8a6', pink:'#ec4899', gray:'#6b7280' };
-const CAL_ADMIN_VIS_ICONS = { private:'🔒', members:'👥', all:'🌐' };
-const CAL_ADMIN_VIS_LABELS = { private:'個人', members:'メンバー限定', all:'全体公開' };
+const CAL_ADMIN_VIS_ICONS = { private:'🔒', members:'👥', all:'🌐', external:'📥' };
+const CAL_ADMIN_VIS_LABELS = { private:'個人', members:'メンバー限定', all:'全体公開', external:'外部取り込み（自分のみ）' };
 let calAdminCache = [];        // calendar-admin-list の結果
 let calAdminEditing = null;    // 編集中カレンダー（null=新規作成）
 let calAdminColor = 'blue';
@@ -4963,6 +4963,107 @@ window.toggleCalAdminTrash = async function() {
   }
 };
 
+// ===== Googleカレンダー取り込みの管理（本人単位・スタッフ画面と共通データ）=====
+// data.js の ext-cal-list / ext-cal-save / ext-cal-delete を利用。
+// 取り込みは staff_id で紐付いた全アカウント共有＝スタッフ画面で登録したものがここにも出る。
+let adminExtCache = [];
+let adminExtEditing = null;
+let adminExtColor = 'teal';
+
+async function loadAdminExtList() {
+  const wrap = document.getElementById('adminExtList');
+  if (!wrap) return;
+  try {
+    const r = await adminApi('/api/data', { action: 'ext-cal-list' });
+    adminExtCache = r.externals || [];
+  } catch(e) {
+    console.error(e);
+    wrap.innerHTML = '<div style="color:#dc2626;font-size:12px">読み込みに失敗しました</div>';
+    return;
+  }
+  renderAdminExtList();
+}
+
+function renderAdminExtList() {
+  const wrap = document.getElementById('adminExtList');
+  if (!wrap) return;
+  wrap.innerHTML = adminExtCache.map(c => {
+    const hex = CAL_ADMIN_COLORS[c.color] || CAL_ADMIN_COLORS.teal;
+    const err = c.last_error ? `<div style="font-size:11px;color:#dc2626">⚠️ ${escapeHtml(c.last_error)}</div>` : '';
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--border)">
+      <div style="width:12px;height:12px;border-radius:50%;background:${hex};flex-shrink:0"></div>
+      <div style="min-width:0;flex:1;cursor:pointer" onclick="adminExtEdit('${c.id}')">
+        <div style="font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(c.name)} <span style="font-size:11px;color:var(--text-muted)">✏️</span></div>
+        ${err}
+      </div>
+      <button class="btn btn-outline btn-danger" style="padding:6px 10px;font-size:12px;flex-shrink:0" onclick="adminExtDelete('${c.id}')">解除</button>
+    </div>`;
+  }).join('') || '<div style="color:var(--text-muted);font-size:12px;padding:4px 0">取り込み中のカレンダーはありません</div>';
+  renderAdminExtColors();
+}
+
+function renderAdminExtColors() {
+  const wrap = document.getElementById('adminExtColors');
+  if (!wrap) return;
+  wrap.innerHTML = Object.entries(CAL_ADMIN_COLORS).map(([key, hex]) =>
+    `<button type="button" onclick="adminExtPickColor('${key}')" style="width:24px;height:24px;border-radius:50%;background:${hex};cursor:pointer;
+      border:${key === adminExtColor ? '3px solid var(--text)' : '3px solid transparent'};box-shadow:0 0 0 1px var(--border)"></button>`
+  ).join('');
+}
+window.adminExtPickColor = function(key) { adminExtColor = key; renderAdminExtColors(); };
+
+window.adminExtEdit = function(id) {
+  const c = adminExtCache.find(x => x.id === id);
+  if (!c) return;
+  adminExtEditing = id;
+  adminExtColor = c.color || 'teal';
+  document.getElementById('adminExtName').value = c.name || '';
+  document.getElementById('adminExtUrl').value = c.ics_url || '';
+  document.getElementById('adminExtSaveBtn').textContent = '更新';
+  renderAdminExtColors();
+};
+
+window.adminExtSave = async function() {
+  const url = document.getElementById('adminExtUrl').value.trim();
+  if (!url) { showToast('iCal形式のURLを貼り付けてください', 'error'); return; }
+  if (!/^https:\/\/\S+$/i.test(url)) { showToast('URLは https:// から始まる形式で入力してください', 'error'); return; }
+  const name = document.getElementById('adminExtName').value.trim();
+  showLoading();
+  try {
+    const payload = { action: 'ext-cal-save', name, color: adminExtColor, ics_url: url };
+    if (adminExtEditing) payload.id = adminExtEditing;
+    const r = await adminApi('/api/data', payload);
+    showToast(`取り込みました ✓（予定 ${r.event_count ?? '-'} 件）`, 'success');
+    adminExtEditing = null;
+    document.getElementById('adminExtName').value = '';
+    document.getElementById('adminExtUrl').value = '';
+    document.getElementById('adminExtSaveBtn').textContent = '追加';
+    await loadAdminExtList();
+    await loadCalAdminView();
+  } catch(e) {
+    console.error(e);
+    showToast(e.message || '取り込みに失敗しました', 'error', 4500);
+  }
+  hideLoading();
+};
+
+window.adminExtDelete = async function(id) {
+  const c = adminExtCache.find(x => x.id === id);
+  if (!confirm(`「${c ? c.name : ''}」の取り込みを解除しますか？\n（Googleカレンダー側のデータは消えません）`)) return;
+  showLoading();
+  try {
+    await adminApi('/api/data', { action: 'ext-cal-delete', id });
+    showToast('取り込みを解除しました', 'success');
+    adminExtEditing = null;
+    await loadAdminExtList();
+    await loadCalAdminView();
+  } catch(e) {
+    console.error(e);
+    showToast('解除に失敗しました', 'error');
+  }
+  hideLoading();
+};
+
 // ===== 共有カレンダーの予定ビュー（閲覧用・masterのみ）=====
 // data.js の calendar-admin-events を利用。個人カレンダーの予定はサーバ側で除外される。
 let calAdminViewYear = new Date().getFullYear();
@@ -5104,6 +5205,7 @@ async function loadSettings() {
     if (adminUser.role !== 'master') { card.style.display = 'none'; return; }
     card.style.display = '';
     await loadCalAdminList();
+    await loadAdminExtList();
     await loadCalAdminView();
   });
 
