@@ -2563,6 +2563,8 @@ window.deleteCalEvent = async function() {
 
 // ===== 外部カレンダー連携（ICS購読）設定 =====
 let calIcsToken = '';
+let icsCalsCache = [];        // ical-settings-get が返す可視カレンダー
+let icsExcludedSet = new Set(); // フィードから除外中のカレンダーID
 
 window.openCalIcsSheet = async function() {
   document.getElementById('calIcsOverlay').style.display = 'block';
@@ -2575,6 +2577,8 @@ window.openCalIcsSheet = async function() {
       body.innerHTML = '<div style="padding:16px;background:#fef3c7;border-radius:12px;font-size:13px;color:#92400e">このアカウントはスタッフ情報と紐付いていないため、外部連携を利用できません。管理者に連絡してください。</div>';
       return;
     }
+    icsCalsCache = r.calendars || [];
+    icsExcludedSet = new Set(r.excluded || []);
     renderIcsSheet(r.settings);
   } catch(e) {
     console.error(e);
@@ -2606,9 +2610,15 @@ function renderIcsSheet(st) {
     </div>
     <div style="font-size:13px;font-weight:700;margin-bottom:4px">カレンダーに反映する内容</div>
     ${tgl('include_shifts', '確定シフト', st.include_shifts !== false)}
-    <div style="font-size:12px;color:var(--text-muted);padding:8px 0;border-bottom:1px solid var(--border)">
-      予定は、アプリで「表示」にしているカレンダーがそのまま反映されます（📅カレンダー管理で切替）
+    <div style="font-size:12px;color:var(--text-muted);padding:8px 0 2px">
+      送るカレンダーを選べます（チェックを外すと Google / iPhone 側に表示されません）
     </div>
+    ${icsCalsCache.map(c => `
+      <label style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border);font-size:14px">
+        <span style="width:10px;height:10px;border-radius:50%;background:${CAL_EVENT_COLORS[c.color] || CAL_EVENT_COLORS.blue};flex-shrink:0"></span>
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${CAL_VIS_ICONS[c.visibility] || ''} ${escapeHtml(c.name)}</span>
+        <input type="checkbox" class="icsCalChk" value="${c.id}" ${icsExcludedSet.has(c.id) ? '' : 'checked'} onchange="icsCalToggle()" style="width:20px;height:20px">
+      </label>`).join('')}
     <details style="margin-top:14px;font-size:13px">
       <summary style="font-weight:700;cursor:pointer">📱 登録手順（iPhone / Google）</summary>
       <div style="padding:10px 4px;line-height:1.8;color:var(--text)">
@@ -2629,6 +2639,18 @@ function renderIcsSheet(st) {
 window.icsToggle = async function(key, checked) {
   try {
     await dataApi({ action: 'ical-settings-save', [key]: checked });
+    showToast('設定を保存しました ✓', 'success');
+  } catch(e) {
+    console.error(e);
+    showToast('保存に失敗しました', 'error');
+  }
+};
+// フィードに送るカレンダーの選択（チェックなし = 除外として保存）
+window.icsCalToggle = async function() {
+  const excluded = [...document.querySelectorAll('.icsCalChk')].filter(el => !el.checked).map(el => el.value);
+  icsExcludedSet = new Set(excluded);
+  try {
+    await dataApi({ action: 'ical-settings-save', excluded_calendar_ids: excluded });
     showToast('設定を保存しました ✓', 'success');
   } catch(e) {
     console.error(e);
