@@ -672,19 +672,45 @@ async function calendarReleaseLevel() {
     return rows && rows[0] ? (parseFloat(rows[0].value) || 0) : 0;
   } catch { return 0; }
 }
-function calendarRoleAllowed(role, level) {
-  if (role === 'master') return true;
-  if (role === 'leader') return level >= 1;
+// 実効ティア判定。
+// スタッフ画面のログインは role='staff' のアカウント限定（auth.js の照合条件）なので、
+// トークンの role だけでは master/leader 本人の試験利用を判定できない。
+// 同じ staff_id に紐づく別アカウント（leader/master の二重アカウント運用）まで見て実効ロールを決める。
+async function calendarEffectiveTier(payload) {
+  if (payload.role === 'master') return 'master';
+  let tier = payload.role === 'leader' ? 'leader' : 'staff';
+  try {
+    const acc = await resolveAccount(payload.accountId);
+    if (acc && acc.staff_id) {
+      const linked = await sb(`accounts?staff_id=eq.${encodeURIComponent(acc.staff_id)}&select=role`);
+      const roles = (linked || []).map(x => x.role);
+      if (roles.includes('master')) return 'master';
+      if (roles.includes('leader')) tier = 'leader';
+    }
+  } catch (e) { console.error('calendar tier resolve:', e); }
+  return tier;
+}
+function calendarTierAllowed(tier, level) {
+  if (tier === 'master') return true;
+  if (tier === 'leader') return level >= 1;
   return level >= 2;
 }
 // タブ非表示だけに頼らず、APIを直接叩かれても公開レベル未満なら 403 にする
 async function assertCalendarAccess(res, payload) {
   const level = await calendarReleaseLevel();
-  if (!calendarRoleAllowed(payload.role, level)) {
+  const tier = await calendarEffectiveTier(payload);
+  if (!calendarTierAllowed(tier, level)) {
     bad(res, 403, 'カレンダー機能は公開されていません');
     return false;
   }
   return true;
+}
+
+// クライアントがタブ表示可否を問い合わせる（ログイン直後に1回）
+async function calendarAccess(res, payload) {
+  const level = await calendarReleaseLevel();
+  const tier = await calendarEffectiveTier(payload);
+  return res.status(200).json({ allowed: calendarTierAllowed(tier, level), level });
 }
 
 const EVENT_SCOPES = ['private', 'dept', 'all'];
@@ -889,6 +915,7 @@ export default async function handler(req, res) {
       return await settingsGateway(res, payload, body);
     }
     // カレンダー機能（段階公開の判定は各関数内で実施）
+    if (action === 'calendar-access') return await calendarAccess(res, payload);
     if (action === 'events-list') return await eventsList(res, payload, body);
     if (action === 'events-save') return await eventsSave(res, payload, body);
     if (action === 'events-delete') return await eventsDelete(res, payload, body);
