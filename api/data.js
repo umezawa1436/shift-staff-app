@@ -950,14 +950,34 @@ async function calendarAdminEvents(res, payload, body) {
   const cals = await sbAll(
     'calendars?deleted_at=is.null&visibility=in.("all","members")&select=id,name,color,visibility,owner_name',
     'created_at,id');
-  if (!cals.length) return res.status(200).json({ rows: [], calendars: [] });
   const mm = String(month).padStart(2, '0');
   const first = `${year}-${mm}-01`;
   const last = `${year}-${mm}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`;
-  const rows = await sbAll(
+  const rows = cals.length ? await sbAll(
     `events?start_date=lte.${last}&end_date=gte.${first}&calendar_id=in.(${inFilter(cals.map(c => c.id))})&select=*`,
-    'start_date,id');
-  return res.status(200).json({ rows, calendars: cals });
+    'start_date,id') : [];
+  const calendars = cals.map(c => ({ ...c }));
+
+  // リクエストした管理者本人の取り込みカレンダー（Google等）も合流させる。
+  // レスポンスは本人ごとに生成されるため、他の管理者のGoogle予定が混ざることはない
+  try {
+    const acc = await resolveAccount(payload.accountId);
+    if (acc) {
+      const linkedIds = await extLinkedAccountIds(acc);
+      const exts = await sb(`external_calendars?account_id=in.(${inFilter(linkedIds)})&select=*`);
+      const refreshed = await Promise.all((exts || []).map(c => extRefresh(c)));
+      for (const c of refreshed) {
+        calendars.push({ id: c.id, name: c.name, color: c.color, visibility: 'external', owner_name: null, external: true, last_error: c.last_error || null });
+        const inst = extExpand(c.cache || [], first, last);
+        inst.forEach((m, i) => rows.push({
+          id: `ext-${c.id}-${i}`, calendar_id: c.id, title: m.title,
+          start_date: m.sd, end_date: m.ed, start_time: m.st, end_time: m.et,
+          location: m.location, url: m.url, memo: null, external: true,
+        }));
+      }
+    }
+  } catch (e) { console.error('admin external merge:', e); }
+  return res.status(200).json({ rows, calendars });
 }
 
 // 表示/非表示の切替（本人の表示設定のみ）
@@ -994,7 +1014,8 @@ async function eventsList(res, payload, body) {
 
   // 外部カレンダー（本人のみ・読み取り専用）をカレンダー一覧と予定に合流させる
   try {
-    const exts = await sb(`external_calendars?account_id=eq.${encodeURIComponent(acc.id)}&select=*`);
+    const linkedIds = await extLinkedAccountIds(acc);
+    const exts = await sb(`external_calendars?account_id=in.(${inFilter(linkedIds)})&select=*`);
     if (exts && exts.length) {
       const prefs2 = await sb(`calendar_prefs?account_id=eq.${encodeURIComponent(acc.id)}&hidden=eq.true&select=calendar_id`);
       const hidden2 = new Set((prefs2 || []).map(x => x.calendar_id));
@@ -1364,6 +1385,28 @@ async function extRefresh(cal) {
   }
 }
 
+// 同一スタッフに紐付く全アカウントID（master/leader/staff の二重アカウント運用対応）。
+// 取り込みカレンダーは「本人単位」で共有する＝スタッフ画面で登録したものが管理画面にも出る
+async function extLinkedAccountIds(acc) {
+  if (!acc.staff_id) return [acc.id];
+  try {
+    const linked = await sb(`accounts?staff_id=eq.${encodeURIComponent(acc.staff_id)}&select=id`);
+    const ids = (linked || []).map(x => x.id);
+    return ids.includes(acc.id) ? ids : ids.concat([acc.id]);
+  } catch { return [acc.id]; }
+}
+
+// 取り込みカレンダーの一覧（本人の紐付きアカウント全体）
+async function extCalList(res, payload) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const linkedIds = await extLinkedAccountIds(acc);
+  const externals = await sb(
+    `external_calendars?account_id=in.(${inFilter(linkedIds)})&select=id,name,color,ics_url,last_error,last_fetched_at&order=created_at`);
+  return res.status(200).json({ externals: externals || [] });
+}
+
 // 取り込みカレンダーの追加/更新（本人のみ・最大3件。保存時に即取得して検証する）
 async function extCalSave(res, payload, body) {
   if (!(await assertCalendarAccess(res, payload))) return;
@@ -1378,10 +1421,11 @@ async function extCalSave(res, payload, body) {
   catch (e) { return bad(res, 400, `カレンダーを取得できません：${e.message || e}`); }
   const now = new Date().toISOString();
 
+  const linkedIds = await extLinkedAccountIds(acc);
   if (body.id) {
     if (typeof body.id !== 'string' || !UUIDISH.test(body.id)) return bad(res, 400, 'id が不正です');
     const cur = (await sb(`external_calendars?id=eq.${encodeURIComponent(body.id)}&select=id,account_id`))[0];
-    if (!cur || cur.account_id !== acc.id) return bad(res, 404, '取り込みカレンダーが見つかりません');
+    if (!cur || !linkedIds.includes(cur.account_id)) return bad(res, 404, '取り込みカレンダーが見つかりません');
     await sb(`external_calendars?id=eq.${encodeURIComponent(body.id)}`, {
       method: 'PATCH',
       body: JSON.stringify({ name, color, ics_url: icsUrl, cache, last_fetched_at: now, last_error: null, updated_at: now }),
@@ -1389,7 +1433,7 @@ async function extCalSave(res, payload, body) {
     return res.status(200).json({ ok: true, id: body.id, event_count: cache.length });
   }
 
-  const mine = await sb(`external_calendars?account_id=eq.${encodeURIComponent(acc.id)}&select=id`);
+  const mine = await sb(`external_calendars?account_id=in.(${inFilter(linkedIds)})&select=id`);
   if ((mine || []).length >= EXT_CAL_MAX) return bad(res, 400, `取り込みカレンダーは${EXT_CAL_MAX}件までです`);
   const rows = await sb('external_calendars', {
     method: 'POST',
@@ -1405,7 +1449,8 @@ async function extCalDelete(res, payload, body) {
   const id = body.id;
   if (typeof id !== 'string' || !UUIDISH.test(id)) return bad(res, 400, 'id が不正です');
   const cur = (await sb(`external_calendars?id=eq.${encodeURIComponent(id)}&select=id,account_id`))[0];
-  if (!cur || cur.account_id !== acc.id) return res.status(200).json({ ok: true }); // 既に無い＝成功扱い
+  const linkedIds = await extLinkedAccountIds(acc);
+  if (!cur || !linkedIds.includes(cur.account_id)) return res.status(200).json({ ok: true }); // 既に無い＝成功扱い
   await sb(`calendar_prefs?calendar_id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
   await sb(`external_calendars?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
   return res.status(200).json({ ok: true });
@@ -1431,8 +1476,9 @@ async function icalSettingsGet(res, payload) {
   const tier = await calendarEffectiveTier(payload);
   const cals = await fetchVisibleCalendars(acc, tier);
   const excl = await sb(`ical_feed_excludes?staff_id=eq.${encodeURIComponent(acc.staff_id)}&select=calendar_id`);
+  const linkedIds2 = await extLinkedAccountIds(acc);
   const externals = await sb(
-    `external_calendars?account_id=eq.${encodeURIComponent(acc.id)}&select=id,name,color,ics_url,last_error,last_fetched_at&order=created_at`);
+    `external_calendars?account_id=in.(${inFilter(linkedIds2)})&select=id,name,color,ics_url,last_error,last_fetched_at&order=created_at`);
   return res.status(200).json({
     linked: true, settings: row,
     calendars: cals.map(c => ({ id: c.id, name: c.name, color: c.color, visibility: c.visibility })),
@@ -1547,6 +1593,7 @@ export default async function handler(req, res) {
     if (action === 'ical-settings-get') return await icalSettingsGet(res, payload);
     if (action === 'ical-settings-save') return await icalSettingsSave(res, payload, body);
     if (action === 'ical-token-rotate') return await icalTokenRotate(res, payload);
+    if (action === 'ext-cal-list') return await extCalList(res, payload);
     if (action === 'ext-cal-save') return await extCalSave(res, payload, body);
     if (action === 'ext-cal-delete') return await extCalDelete(res, payload, body);
 
