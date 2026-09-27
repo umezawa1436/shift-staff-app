@@ -5096,6 +5096,18 @@ window.calAdminViewNav = function(delta) {
   loadCalAdminView();
 };
 
+// 参加者の苗字アイコン（スタッフ画面と同じ配色ロジック）
+const ADMIN_PPL_COLORS = ['#3b82f6','#10b981','#f97316','#8b5cf6','#14b8a6','#ec4899','#6b7280','#ef4444'];
+function adminPplIcon(p, size) {
+  let h = 0;
+  for (const ch of String(p.id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const family = String(p.name || '?').split(/[ 　]/)[0].slice(0, 2);
+  const px = size || 22;
+  return `<span title="${escapeHtml(p.name || '')}" style="display:inline-flex;align-items:center;justify-content:center;
+    width:${px}px;height:${px}px;border-radius:50%;background:${ADMIN_PPL_COLORS[h % ADMIN_PPL_COLORS.length]};color:white;
+    font-size:${Math.round(px * 0.42)}px;font-weight:700;flex-shrink:0">${escapeHtml(family)}</span>`;
+}
+
 function calAdminEventsOnDay(day) {
   const pad = (n) => String(n).padStart(2, '0');
   const d = `${calAdminViewYear}-${pad(calAdminViewMonth)}-${pad(day)}`;
@@ -5159,6 +5171,7 @@ window.showCalAdminViewDay = function(day) {
           ${ev.location ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">📍 ${escapeHtml(ev.location)}</div>` : ''}
           ${ev.url ? `<div style="font-size:11px;margin-top:2px"><a href="${escapeHtml(ev.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--primary);word-break:break-all">🔗 ${escapeHtml(ev.url)}</a></div>` : ''}
           ${ev.memo ? `<div style="font-size:11px;margin-top:3px;white-space:pre-wrap;line-height:1.5">${escapeHtml(ev.memo)}</div>` : ''}
+          ${(ev.participants && ev.participants.length) ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;align-items:center">${ev.participants.slice(0, 12).map(pp => adminPplIcon(pp)).join('')}${ev.participants.length > 12 ? `<span style="font-size:11px;color:var(--text-muted)">+${ev.participants.length - 12}</span>` : ''}</div>` : ''}
         </div>
       </div>`;
     }).join('');
