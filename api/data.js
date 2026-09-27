@@ -938,6 +938,27 @@ async function calendarAdminList(res, payload) {
   return res.status(200).json({ calendars });
 }
 
+// 管理画面用: 共有カレンダー（全体・メンバー限定）の月間予定（管理者のみ・閲覧用）
+// 個人(private)カレンダーの予定は「本人以外に表示しない」方針のため、管理者にも返さない
+async function calendarAdminEvents(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const tier = await calendarEffectiveTier(payload);
+  if (tier !== 'master') return bad(res, 403, '管理者のみ閲覧できます');
+  const year = body.year, month = body.month;
+  if (!intOk(year, 2000, 2100) || !intOk(month, 1, 12)) return bad(res, 400, 'year/month が不正です');
+  const cals = await sbAll(
+    'calendars?deleted_at=is.null&visibility=in.("all","members")&select=id,name,color,visibility,owner_name',
+    'created_at,id');
+  if (!cals.length) return res.status(200).json({ rows: [], calendars: [] });
+  const mm = String(month).padStart(2, '0');
+  const first = `${year}-${mm}-01`;
+  const last = `${year}-${mm}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`;
+  const rows = await sbAll(
+    `events?start_date=lte.${last}&end_date=gte.${first}&calendar_id=in.(${inFilter(cals.map(c => c.id))})&select=*`,
+    'start_date,id');
+  return res.status(200).json({ rows, calendars: cals });
+}
+
 // 表示/非表示の切替（本人の表示設定のみ）
 async function calendarPrefSave(res, payload, body) {
   if (!(await assertCalendarAccess(res, payload))) return;
@@ -1168,6 +1189,7 @@ export default async function handler(req, res) {
     if (action === 'calendar-delete') return await calendarDelete(res, payload, body);
     if (action === 'calendar-trash-list') return await calendarTrashList(res, payload);
     if (action === 'calendar-admin-list') return await calendarAdminList(res, payload);
+    if (action === 'calendar-admin-events') return await calendarAdminEvents(res, payload, body);
     if (action === 'calendar-restore') return await calendarRestore(res, payload, body);
     if (action === 'calendar-members-list') return await calendarMembersList(res, payload, body);
     if (action === 'calendar-pref-save') return await calendarPrefSave(res, payload, body);
