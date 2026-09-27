@@ -664,7 +664,11 @@ async function settingsGateway(res, payload, body) {
   return res.status(200).json({ rows, ok: true });
 }
 
-// ===== カレンダー機能（events / ical_feed_settings）=====
+// ===== カレンダー機能（calendars / calendar_members / calendar_prefs / events / ical_feed_settings）=====
+// モデル: 予定はどれかの「カレンダー」に属する（TimeTree型）。
+//   カレンダーの visibility: 'private'(所有者のみ) / 'members'(参加者のみ) / 'all'(全体)
+//   メンバー管理・名前変更・削除はカレンダー所有者（＋master）のみ。
+//   表示/非表示は calendar_prefs で各自が制御（データは消えない）。
 // 段階公開: app_settings.calendar_release  0=masterのみ / 1=leaderまで / 2=全員（行なし=0）
 async function calendarReleaseLevel() {
   try {
@@ -714,45 +718,250 @@ async function calendarAccess(res, payload) {
   return res.status(200).json({ allowed: calendarTierAllowed(tier, level), level, tier });
 }
 
-const EVENT_SCOPES = ['private', 'dept', 'all'];
-const EVENT_COLORS = ['blue', 'green', 'red', 'orange', 'purple', 'teal', 'pink', 'gray'];
-// 名称注意: TIME_RE は休憩バリデーション用に既存（467行付近）。イベント用は別名にする
+const CAL_COLORS = ['blue', 'green', 'red', 'orange', 'purple', 'teal', 'pink', 'gray'];
+const CAL_VISIBILITIES = ['private', 'members', 'all'];
+// 名称注意: TIME_RE は休憩バリデーション用に既存。イベント用は別名にする
 const EVENT_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const EVENT_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-// 月に重なる予定を返す。可視範囲はサーバ側で強制（他人の個人予定は絶対に返さない）
+// 自分から見えるカレンダー一覧を返す（所有 / 参加 / 全体公開）。
+// 個人用「マイカレンダー」が無ければ自動作成（全員が最初から1つ持てる）。
+async function fetchVisibleCalendars(acc, tier) {
+  let all = await sbAll('calendars?deleted_at=is.null&select=*', 'created_at,id');
+  if (!all.some(c => c.visibility === 'private' && c.owner_account_id === acc.id)) {
+    const created = await sb('calendars', { method: 'POST', body: JSON.stringify([{
+      name: 'マイカレンダー', color: 'blue', visibility: 'private',
+      owner_account_id: acc.id, owner_staff_id: acc.staff_id || null, owner_name: acc.name || null,
+    }]) });
+    all = all.concat(created || []);
+  }
+  let memSet = new Set();
+  if (acc.staff_id) {
+    const mem = await sb(`calendar_members?staff_id=eq.${encodeURIComponent(acc.staff_id)}&select=calendar_id`);
+    memSet = new Set((mem || []).map(m => m.calendar_id));
+  }
+  const visible = all.filter(c =>
+    c.visibility === 'all' ||
+    c.owner_account_id === acc.id ||
+    (c.visibility === 'members' && memSet.has(c.id))
+  );
+  const prefs = await sb(`calendar_prefs?account_id=eq.${encodeURIComponent(acc.id)}&select=calendar_id,hidden`);
+  const hiddenSet = new Set((prefs || []).filter(p => p.hidden).map(p => p.calendar_id));
+  return visible.map(c => ({
+    id: c.id, name: c.name, color: c.color, visibility: c.visibility,
+    owner_account_id: c.owner_account_id, owner_name: c.owner_name,
+    is_owner: c.owner_account_id === acc.id,
+    is_member: memSet.has(c.id),
+    hidden: hiddenSet.has(c.id),
+    can_post: c.visibility === 'all' ? true
+      : c.visibility === 'members' ? (memSet.has(c.id) || c.owner_account_id === acc.id)
+      : c.owner_account_id === acc.id,
+    can_manage: c.owner_account_id === acc.id || tier === 'master',
+  }));
+}
+
+async function calendarsList(res, payload) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const tier = await calendarEffectiveTier(payload);
+  const calendars = await fetchVisibleCalendars(acc, tier);
+  return res.status(200).json({ calendars });
+}
+
+// カレンダー作成/更新。全体公開(all)の作成・変更はリーダー以上のみ
+async function calendarSave(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const tier = await calendarEffectiveTier(payload);
+  const cal = body.calendar;
+  if (!cal || typeof cal !== 'object' || Array.isArray(cal)) return bad(res, 400, 'calendar が不正です');
+
+  const name = String(cal.name || '').trim().slice(0, 20);
+  if (!name) return bad(res, 400, 'カレンダー名を入力してください');
+  if (!CAL_VISIBILITIES.includes(cal.visibility)) return bad(res, 400, '公開種別が不正です');
+  if (cal.visibility === 'all' && tier === 'staff') return bad(res, 403, '全体公開カレンダーはリーダー以上のみ作成できます');
+  const color = CAL_COLORS.includes(cal.color) ? cal.color : 'blue';
+  const memberIds = (cal.visibility === 'members' && Array.isArray(cal.member_staff_ids))
+    ? (validStaffIds(cal.member_staff_ids, 200) || []) : null;
+
+  if (cal.id) {
+    if (typeof cal.id !== 'string' || !UUIDISH.test(cal.id)) return bad(res, 400, 'id が不正です');
+    const cur = (await sb(`calendars?id=eq.${encodeURIComponent(cal.id)}&select=id,owner_account_id,deleted_at`))[0];
+    if (!cur || cur.deleted_at) return bad(res, 404, 'カレンダーが見つかりません');
+    if (cur.owner_account_id !== acc.id && tier !== 'master') return bad(res, 403, 'このカレンダーを編集する権限がありません');
+    await sb(`calendars?id=eq.${encodeURIComponent(cal.id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name, color, visibility: cal.visibility, updated_at: new Date().toISOString() }),
+    });
+    if (memberIds !== null) {
+      await sb(`calendar_members?calendar_id=eq.${encodeURIComponent(cal.id)}`, { method: 'DELETE' });
+      if (memberIds.length) {
+        await sb('calendar_members', { method: 'POST',
+          body: JSON.stringify(memberIds.map(sid => ({ calendar_id: cal.id, staff_id: sid }))) });
+      }
+    }
+    return res.status(200).json({ ok: true, id: cal.id });
+  }
+
+  const rows = await sb('calendars', { method: 'POST', body: JSON.stringify([{
+    name, color, visibility: cal.visibility,
+    owner_account_id: acc.id, owner_staff_id: acc.staff_id || null, owner_name: acc.name || null,
+  }]) });
+  const newId = rows && rows[0] ? rows[0].id : null;
+  if (newId && memberIds && memberIds.length) {
+    await sb('calendar_members', { method: 'POST',
+      body: JSON.stringify(memberIds.map(sid => ({ calendar_id: newId, staff_id: sid }))) });
+  }
+  return res.status(200).json({ ok: true, id: newId });
+}
+
+// ===== カレンダー削除（ソフトデリート方式）=====
+// 削除は「管理者（実効ティア master）」のみ。deleted_at を立てるだけで、
+// 予定・メンバー・表示設定はそのまま残す＝30日以内なら復元で完全に元に戻る。
+const CAL_TRASH_DAYS = 30;
+
+// 30日を過ぎた削除済みカレンダーを物理削除（削除・ゴミ箱閲覧のタイミングで遅延実行）
+async function purgeExpiredCalendars() {
+  try {
+    const limit = new Date(Date.now() - CAL_TRASH_DAYS * 24 * 3600 * 1000).toISOString();
+    const expired = await sb(`calendars?deleted_at=lt.${encodeURIComponent(limit)}&select=id`);
+    for (const c of expired || []) {
+      const eid = encodeURIComponent(c.id);
+      await sb(`events?calendar_id=eq.${eid}`, { method: 'DELETE' });
+      await sb(`calendar_members?calendar_id=eq.${eid}`, { method: 'DELETE' });
+      await sb(`calendar_prefs?calendar_id=eq.${eid}`, { method: 'DELETE' });
+      await sb(`calendars?id=eq.${eid}`, { method: 'DELETE' });
+    }
+  } catch (e) { console.error('calendar purge:', e); }
+}
+
+async function calendarDelete(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const tier = await calendarEffectiveTier(payload);
+  if (tier !== 'master') return bad(res, 403, 'カレンダーの削除は管理者のみ行えます');
+  const id = body.id;
+  if (typeof id !== 'string' || !UUIDISH.test(id)) return bad(res, 400, 'id が不正です');
+  await sb(`calendars?id=eq.${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
+  });
+  await purgeExpiredCalendars();
+  return res.status(200).json({ ok: true });
+}
+
+// 削除済み一覧（管理者のみ。残り日数付き）
+async function calendarTrashList(res, payload) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const tier = await calendarEffectiveTier(payload);
+  if (tier !== 'master') return bad(res, 403, '管理者のみ閲覧できます');
+  await purgeExpiredCalendars();
+  const rows = await sb(`calendars?deleted_at=not.is.null&select=id,name,color,visibility,owner_name,deleted_at&order=deleted_at.desc`);
+  const now = Date.now();
+  const trash = (rows || []).map(c => ({
+    ...c,
+    days_left: Math.max(0, CAL_TRASH_DAYS - Math.floor((now - new Date(c.deleted_at).getTime()) / 86400000)),
+  }));
+  return res.status(200).json({ trash });
+}
+
+// 復元（管理者のみ・30日以内）
+async function calendarRestore(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const tier = await calendarEffectiveTier(payload);
+  if (tier !== 'master') return bad(res, 403, 'カレンダーの復元は管理者のみ行えます');
+  const id = body.id;
+  if (typeof id !== 'string' || !UUIDISH.test(id)) return bad(res, 400, 'id が不正です');
+  const cur = (await sb(`calendars?id=eq.${encodeURIComponent(id)}&select=id,deleted_at`))[0];
+  if (!cur || !cur.deleted_at) return bad(res, 404, '削除済みカレンダーが見つかりません');
+  if (Date.now() - new Date(cur.deleted_at).getTime() > CAL_TRASH_DAYS * 24 * 3600 * 1000) {
+    return bad(res, 400, '削除から30日を過ぎているため復元できません');
+  }
+  await sb(`calendars?id=eq.${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ deleted_at: null, updated_at: new Date().toISOString() }),
+  });
+  return res.status(200).json({ ok: true });
+}
+
+// メンバー一覧（所有者・参加者のみ閲覧可）
+async function calendarMembersList(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const tier = await calendarEffectiveTier(payload);
+  const id = body.calendar_id;
+  if (typeof id !== 'string' || !UUIDISH.test(id)) return bad(res, 400, 'calendar_id が不正です');
+  const cal = (await sb(`calendars?id=eq.${encodeURIComponent(id)}&select=id,owner_account_id,visibility`))[0];
+  if (!cal) return bad(res, 404, 'カレンダーが見つかりません');
+  const mem = await sb(`calendar_members?calendar_id=eq.${encodeURIComponent(id)}&select=staff_id`);
+  const memIds = (mem || []).map(m => m.staff_id);
+  const isOwner = cal.owner_account_id === acc.id;
+  const isMember = acc.staff_id && memIds.includes(acc.staff_id);
+  if (!isOwner && !isMember && tier !== 'master' && cal.visibility !== 'all') {
+    return bad(res, 403, '閲覧権限がありません');
+  }
+  let members = [];
+  if (memIds.length) {
+    members = await sb(`staff?id=in.(${inFilter(memIds)})&select=id,name,dept_id&order=dept_id,staff_code`);
+  }
+  return res.status(200).json({ members });
+}
+
+// メンバー選択用の最小名簿（id・名前・部門のみ。ログイン画面が既に全氏名を公開している範囲を超えない）
+async function staffDirectory(res, payload) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const rows = await sbAll('staff?select=id,name,dept_id', 'dept_id,staff_code');
+  return res.status(200).json({ staff: rows });
+}
+
+// 表示/非表示の切替（本人の表示設定のみ）
+async function calendarPrefSave(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const id = body.calendar_id;
+  if (typeof id !== 'string' || !UUIDISH.test(id)) return bad(res, 400, 'calendar_id が不正です');
+  const hidden = body.hidden === true;
+  await sb(`calendar_prefs?account_id=eq.${encodeURIComponent(acc.id)}&calendar_id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+  await sb('calendar_prefs', { method: 'POST',
+    body: JSON.stringify([{ account_id: acc.id, calendar_id: id, hidden }]) });
+  return res.status(200).json({ ok: true });
+}
+
+// 月に重なる予定＋見えるカレンダー一覧を返す（1往復で描画に必要な全て）
 async function eventsList(res, payload, body) {
   if (!(await assertCalendarAccess(res, payload))) return;
   const year = body.year, month = body.month;
   if (!intOk(year, 2000, 2100) || !intOk(month, 1, 12)) return bad(res, 400, 'year/month が不正です');
   const acc = await resolveAccount(payload.accountId);
   if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const tier = await calendarEffectiveTier(payload);
+  const calendars = await fetchVisibleCalendars(acc, tier);
+  if (!calendars.length) return res.status(200).json({ rows: [], calendars });
   const mm = String(month).padStart(2, '0');
   const first = `${year}-${mm}-01`;
   const last = `${year}-${mm}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`;
-  // 月跨ぎ対応: start<=月末 AND end>=月初。件数増に備え sbAll でページング
-  const rows = await sbAll(`events?start_date=lte.${last}&end_date=gte.${first}&select=*`, 'start_date,id');
-  const isAdmin = payload.role === 'leader' || payload.role === 'master';
-  const visible = rows.filter(ev => {
-    if (ev.scope === 'all') return true;
-    if (ev.scope === 'dept') return isAdmin || (acc.dept_id != null && ev.dept_id === acc.dept_id);
-    if (ev.scope === 'private') return ev.owner_account_id === acc.id;
-    return false;
-  });
-  return res.status(200).json({ rows: visible });
+  const ids = calendars.map(c => c.id);
+  const rows = await sbAll(
+    `events?start_date=lte.${last}&end_date=gte.${first}&calendar_id=in.(${inFilter(ids)})&select=*`,
+    'start_date,id');
+  return res.status(200).json({ rows, calendars });
 }
 
-// 新規/更新。所有者はトークンから強制（自己申告不可）
+// 予定の新規/更新。所有者はトークンから強制（自己申告不可）
 async function eventsSave(res, payload, body) {
   if (!(await assertCalendarAccess(res, payload))) return;
   const acc = await resolveAccount(payload.accountId);
   if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const tier = await calendarEffectiveTier(payload);
   const ev = body.event;
   if (!ev || typeof ev !== 'object' || Array.isArray(ev)) return bad(res, 400, 'event が不正です');
 
   const title = String(ev.title || '').trim().slice(0, 30);
   if (!title) return bad(res, 400, 'タイトルを入力してください');
-  if (!EVENT_SCOPES.includes(ev.scope)) return bad(res, 400, '公開範囲が不正です');
+  if (typeof ev.calendar_id !== 'string' || !UUIDISH.test(ev.calendar_id)) return bad(res, 400, 'カレンダーを選択してください');
   const startDate = ev.start_date;
   const endDate = ev.end_date || ev.start_date;
   if (typeof startDate !== 'string' || !EVENT_DATE_RE.test(startDate)) return bad(res, 400, '開始日が不正です');
@@ -764,18 +973,20 @@ async function eventsSave(res, payload, body) {
   if (endTime != null && !EVENT_TIME_RE.test(endTime)) return bad(res, 400, '終了時刻が不正です');
   if (startTime == null) endTime = null; // 開始時刻なし = 終日
 
-  // 部門予定の対象部門: staff は自部門を強制。leader/master は指定可（未指定は自部門）
-  let deptId = null;
-  if (ev.scope === 'dept') {
-    const isAdmin = payload.role === 'leader' || payload.role === 'master';
-    if (isAdmin && intOk(ev.dept_id, 0, 99)) deptId = ev.dept_id;
-    else if (acc.dept_id != null) deptId = acc.dept_id;
-    else return bad(res, 400, '部門が特定できないため部門予定を作成できません');
+  // 投稿先カレンダーの権限チェック
+  const cal = (await sb(`calendars?id=eq.${encodeURIComponent(ev.calendar_id)}&select=id,owner_account_id,visibility,color,deleted_at`))[0];
+  if (!cal || cal.deleted_at) return bad(res, 404, 'カレンダーが見つかりません');
+  let canPost = false;
+  if (cal.visibility === 'all') canPost = true;
+  else if (cal.owner_account_id === acc.id) canPost = true;
+  else if (cal.visibility === 'members' && acc.staff_id) {
+    const m = await sb(`calendar_members?calendar_id=eq.${encodeURIComponent(cal.id)}&staff_id=eq.${encodeURIComponent(acc.staff_id)}&select=staff_id`);
+    canPost = (m && m.length > 0);
   }
+  if (!canPost) return bad(res, 403, 'このカレンダーに予定を追加する権限がありません');
 
   const record = {
-    scope: ev.scope,
-    dept_id: deptId,
+    calendar_id: cal.id,
     title,
     start_date: startDate,
     end_date: endDate,
@@ -783,24 +994,27 @@ async function eventsSave(res, payload, body) {
     end_time: endTime,
     location: String(ev.location || '').slice(0, 100) || null,
     memo: String(ev.memo || '').slice(0, 500) || null,
-    color: EVENT_COLORS.includes(ev.color) ? ev.color : 'blue',
+    color: CAL_COLORS.includes(ev.color) ? ev.color : (cal.color || 'blue'),
     updated_at: new Date().toISOString(),
   };
 
   if (ev.id) {
     if (typeof ev.id !== 'string' || !UUIDISH.test(ev.id)) return bad(res, 400, 'id が不正です');
-    const cur = (await sb(`events?id=eq.${encodeURIComponent(ev.id)}&select=id,owner_account_id,scope`))[0];
+    const cur = (await sb(`events?id=eq.${encodeURIComponent(ev.id)}&select=id,owner_account_id,calendar_id`))[0];
     if (!cur) return bad(res, 404, '予定が見つかりません');
-    const isAdmin = payload.role === 'leader' || payload.role === 'master';
-    const isOwner = cur.owner_account_id === acc.id;
-    // 編集権: 作成者本人、または leader/master（ただし他人の個人予定は不可）
-    if (!isOwner && !(isAdmin && cur.scope !== 'private')) return bad(res, 403, 'この予定を編集する権限がありません');
+    // 編集権: 予定の作成者本人 / 所属カレンダーの所有者 / master
+    const curCal = (cur.calendar_id === cal.id) ? cal
+      : (await sb(`calendars?id=eq.${encodeURIComponent(cur.calendar_id)}&select=id,owner_account_id`))[0];
+    const allowed = cur.owner_account_id === acc.id
+      || (curCal && curCal.owner_account_id === acc.id)
+      || tier === 'master';
+    if (!allowed) return bad(res, 403, 'この予定を編集する権限がありません');
     const rows = await sb(`events?id=eq.${encodeURIComponent(ev.id)}`, { method: 'PATCH', body: JSON.stringify(record) });
     return res.status(200).json({ ok: true, rows });
   }
 
   record.owner_account_id = acc.id;
-  record.owner_staff_id = acc.staff_id || null;  // ICSの個人予定抽出用（未紐付けは null）
+  record.owner_staff_id = acc.staff_id || null;
   record.owner_name = acc.name || null;
   const rows = await sb('events', { method: 'POST', body: JSON.stringify([record]) });
   return res.status(200).json({ ok: true, rows });
@@ -810,13 +1024,16 @@ async function eventsDelete(res, payload, body) {
   if (!(await assertCalendarAccess(res, payload))) return;
   const acc = await resolveAccount(payload.accountId);
   if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const tier = await calendarEffectiveTier(payload);
   const id = body.id;
   if (typeof id !== 'string' || !UUIDISH.test(id)) return bad(res, 400, 'id が不正です');
-  const cur = (await sb(`events?id=eq.${encodeURIComponent(id)}&select=id,owner_account_id,scope`))[0];
+  const cur = (await sb(`events?id=eq.${encodeURIComponent(id)}&select=id,owner_account_id,calendar_id`))[0];
   if (!cur) return res.status(200).json({ ok: true }); // 既に無い＝成功扱い
-  const isAdmin = payload.role === 'leader' || payload.role === 'master';
-  const isOwner = cur.owner_account_id === acc.id;
-  if (!isOwner && !(isAdmin && cur.scope !== 'private')) return bad(res, 403, 'この予定を削除する権限がありません');
+  const cal = (await sb(`calendars?id=eq.${encodeURIComponent(cur.calendar_id)}&select=id,owner_account_id`))[0];
+  const allowed = cur.owner_account_id === acc.id
+    || (cal && cal.owner_account_id === acc.id)
+    || tier === 'master';
+  if (!allowed) return bad(res, 403, 'この予定を削除する権限がありません');
   await sb(`events?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
   return res.status(200).json({ ok: true });
 }
@@ -845,7 +1062,7 @@ async function icalSettingsSave(res, payload, body) {
   const acc = await resolveAccount(payload.accountId);
   if (!acc || !acc.staff_id) return bad(res, 400, 'スタッフ未紐付けのアカウントです');
   const upd = { updated_at: new Date().toISOString() };
-  for (const k of ['include_shifts', 'include_private', 'include_dept', 'include_all', 'enabled']) {
+  for (const k of ['include_shifts', 'enabled']) {
     if (typeof body[k] === 'boolean') upd[k] = body[k];
   }
   const rows = await sb(`ical_feed_settings?staff_id=eq.${encodeURIComponent(acc.staff_id)}`, {
@@ -917,6 +1134,14 @@ export default async function handler(req, res) {
     }
     // カレンダー機能（段階公開の判定は各関数内で実施）
     if (action === 'calendar-access') return await calendarAccess(res, payload);
+    if (action === 'calendars-list') return await calendarsList(res, payload);
+    if (action === 'calendar-save') return await calendarSave(res, payload, body);
+    if (action === 'calendar-delete') return await calendarDelete(res, payload, body);
+    if (action === 'calendar-trash-list') return await calendarTrashList(res, payload);
+    if (action === 'calendar-restore') return await calendarRestore(res, payload, body);
+    if (action === 'calendar-members-list') return await calendarMembersList(res, payload, body);
+    if (action === 'calendar-pref-save') return await calendarPrefSave(res, payload, body);
+    if (action === 'staff-directory') return await staffDirectory(res, payload);
     if (action === 'events-list') return await eventsList(res, payload, body);
     if (action === 'events-save') return await eventsSave(res, payload, body);
     if (action === 'events-delete') return await eventsDelete(res, payload, body);
