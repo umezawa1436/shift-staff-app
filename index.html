@@ -1274,9 +1274,13 @@ async function showApp() {
   // appSettings（所定時間の定数 APP_SHORT_RATIO/APP_DEFAULT_PLAN_HOURS）は
   // loadClinicSettings→loadPlannedHours が参照するため、これだけ先に取得
   await loadAppSettings();
-  // カレンダータブの表示判定（段階公開: 0=masterのみ/1=leaderまで/2=全員。サーバ側でも同判定を強制）
-  const calTabBtn = document.getElementById('tabCalendar');
-  if (calTabBtn) calTabBtn.style.display = calendarTabAllowed() ? '' : 'none';
+  // カレンダータブの表示判定はサーバに問い合わせる。
+  // スタッフ画面のトークンは全員 role='staff'（auth.jsの仕様）のため、同じスタッフに紐づく
+  // leader/master アカウントまで見た「実効ロール」判定がサーバ側（calendar-access）にある。
+  dataApi({ action: 'calendar-access' }).then(r => {
+    const btn = document.getElementById('tabCalendar');
+    if (btn) btn.style.display = r.allowed ? '' : 'none';
+  }).catch(() => { /* 非公開・旧API等は非表示のまま */ });
   // 残り6本は互いに独立 → 並列取得で直列の待ち時間を解消
   await Promise.all([
     loadSharedWords(),
@@ -2177,23 +2181,6 @@ let calTabYear = new Date().getFullYear();
 let calTabMonth = new Date().getMonth() + 1;
 let calTabEvents = [];      // 表示月の予定（サーバ側で可視範囲フィルタ済み）
 let calTabShiftMap = {};    // day -> shift_type_id（自分の確定シフト）
-
-// role はトークンのペイロードから復元（currentUser/localStorage に無い既存ログインでも動く）
-function getMyRole() {
-  try {
-    const t = localStorage.getItem('shift_token') || '';
-    let b = t.split('.')[0].replace(/-/g, '+').replace(/_/g, '/');
-    while (b.length % 4) b += '=';
-    const json = JSON.parse(decodeURIComponent(escape(atob(b))));
-    return json.role || 'staff';
-  } catch { return 'staff'; }
-}
-function calendarTabAllowed() {
-  const role = getMyRole();
-  if (role === 'master') return true;
-  if (role === 'leader') return CALENDAR_RELEASE >= 1;
-  return CALENDAR_RELEASE >= 2;
-}
 
 const CAL_EVENT_COLORS = { blue:'#3b82f6', green:'#10b981', red:'#ef4444', orange:'#f97316', purple:'#8b5cf6', teal:'#14b8a6', pink:'#ec4899', gray:'#6b7280' };
 const CAL_SCOPE_LABELS = { private:'🔒 個人', dept:'部門', all:'全体' };
