@@ -710,7 +710,8 @@ async function assertCalendarAccess(res, payload) {
 async function calendarAccess(res, payload) {
   const level = await calendarReleaseLevel();
   const tier = await calendarEffectiveTier(payload);
-  return res.status(200).json({ allowed: calendarTierAllowed(tier, level), level });
+  // tier はクライアントの編集ボタン表示にも使う（権限の強制はあくまでサーバ側の各アクション）
+  return res.status(200).json({ allowed: calendarTierAllowed(tier, level), level, tier });
 }
 
 const EVENT_SCOPES = ['private', 'dept', 'all'];
