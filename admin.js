@@ -4761,6 +4761,222 @@ window.setCalendarRelease = async function(v) {
   hideLoading();
 };
 
+
+// ===== カレンダー管理（管理画面から全カレンダーを制御。masterのみ）=====
+// data.js の calendar-admin-list / calendar-save / calendar-delete /
+// calendar-trash-list / calendar-restore / calendar-members-list / staff-directory を利用。
+// 管理者トークンは role=master をそのまま持つため、公開範囲レベルに関係なく操作できる。
+const CAL_ADMIN_COLORS = { blue:'#3b82f6', green:'#10b981', red:'#ef4444', orange:'#f97316', purple:'#8b5cf6', teal:'#14b8a6', pink:'#ec4899', gray:'#6b7280' };
+const CAL_ADMIN_VIS_ICONS = { private:'🔒', members:'👥', all:'🌐' };
+const CAL_ADMIN_VIS_LABELS = { private:'個人', members:'メンバー限定', all:'全体公開' };
+let calAdminCache = [];        // calendar-admin-list の結果
+let calAdminEditing = null;    // 編集中カレンダー（null=新規作成）
+let calAdminColor = 'blue';
+let calAdminStaffDir = null;   // staff-directory キャッシュ
+
+async function loadCalAdminList() {
+  const wrap = document.getElementById('calAdminList');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px 0">読み込み中...</div>';
+  try {
+    const r = await adminApi('/api/data', { action: 'calendar-admin-list' });
+    calAdminCache = r.calendars || [];
+    renderCalAdminList();
+  } catch(e) {
+    console.error(e);
+    wrap.innerHTML = '<div style="color:#dc2626;font-size:12px;padding:8px 0">読み込みに失敗しました：' + escapeHtml(e.message || '') + '</div>';
+  }
+}
+
+function calAdminRow(c, canEdit) {
+  const hex = CAL_ADMIN_COLORS[c.color] || CAL_ADMIN_COLORS.blue;
+  const sub = `${CAL_ADMIN_VIS_ICONS[c.visibility] || ''} ${CAL_ADMIN_VIS_LABELS[c.visibility] || c.visibility}` +
+    (c.owner_name ? ` ・ 作成: ${escapeHtml(c.owner_name)}` : '') +
+    (c.visibility === 'members' ? ` ・ メンバー ${c.member_count}人` : '') +
+    ` ・ 予定 ${c.event_count}件`;
+  return `<div style="display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid var(--border)">
+    <div style="width:12px;height:12px;border-radius:50%;background:${hex};flex-shrink:0"></div>
+    <div style="min-width:0;flex:1">
+      <div style="font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(c.name)}</div>
+      <div style="font-size:11px;color:var(--text-muted)">${sub}</div>
+    </div>
+    ${canEdit ? `<button class="btn btn-outline" style="padding:6px 10px;font-size:12px;flex-shrink:0" onclick="openCalAdminEditor('${c.id}')">✏️ 編集</button>` : ''}
+    <button class="btn btn-outline btn-danger" style="padding:6px 10px;font-size:12px;flex-shrink:0" onclick="deleteCalAdmin('${c.id}')">削除</button>
+  </div>`;
+}
+
+function renderCalAdminList() {
+  const wrap = document.getElementById('calAdminList');
+  if (!wrap) return;
+  const shared = calAdminCache.filter(c => c.visibility !== 'private');
+  const privates = calAdminCache.filter(c => c.visibility === 'private');
+  let html = '';
+  html += shared.length
+    ? shared.map(c => calAdminRow(c, true)).join('')
+    : '<div style="color:var(--text-muted);font-size:12px;padding:8px 0">共有カレンダーはまだありません</div>';
+  if (privates.length) {
+    // 個人カレンダーは折りたたみ表示。中身（予定）は見えず、管理操作は削除のみ
+    html += `<details style="margin-top:10px">
+      <summary style="cursor:pointer;font-size:12px;color:var(--text-muted);padding:4px 0">🔒 個人カレンダー ${privates.length}件（退職者の残置など削除のみ可能）</summary>
+      ${privates.map(c => calAdminRow(c, false)).join('')}
+    </details>`;
+  }
+  wrap.innerHTML = html;
+}
+
+function renderCalAdminColors() {
+  const wrap = document.getElementById('calAdminColors');
+  if (!wrap) return;
+  wrap.innerHTML = Object.entries(CAL_ADMIN_COLORS).map(([key, hex]) =>
+    `<button type="button" onclick="selectCalAdminColor('${key}')" style="width:32px;height:32px;border-radius:50%;background:${hex};cursor:pointer;
+      border:${key === calAdminColor ? '3px solid var(--text)' : '3px solid transparent'};box-shadow:0 0 0 1px var(--border)"></button>`
+  ).join('');
+}
+window.selectCalAdminColor = function(key) { calAdminColor = key; renderCalAdminColors(); };
+
+window.calAdminVisChanged = function() {
+  const vis = document.getElementById('calAdminVis').value;
+  document.getElementById('calAdminMemberWrap').style.display = vis === 'members' ? '' : 'none';
+  if (vis === 'members') loadCalAdminMembers();
+};
+
+async function loadCalAdminMembers(selectedIds) {
+  const wrap = document.getElementById('calAdminMembers');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="color:var(--text-muted);font-size:12px">読み込み中...</div>';
+  try {
+    if (!calAdminStaffDir) {
+      calAdminStaffDir = (await adminApi('/api/data', { action: 'staff-directory' })).staff || [];
+    }
+    let selected = selectedIds;
+    if (!selected && calAdminEditing && calAdminEditing.visibility === 'members') {
+      const r = await adminApi('/api/data', { action: 'calendar-members-list', calendar_id: calAdminEditing.id });
+      selected = (r.members || []).map(m => m.id);
+    }
+    const selSet = new Set(selected || []);
+    let html = '';
+    [0, 1, 2, 3].forEach(dept => {
+      const list = calAdminStaffDir.filter(st => st.dept_id === dept);
+      if (!list.length) return;
+      html += `<div style="font-size:11px;font-weight:700;color:var(--text-muted);margin:8px 0 4px">${DEPT_NAMES[dept] || dept}</div>`;
+      html += list.map(st =>
+        `<label style="display:inline-flex;align-items:center;gap:5px;margin:0 10px 6px 0;font-size:13px;cursor:pointer">
+          <input type="checkbox" class="calAdminMem" value="${st.id}" ${selSet.has(st.id) ? 'checked' : ''}>
+          ${escapeHtml(st.name)}
+        </label>`).join('');
+    });
+    wrap.innerHTML = html || '<div style="color:var(--text-muted);font-size:12px">スタッフがいません</div>';
+  } catch(e) {
+    console.error(e);
+    wrap.innerHTML = '<div style="color:#dc2626;font-size:12px">名簿の読み込みに失敗しました</div>';
+  }
+}
+
+window.openCalAdminEditor = function(calendarId) {
+  calAdminEditing = calendarId ? calAdminCache.find(c => c.id === calendarId) || null : null;
+  document.getElementById('calAdminModalTitle').textContent = calAdminEditing ? 'カレンダーを編集' : 'カレンダーを作成';
+  document.getElementById('calAdminName').value = calAdminEditing ? calAdminEditing.name : '';
+  document.getElementById('calAdminVis').value = calAdminEditing ? calAdminEditing.visibility : 'all';
+  calAdminColor = calAdminEditing && calAdminEditing.color ? calAdminEditing.color : 'blue';
+  renderCalAdminColors();
+  calAdminVisChanged();
+  openModal('calAdminModal');
+};
+
+window.saveCalAdmin = async function() {
+  const name = document.getElementById('calAdminName').value.trim();
+  if (!name) { showToast('カレンダー名を入力してください', 'error'); return; }
+  const visibility = document.getElementById('calAdminVis').value;
+  const calendar = { name, visibility, color: calAdminColor };
+  if (calAdminEditing) calendar.id = calAdminEditing.id;
+  if (visibility === 'members') {
+    calendar.member_staff_ids = [...document.querySelectorAll('.calAdminMem:checked')].map(el => el.value);
+  }
+  showLoading();
+  try {
+    await adminApi('/api/data', { action: 'calendar-save', calendar });
+    closeModal('calAdminModal');
+    showToast(calAdminEditing ? 'カレンダーを更新しました ✓' : 'カレンダーを作成しました ✓', 'success');
+    await loadCalAdminList();
+  } catch(e) {
+    console.error(e);
+    showToast('保存に失敗しました：' + (e.message || ''), 'error');
+  }
+  hideLoading();
+};
+
+window.deleteCalAdmin = async function(calendarId) {
+  const c = calAdminCache.find(x => x.id === calendarId);
+  if (!c) return;
+  if (!confirm(`カレンダー「${c.name}」を削除しますか？（予定 ${c.event_count}件）\n\n・スタッフ画面からも予定ごと非表示になります\n・30日以内なら「削除済み」から復元できます\n・30日を過ぎると完全に削除されます`)) return;
+  showLoading();
+  try {
+    await adminApi('/api/data', { action: 'calendar-delete', id: calendarId });
+    showToast('カレンダーを削除しました', 'success');
+    await loadCalAdminList();
+    // ゴミ箱を開いていたら更新
+    const trash = document.getElementById('calAdminTrash');
+    if (trash && trash.style.display !== 'none') await renderCalAdminTrash();
+  } catch(e) {
+    console.error(e);
+    showToast('削除に失敗しました：' + (e.message || ''), 'error');
+  }
+  hideLoading();
+};
+
+async function renderCalAdminTrash() {
+  const wrap = document.getElementById('calAdminTrash');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="color:var(--text-muted);font-size:12px">読み込み中...</div>';
+  try {
+    const r = await adminApi('/api/data', { action: 'calendar-trash-list' });
+    const trash = r.trash || [];
+    if (!trash.length) {
+      wrap.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:4px 0">削除済みカレンダーはありません</div>';
+      return;
+    }
+    wrap.innerHTML = trash.map(c => {
+      const hex = CAL_ADMIN_COLORS[c.color] || CAL_ADMIN_COLORS.blue;
+      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--border)">
+        <div style="width:12px;height:12px;border-radius:50%;background:${hex};flex-shrink:0"></div>
+        <div style="min-width:0;flex:1">
+          <div style="font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(c.name)}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${CAL_ADMIN_VIS_ICONS[c.visibility] || ''} ${c.owner_name ? '作成: ' + escapeHtml(c.owner_name) + ' ・ ' : ''}復元期限まで あと${c.days_left}日</div>
+        </div>
+        <button class="btn btn-outline" style="padding:6px 10px;font-size:12px;flex-shrink:0" onclick="restoreCalAdmin('${c.id}')">復元</button>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    console.error(e);
+    wrap.innerHTML = '<div style="color:#dc2626;font-size:12px">読み込みに失敗しました</div>';
+  }
+}
+
+window.toggleCalAdminTrash = async function() {
+  const wrap = document.getElementById('calAdminTrash');
+  if (!wrap) return;
+  if (wrap.style.display === 'none') {
+    wrap.style.display = '';
+    await renderCalAdminTrash();
+  } else {
+    wrap.style.display = 'none';
+  }
+};
+
+window.restoreCalAdmin = async function(calendarId) {
+  showLoading();
+  try {
+    await adminApi('/api/data', { action: 'calendar-restore', id: calendarId });
+    showToast('カレンダーを復元しました ✓', 'success');
+    await renderCalAdminTrash();
+    await loadCalAdminList();
+  } catch(e) {
+    console.error(e);
+    showToast('復元に失敗しました：' + (e.message || ''), 'error');
+  }
+  hideLoading();
+};
+
 async function loadSettings() {
   showLoading();
   // 各処理は個別 try で包み、1つが失敗しても他の処理が止まらないようにする
@@ -4777,6 +4993,15 @@ async function loadSettings() {
     card.style.display = '';
     const rows = await sb(`app_settings?key=eq.calendar_release&select=value`);
     renderCalendarReleaseBtns(rows && rows[0] ? (parseFloat(rows[0].value) || 0) : 0);
+  });
+
+  // カレンダー管理（masterのみ）
+  await safe('calendarAdmin', async () => {
+    const card = document.getElementById('calendarAdminCard');
+    if (!card) return;
+    if (adminUser.role !== 'master') { card.style.display = 'none'; return; }
+    card.style.display = '';
+    await loadCalAdminList();
   });
 
   // 必要人数設定（最重要：最初に実行）
