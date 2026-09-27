@@ -166,7 +166,7 @@ export default async function handler(req, res) {
       const calIn = visibleIds.map(id => `"${id}"`).join(',');
       const events = await sb(
         `events?start_date=lte.${rangeEnd}&end_date=gte.${rangeStart}&calendar_id=in.(${calIn})` +
-        `&select=id,title,start_date,end_date,start_time,end_time,location,memo&order=start_date,id&limit=1000`
+        `&select=id,title,start_date,end_date,start_time,end_time,location,memo,url&order=start_date,id&limit=1000`
       );
       for (const ev of events || []) {
         lines.push('BEGIN:VEVENT');
@@ -174,7 +174,10 @@ export default async function handler(req, res) {
         lines.push(`DTSTAMP:${stamp}`);
         lines.push(`SUMMARY:${esc(ev.title)}`);
         if (ev.location) lines.push(`LOCATION:${esc(ev.location)}`);
-        if (ev.memo) lines.push(`DESCRIPTION:${esc(ev.memo)}`);
+        // URLプロパティはGoogleカレンダーが無視するため、DESCRIPTION末尾にも併記して両対応
+        if (ev.url) lines.push(`URL:${esc(ev.url)}`);
+        const desc = [ev.memo, ev.url].filter(Boolean).join('\n');
+        if (desc) lines.push(`DESCRIPTION:${esc(desc)}`);
         if (ev.start_time) {
           lines.push(`DTSTART;TZID=Asia/Tokyo:${compact(ev.start_date)}T${ev.start_time.replace(':', '')}00`);
           const endT = ev.end_time || ev.start_time;
