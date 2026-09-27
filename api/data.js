@@ -991,6 +991,29 @@ async function eventsList(res, payload, body) {
   const rows = await sbAll(
     `events?start_date=lte.${last}&end_date=gte.${first}&calendar_id=in.(${inFilter(ids)})&select=*`,
     'start_date,id');
+
+  // 外部カレンダー（本人のみ・読み取り専用）をカレンダー一覧と予定に合流させる
+  try {
+    const exts = await sb(`external_calendars?account_id=eq.${encodeURIComponent(acc.id)}&select=*`);
+    if (exts && exts.length) {
+      const prefs2 = await sb(`calendar_prefs?account_id=eq.${encodeURIComponent(acc.id)}&hidden=eq.true&select=calendar_id`);
+      const hidden2 = new Set((prefs2 || []).map(x => x.calendar_id));
+      const refreshed = await Promise.all(exts.map(c => extRefresh(c)));
+      for (const c of refreshed) {
+        calendars.push({
+          id: c.id, name: c.name, color: c.color, visibility: 'external', external: true,
+          owner_account_id: acc.id, owner_name: null, is_owner: true, is_member: false,
+          hidden: hidden2.has(c.id), can_post: false, can_manage: false, last_error: c.last_error || null,
+        });
+        const inst = extExpand(c.cache || [], first, last);
+        inst.forEach((m, i) => rows.push({
+          id: `ext-${c.id}-${i}`, calendar_id: c.id, title: m.title,
+          start_date: m.sd, end_date: m.ed, start_time: m.st, end_time: m.et,
+          location: m.location, url: m.url, memo: null, external: true,
+        }));
+      }
+    }
+  } catch (e) { console.error('external calendars merge:', e); }
   return res.status(200).json({ rows, calendars });
 }
 
@@ -1089,6 +1112,305 @@ async function eventsDelete(res, payload, body) {
   return res.status(200).json({ ok: true });
 }
 
+// ===== 外部カレンダー取り込み（Google等の非公開ICS URL・読み取り専用）=====
+// 本人のアカウントにのみ表示する。ical.js のフィード（アプリ→外部）には含めない＝ループ防止。
+const EXT_CAL_MAX = 3;
+const EXT_FETCH_TTL_MS = 15 * 60 * 1000; // 取得キャッシュ15分
+const EXT_MAX_BYTES = 5 * 1024 * 1024;
+const EXT_MAX_EVENTS = 2000;
+
+function extUrlOk(u) {
+  let parsed;
+  try { parsed = new URL(String(u)); } catch { return false; }
+  if (parsed.protocol !== 'https:') return false;
+  const h = parsed.hostname.toLowerCase();
+  // SSRF対策: IPリテラル・内部ホスト名は拒否
+  if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal') || h.startsWith('[')) return false;
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) return false;
+  return true;
+}
+
+const extMs = (ymd) => { const [y, m, d] = ymd.split('-').map(Number); return Date.UTC(y, m - 1, d); };
+const extYmd = (ms) => { const dt = new Date(ms); return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`; };
+const extAddDays = (ymd, n) => extYmd(extMs(ymd) + n * 86400000);
+const extDiffDays = (a, b) => Math.round((extMs(b) - extMs(a)) / 86400000);
+
+function icsUnescape(v) {
+  return String(v).replace(/\\n/gi, '\n').replace(/\\,/g, ',').replace(/\;/g, ';').replace(/\\\\/g, '\\');
+}
+
+// ICSの日時値をJSTの {date, time} に変換。
+// UTC(Z)は+9時間。TZID付き・浮動時刻はそのまま採用（日本のGoogleカレンダーは Asia/Tokyo で出力）。
+function icsToJst(val, params) {
+  const v = String(val).trim();
+  if ((params && params.VALUE === 'DATE') || /^\d{8}$/.test(v)) {
+    if (!/^\d{8}/.test(v)) return null;
+    return { date: `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}`, time: null };
+  }
+  const m = v.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/);
+  if (!m) return null;
+  if (m[7] === 'Z') {
+    const ms = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) + 9 * 3600000;
+    const dt = new Date(ms);
+    return { date: extYmd(ms), time: `${String(dt.getUTCHours()).padStart(2, '0')}:${String(dt.getUTCMinutes()).padStart(2, '0')}` };
+  }
+  return { date: `${m[1]}-${m[2]}-${m[3]}`, time: `${m[4]}:${m[5]}` };
+}
+
+// ICSテキスト → VEVENT配列（行の折返し復元込み）
+function parseIcsEvents(text) {
+  const raw = text.split(/\r?\n/);
+  const lines = [];
+  for (const ln of raw) {
+    if ((ln.startsWith(' ') || ln.startsWith('\t')) && lines.length) lines[lines.length - 1] += ln.slice(1);
+    else lines.push(ln);
+  }
+  const events = [];
+  let cur = null;
+  for (const ln of lines) {
+    if (ln === 'BEGIN:VEVENT') { cur = { exdates: [] }; continue; }
+    if (ln === 'END:VEVENT') { if (cur) events.push(cur); cur = null; continue; }
+    if (!cur) continue;
+    const ci = ln.indexOf(':');
+    if (ci < 0) continue;
+    const left = ln.slice(0, ci);
+    const val = ln.slice(ci + 1);
+    const parts = left.split(';');
+    const prop = parts[0].toUpperCase();
+    const params = {};
+    for (let i = 1; i < parts.length; i++) {
+      const eq = parts[i].indexOf('=');
+      if (eq > 0) params[parts[i].slice(0, eq).toUpperCase()] = parts[i].slice(eq + 1);
+    }
+    if (prop === 'UID') cur.uid = val;
+    else if (prop === 'SUMMARY') cur.title = icsUnescape(val);
+    else if (prop === 'LOCATION') cur.location = icsUnescape(val);
+    else if (prop === 'URL') cur.url = val;
+    else if (prop === 'STATUS') cur.cancelled = /CANCELLED/i.test(val);
+    else if (prop === 'RRULE') cur.rrule = val;
+    else if (prop === 'DTSTART') cur.start = icsToJst(val, params);
+    else if (prop === 'DTEND') cur.end = icsToJst(val, params);
+    else if (prop === 'EXDATE') val.split(',').forEach(x => { const d = icsToJst(x, params); if (d) cur.exdates.push(d.date); });
+    else if (prop === 'RECURRENCE-ID') { const d = icsToJst(val, params); cur.recurId = d ? d.date : null; }
+  }
+  return events;
+}
+
+// パース結果をキャッシュ用の最小形に変換（繰り返し以外は過去1年〜先2年に間引く）
+function extDigest(events) {
+  const today = extYmd(Date.now());
+  const lo = extAddDays(today, -366);
+  const hi = extAddDays(today, 731);
+  const out = [];
+  for (const e of events) {
+    if (!e.start || !e.title) continue;
+    const allday = !e.start.time;
+    const sd = e.start.date;
+    let ed = e.end ? e.end.date : sd;
+    if (allday && e.end) ed = extAddDays(e.end.date, -1); // 終日DTENDは翌日日付（排他）→ 実終了日へ
+    if (ed < sd) ed = sd;
+    const rec = {
+      uid: e.uid ? String(e.uid).slice(0, 200) : '',
+      title: String(e.title).slice(0, 60),
+      location: e.location ? String(e.location).slice(0, 100) : null,
+      url: (e.url && /^https?:\/\/\S+$/i.test(e.url)) ? String(e.url).slice(0, 300) : null,
+      sd, st: e.start.time || null, ed, et: (e.end && e.end.time) || null,
+      rrule: e.rrule ? String(e.rrule).slice(0, 300) : null,
+      ex: (e.exdates || []).slice(0, 100),
+      rid: e.recurId || null,
+      x: !!e.cancelled,
+    };
+    if (!rec.rrule && !rec.rid && (rec.ed < lo || rec.sd > hi)) continue;
+    out.push(rec);
+    if (out.length >= EXT_MAX_EVENTS) break;
+  }
+  return out;
+}
+
+function parseRrule(str) {
+  const r = {};
+  String(str).split(';').forEach(pp => { const i = pp.indexOf('='); if (i > 0) r[pp.slice(0, i).toUpperCase()] = pp.slice(i + 1); });
+  return r;
+}
+const EXT_DOW = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+
+// 月内のn番目の曜日（n<0は末尾から）。該当なしは null
+function extNthWeekday(y, mo, dowIdx, n) {
+  const daysIn = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  const hits = [];
+  for (let d = 1; d <= daysIn; d++) {
+    if (new Date(Date.UTC(y, mo - 1, d)).getUTCDay() === dowIdx) hits.push(d);
+  }
+  return (n > 0 ? hits[n - 1] : hits[hits.length + n]) || null;
+}
+
+// RRULE を [first..last] に展開。FREQ=DAILY/WEEKLY/MONTHLY/YEARLY、
+// INTERVAL / BYDAY / BYMONTHDAY / COUNT / UNTIL に対応（EXDATEはCOUNTに数えたうえで除外＝RFC5545準拠）
+function extOccurrences(m, first, last, skipSet) {
+  const out = [];
+  const r = parseRrule(m.rrule);
+  const freq = r.FREQ;
+  const interval = Math.max(1, parseInt(r.INTERVAL || '1', 10) || 1);
+  const count = r.COUNT ? (parseInt(r.COUNT, 10) || null) : null;
+  let until = null;
+  if (r.UNTIL && /^\d{8}/.test(r.UNTIL)) until = `${r.UNTIL.slice(0, 4)}-${r.UNTIL.slice(4, 6)}-${r.UNTIL.slice(6, 8)}`;
+  const durDays = extDiffDays(m.sd, m.ed);
+  let made = 0;
+  const emit = (d) => {
+    made++;
+    if (skipSet.has(d) || (m.ex || []).includes(d)) return;
+    const ed2 = extAddDays(d, durDays);
+    if (d <= last && ed2 >= first) out.push({ ...m, sd: d, ed: ed2 });
+  };
+
+  if (freq === 'DAILY' || freq === 'WEEKLY') {
+    const startMs = extMs(m.sd);
+    const startDow = new Date(startMs).getUTCDay();
+    const byday = (freq === 'WEEKLY' && r.BYDAY)
+      ? r.BYDAY.split(',').map(x => x.slice(-2)) : [EXT_DOW[startDow]];
+    for (let i = 0; i < 16000; i++) {
+      const d = extYmd(startMs + i * 86400000);
+      if (d > last || (until && d > until)) break;
+      if (freq === 'DAILY') {
+        if (i % interval === 0) emit(d);
+      } else {
+        const weekIdx = Math.floor((i + startDow) / 7);
+        if (weekIdx % interval === 0 && byday.includes(EXT_DOW[(startDow + i) % 7])) emit(d);
+      }
+      if (count && made >= count) break;
+    }
+  } else if (freq === 'MONTHLY') {
+    const sy = parseInt(m.sd.slice(0, 4), 10);
+    const sm = parseInt(m.sd.slice(5, 7), 10);
+    const sday = parseInt(m.sd.slice(8, 10), 10);
+    const bydayM = r.BYDAY ? /^(-?\d)([A-Z]{2})$/.exec(r.BYDAY) : null;
+    const bymd = r.BYMONTHDAY ? parseInt(r.BYMONTHDAY, 10) : null;
+    for (let k = 0; k < 600; k++) {
+      if (k % interval !== 0) continue;
+      const total = (sm - 1) + k;
+      const y = sy + Math.floor(total / 12);
+      const mo = (total % 12) + 1;
+      let day = null;
+      if (bydayM) day = extNthWeekday(y, mo, EXT_DOW.indexOf(bydayM[2]), parseInt(bydayM[1], 10));
+      else {
+        const want = bymd || sday;
+        const daysIn = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+        day = want <= daysIn ? want : null;
+      }
+      if (day == null) continue;
+      const d = `${y}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      if (d < m.sd) continue;
+      if (d > last || (until && d > until)) break;
+      emit(d);
+      if (count && made >= count) break;
+    }
+  } else if (freq === 'YEARLY') {
+    const sy = parseInt(m.sd.slice(0, 4), 10);
+    for (let k = 0; k < 100; k += interval) {
+      const d = `${sy + k}${m.sd.slice(4)}`;
+      if (d > last || (until && d > until)) break;
+      emit(d);
+      if (count && made >= count) break;
+    }
+  }
+  return out;
+}
+
+// キャッシュを月範囲に展開（RECURRENCE-ID上書き・STATUS:CANCELLED対応）
+function extExpand(cache, first, last) {
+  const rows = [];
+  const overr = {};
+  for (const m of cache || []) if (m.rid && m.uid) (overr[m.uid] = overr[m.uid] || new Set()).add(m.rid);
+  for (const m of cache || []) {
+    if (m.x) continue; // キャンセル済み
+    if (m.rid || !m.rrule) {
+      if (m.sd <= last && m.ed >= first) rows.push(m);
+      continue;
+    }
+    rows.push(...extOccurrences(m, first, last, overr[m.uid] || new Set()));
+  }
+  return rows;
+}
+
+async function extFetchAndDigest(url) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 8000);
+  try {
+    const resp = await fetch(url, { signal: ctl.signal, redirect: 'follow' });
+    if (!resp.ok) throw new Error(`取得失敗（HTTP ${resp.status}）`);
+    const text = await resp.text();
+    if (text.length > EXT_MAX_BYTES) throw new Error('カレンダーデータが大きすぎます');
+    if (!text.includes('BEGIN:VCALENDAR')) throw new Error('iCal形式のURLではありません');
+    return extDigest(parseIcsEvents(text));
+  } catch (e) {
+    if (e && e.name === 'AbortError') throw new Error('取得がタイムアウトしました');
+    throw e;
+  } finally { clearTimeout(t); }
+}
+
+// キャッシュが15分より古ければ再取得（失敗時は旧キャッシュ維持＋エラー記録。次の再試行も15分後）
+async function extRefresh(cal) {
+  const stale = !cal.last_fetched_at || (Date.now() - new Date(cal.last_fetched_at).getTime() > EXT_FETCH_TTL_MS);
+  if (!stale) return cal;
+  try {
+    const cache = await extFetchAndDigest(cal.ics_url);
+    const upd = { cache, last_fetched_at: new Date().toISOString(), last_error: null, updated_at: new Date().toISOString() };
+    await sb(`external_calendars?id=eq.${encodeURIComponent(cal.id)}`, { method: 'PATCH', body: JSON.stringify(upd) });
+    return { ...cal, ...upd };
+  } catch (e) {
+    const upd = { last_fetched_at: new Date().toISOString(), last_error: String(e.message || e).slice(0, 200), updated_at: new Date().toISOString() };
+    try { await sb(`external_calendars?id=eq.${encodeURIComponent(cal.id)}`, { method: 'PATCH', body: JSON.stringify(upd) }); } catch {}
+    return { ...cal, ...upd };
+  }
+}
+
+// 取り込みカレンダーの追加/更新（本人のみ・最大3件。保存時に即取得して検証する）
+async function extCalSave(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const name = String(body.name || '').trim().slice(0, 20) || 'Googleカレンダー';
+  const color = CAL_COLORS.includes(body.color) ? body.color : 'teal';
+  const icsUrl = String(body.ics_url || '').trim().slice(0, 500);
+  if (!extUrlOk(icsUrl)) return bad(res, 400, 'URLが不正です（https:// のiCal URLを貼り付けてください）');
+  let cache;
+  try { cache = await extFetchAndDigest(icsUrl); }
+  catch (e) { return bad(res, 400, `カレンダーを取得できません：${e.message || e}`); }
+  const now = new Date().toISOString();
+
+  if (body.id) {
+    if (typeof body.id !== 'string' || !UUIDISH.test(body.id)) return bad(res, 400, 'id が不正です');
+    const cur = (await sb(`external_calendars?id=eq.${encodeURIComponent(body.id)}&select=id,account_id`))[0];
+    if (!cur || cur.account_id !== acc.id) return bad(res, 404, '取り込みカレンダーが見つかりません');
+    await sb(`external_calendars?id=eq.${encodeURIComponent(body.id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name, color, ics_url: icsUrl, cache, last_fetched_at: now, last_error: null, updated_at: now }),
+    });
+    return res.status(200).json({ ok: true, id: body.id, event_count: cache.length });
+  }
+
+  const mine = await sb(`external_calendars?account_id=eq.${encodeURIComponent(acc.id)}&select=id`);
+  if ((mine || []).length >= EXT_CAL_MAX) return bad(res, 400, `取り込みカレンダーは${EXT_CAL_MAX}件までです`);
+  const rows = await sb('external_calendars', {
+    method: 'POST',
+    body: JSON.stringify([{ account_id: acc.id, name, color, ics_url: icsUrl, cache, last_fetched_at: now }]),
+  });
+  return res.status(200).json({ ok: true, id: rows && rows[0] ? rows[0].id : null, event_count: cache.length });
+}
+
+async function extCalDelete(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const id = body.id;
+  if (typeof id !== 'string' || !UUIDISH.test(id)) return bad(res, 400, 'id が不正です');
+  const cur = (await sb(`external_calendars?id=eq.${encodeURIComponent(id)}&select=id,account_id`))[0];
+  if (!cur || cur.account_id !== acc.id) return res.status(200).json({ ok: true }); // 既に無い＝成功扱い
+  await sb(`calendar_prefs?calendar_id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+  await sb(`external_calendars?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+  return res.status(200).json({ ok: true });
+}
+
 // ===== ICS購読フィード設定（本人分のみ）=====
 function newFeedToken() { return crypto.randomBytes(32).toString('hex'); }
 
@@ -1109,10 +1431,13 @@ async function icalSettingsGet(res, payload) {
   const tier = await calendarEffectiveTier(payload);
   const cals = await fetchVisibleCalendars(acc, tier);
   const excl = await sb(`ical_feed_excludes?staff_id=eq.${encodeURIComponent(acc.staff_id)}&select=calendar_id`);
+  const externals = await sb(
+    `external_calendars?account_id=eq.${encodeURIComponent(acc.id)}&select=id,name,color,ics_url,last_error,last_fetched_at&order=created_at`);
   return res.status(200).json({
     linked: true, settings: row,
     calendars: cals.map(c => ({ id: c.id, name: c.name, color: c.color, visibility: c.visibility })),
     excluded: (excl || []).map(x => x.calendar_id),
+    externals: externals || [],
   });
 }
 
@@ -1222,6 +1547,8 @@ export default async function handler(req, res) {
     if (action === 'ical-settings-get') return await icalSettingsGet(res, payload);
     if (action === 'ical-settings-save') return await icalSettingsSave(res, payload, body);
     if (action === 'ical-token-rotate') return await icalTokenRotate(res, payload);
+    if (action === 'ext-cal-save') return await extCalSave(res, payload, body);
+    if (action === 'ext-cal-delete') return await extCalDelete(res, payload, body);
 
     if (!table || !POLICY[table]) return bad(res, 400, '許可されていないテーブルです');
     const p = POLICY[table];
