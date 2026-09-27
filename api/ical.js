@@ -145,7 +145,7 @@ export default async function handler(req, res) {
     }
 
     // ⑥ カレンダー予定: 本人が「見える」カレンダー（全体公開＋所有＋参加）のうち、
-    //    アプリで非表示にしていないものを配信する＝アプリの表示とフィードが一致する
+    //    フィード設定で「送らない」に選んだもの（ical_feed_excludes）を除いて配信する
     const cals = await sb('calendars?deleted_at=is.null&select=id,visibility,owner_account_id&limit=1000');
     let memIds = new Set();
     const mem = await sb(`calendar_members?staff_id=eq.${encodeURIComponent(feed.staff_id)}&select=calendar_id`);
@@ -155,11 +155,10 @@ export default async function handler(req, res) {
       c.visibility === 'all' || accIdSet.has(c.owner_account_id) ||
       (c.visibility === 'members' && memIds.has(c.id))
     ).map(c => c.id);
-    if (accIds.length && visibleIds.length) {
-      const accIn = accIds.map(id => `"${id}"`).join(',');
-      const prefs = await sb(`calendar_prefs?account_id=in.(${accIn})&hidden=eq.true&select=calendar_id`);
-      const hiddenIds = new Set((prefs || []).map(p => p.calendar_id));
-      visibleIds = visibleIds.filter(id => !hiddenIds.has(id));
+    if (visibleIds.length) {
+      const excl = await sb(`ical_feed_excludes?staff_id=eq.${encodeURIComponent(feed.staff_id)}&select=calendar_id`);
+      const exclSet = new Set((excl || []).map(x => x.calendar_id));
+      visibleIds = visibleIds.filter(id => !exclSet.has(id));
     }
 
     if (visibleIds.length) {
