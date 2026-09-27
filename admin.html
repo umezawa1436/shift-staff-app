@@ -564,6 +564,15 @@
 
         <!-- SETTINGS -->
         <div class="page" id="page-settings">
+          <!-- カレンダー機能の公開範囲（masterのみ表示。loadSettings が制御） -->
+          <div class="card" id="calendarReleaseCard" style="display:none">
+            <div class="card-title">📅 カレンダー機能の公開範囲</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
+              スタッフ画面の「カレンダー」タブを誰に表示するかを段階的に切り替えます。
+              レベルを下げてもデータは消えません（タブが非表示になるだけ）。
+            </div>
+            <div id="calendarReleaseBtns" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+          </div>
           <div class="card">
             <div class="card-title">月間所定労働時間</div>
             <div id="monthlyHoursGrid"></div>
@@ -965,7 +974,7 @@
   </div>
 </div>
 
-<script src="admin.js?v=53"></script>
+<script src="admin.js?v=54"></script>
 <script src="admin-generate.js?v=13"></script>
 </body>
 </html>
