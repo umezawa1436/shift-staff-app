@@ -553,6 +553,7 @@
       <button class="month-btn" id="calTabPrev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg></button>
       <div style="font-size:18px;font-weight:700" id="calTabTitle"></div>
       <button class="month-btn" id="calTabNext"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg></button>
+      <button class="month-btn" id="calIcsBtn" onclick="openCalIcsSheet()" title="外部カレンダー連携" style="margin-left:auto">⚙️</button>
     </div>
     <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px">
       <div style="text-align:center;font-size:11px;font-weight:600;color:#ef4444;padding:4px 0">日</div>
@@ -575,6 +576,57 @@
       <button onclick="closeCalDaySheet()" style="border:none;background:var(--bg);border-radius:8px;padding:6px 14px;font-size:13px;font-family:inherit;cursor:pointer">閉じる</button>
     </div>
     <div id="calDayBody"></div>
+    <button onclick="openCalEventEditor(null, calSheetDay)" style="width:100%;margin-top:12px;padding:12px;border:1.5px dashed var(--primary);border-radius:12px;background:#eef2ff;color:var(--primary);font-weight:700;font-size:14px;font-family:inherit;cursor:pointer">＋ 予定を追加</button>
+  </div>
+
+  <!-- 予定エディタ -->
+  <div id="calEvOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:310" onclick="closeCalEventEditor()"></div>
+  <div id="calEvSheet" style="display:none;position:fixed;left:0;right:0;bottom:0;background:white;border-radius:20px 20px 0 0;z-index:311;max-height:85vh;overflow-y:auto;padding:20px 20px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,0.15)">
+    <div style="font-size:16px;font-weight:700;margin-bottom:14px" id="calEvSheetTitle">予定を追加</div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <input type="text" id="calEvTitle" maxlength="30" placeholder="タイトル（30文字まで）"
+        style="padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit">
+      <select id="calEvScope" style="padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;background:white">
+        <option value="private">🔒 個人のみ（自分だけに表示）</option>
+        <option value="dept">部門に公開</option>
+        <option value="all">全体に公開（全部署）</option>
+      </select>
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px">
+        <input type="checkbox" id="calEvAllday" checked onchange="document.getElementById('calEvTimeRow').style.display = this.checked ? 'none' : 'flex'">
+        終日
+      </label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="date" id="calEvStart" style="flex:1;padding:10px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit">
+        <span style="color:var(--text-muted)">〜</span>
+        <input type="date" id="calEvEnd" style="flex:1;padding:10px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit">
+      </div>
+      <div id="calEvTimeRow" style="display:none;gap:8px;align-items:center">
+        <input type="time" id="calEvTimeStart" style="flex:1;padding:10px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit">
+        <span style="color:var(--text-muted)">〜</span>
+        <input type="time" id="calEvTimeEnd" style="flex:1;padding:10px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit">
+      </div>
+      <input type="text" id="calEvLocation" maxlength="100" placeholder="場所（任意）"
+        style="padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit">
+      <textarea id="calEvMemo" maxlength="500" rows="3" placeholder="メモ（500文字まで・任意）"
+        style="padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;resize:vertical"></textarea>
+      <div id="calEvColors" style="display:flex;gap:10px;flex-wrap:wrap"></div>
+      <div style="display:flex;gap:10px;margin-top:4px">
+        <button id="calEvDeleteBtn" onclick="deleteCalEvent()" style="display:none;padding:12px 16px;border:1.5px solid #fca5a5;border-radius:12px;background:#fef2f2;color:#dc2626;font-weight:700;font-family:inherit;cursor:pointer">削除</button>
+        <div style="flex:1"></div>
+        <button onclick="closeCalEventEditor()" style="padding:12px 16px;border:1.5px solid var(--border);border-radius:12px;background:white;font-family:inherit;cursor:pointer">キャンセル</button>
+        <button onclick="saveCalEvent()" style="padding:12px 22px;border:none;border-radius:12px;background:var(--primary);color:white;font-weight:700;font-family:inherit;cursor:pointer">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 外部カレンダー連携（ICS購読）設定 -->
+  <div id="calIcsOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:310" onclick="closeCalIcsSheet()"></div>
+  <div id="calIcsSheet" style="display:none;position:fixed;left:0;right:0;bottom:0;background:white;border-radius:20px 20px 0 0;z-index:311;max-height:85vh;overflow-y:auto;padding:20px 20px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,0.15)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-size:16px;font-weight:700">外部カレンダー連携</div>
+      <button onclick="closeCalIcsSheet()" style="border:none;background:var(--bg);border-radius:8px;padding:6px 14px;font-size:13px;font-family:inherit;cursor:pointer">閉じる</button>
+    </div>
+    <div id="calIcsBody"><div style="text-align:center;color:var(--text-muted);padding:20px">読み込み中...</div></div>
   </div>
 
   <div class="calendar-wrap" id="calendarWrap">
@@ -1278,6 +1330,7 @@ async function showApp() {
   // スタッフ画面のトークンは全員 role='staff'（auth.jsの仕様）のため、同じスタッフに紐づく
   // leader/master アカウントまで見た「実効ロール」判定がサーバ側（calendar-access）にある。
   dataApi({ action: 'calendar-access' }).then(r => {
+    CAL_MY_TIER = r.tier || 'staff';
     const btn = document.getElementById('tabCalendar');
     if (btn) btn.style.display = r.allowed ? '' : 'none';
   }).catch(() => { /* 非公開・旧API等は非表示のまま */ });
@@ -2180,6 +2233,9 @@ let CALENDAR_RELEASE = 0;   // app_settings.calendar_release（loadAppSettings �
 let calTabYear = new Date().getFullYear();
 let calTabMonth = new Date().getMonth() + 1;
 let calTabEvents = [];      // 表示月の予定（サーバ側で可視範囲フィルタ済み）
+let CAL_MY_TIER = 'staff';  // calendar-access が返す実効ロール（編集ボタン表示用。強制はサーバ側）
+let calSheetDay = null;     // 日別シートが開いている日
+let calEvEditing = null;    // 編集中の予定（null=新規）
 let calTabShiftMap = {};    // day -> shift_type_id（自分の確定シフト）
 
 const CAL_EVENT_COLORS = { blue:'#3b82f6', green:'#10b981', red:'#ef4444', orange:'#f97316', purple:'#8b5cf6', teal:'#14b8a6', pink:'#ec4899', gray:'#6b7280' };
@@ -2277,7 +2333,14 @@ function renderCalendarTab(closedInfo) {
   document.getElementById('calTabGrid').innerHTML = html;
 }
 
+function canEditCalEvent(ev) {
+  // 作成者本人、または leader/master 実効ロール（他人の個人予定は不可）。強制はサーバ側でも実施
+  if (ev.owner_account_id === currentUser?.accountId) return true;
+  return CAL_MY_TIER !== 'staff' && ev.scope !== 'private';
+}
+
 window.openCalDaySheet = function(day) {
+  calSheetDay = day;
   const dowJp = ['日','月','火','水','木','金','土'][new Date(calTabYear, calTabMonth - 1, day).getDay()];
   document.getElementById('calDayTitle').textContent = `${calTabMonth}月${day}日（${dowJp}）`;
 
@@ -2302,10 +2365,12 @@ window.openCalDaySheet = function(day) {
     const c = CAL_EVENT_COLORS[ev.color] || CAL_EVENT_COLORS.blue;
     const time = ev.start_time ? `${ev.start_time}${ev.end_time ? '〜' + ev.end_time : ''}` : '終日';
     const multi = ev.start_date !== ev.end_date ? `（${ev.start_date.slice(5).replace('-','/')}〜${ev.end_date.slice(5).replace('-','/')}）` : '';
-    html += `<div style="display:flex;gap:10px;padding:10px 2px;border-bottom:1px solid var(--border)">
+    const editable = canEditCalEvent(ev);
+    // 編集可能な予定はタップでエディタを開く（権限の強制はサーバ側でも実施）
+    html += `<div ${editable ? `onclick="openCalEventEditorById('${ev.id}')"` : ''} style="display:flex;gap:10px;padding:10px 2px;border-bottom:1px solid var(--border);${editable ? 'cursor:pointer' : ''}">
       <div style="width:4px;border-radius:2px;background:${c};flex-shrink:0"></div>
       <div style="min-width:0;flex:1">
-        <div style="font-weight:700;font-size:14px">${escapeHtml(ev.title)}</div>
+        <div style="font-weight:700;font-size:14px">${escapeHtml(ev.title)}${editable ? ' <span style="font-size:11px;color:var(--text-muted)">✏️</span>' : ''}</div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${time}${multi} ・ ${CAL_SCOPE_LABELS[ev.scope] || ''}${ev.owner_name ? ' ・ ' + escapeHtml(ev.owner_name) : ''}</div>
         ${ev.location ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px">📍 ${escapeHtml(ev.location)}</div>` : ''}
         ${ev.memo ? `<div style="font-size:12px;color:var(--text);margin-top:4px;white-space:pre-wrap;line-height:1.5">${escapeHtml(ev.memo)}</div>` : ''}
@@ -2320,6 +2385,203 @@ window.openCalDaySheet = function(day) {
 window.closeCalDaySheet = function() {
   document.getElementById('calDayOverlay').style.display = 'none';
   document.getElementById('calDaySheet').style.display = 'none';
+};
+
+// ===== 予定エディタ =====
+let calEvColor = 'blue';
+
+function renderCalEvColors() {
+  const wrap = document.getElementById('calEvColors');
+  wrap.innerHTML = Object.entries(CAL_EVENT_COLORS).map(([key, hex]) =>
+    `<button onclick="selectCalEvColor('${key}')" style="width:32px;height:32px;border-radius:50%;background:${hex};cursor:pointer;
+      border:${key === calEvColor ? '3px solid var(--text)' : '3px solid transparent'};box-shadow:0 0 0 1px var(--border)"></button>`
+  ).join('');
+}
+window.selectCalEvColor = function(key) { calEvColor = key; renderCalEvColors(); };
+
+window.openCalEventEditorById = function(id) {
+  const ev = calTabEvents.find(x => x.id === id);
+  if (ev) openCalEventEditor(ev, calSheetDay);
+};
+
+window.openCalEventEditor = function(ev, day) {
+  calEvEditing = ev || null;
+  const pad = (n) => String(n).padStart(2, '0');
+  const defDate = day ? `${calTabYear}-${pad(calTabMonth)}-${pad(day)}` : `${calTabYear}-${pad(calTabMonth)}-01`;
+
+  document.getElementById('calEvSheetTitle').textContent = ev ? '予定を編集' : '予定を追加';
+  document.getElementById('calEvTitle').value = ev ? (ev.title || '') : '';
+  document.getElementById('calEvScope').value = ev ? ev.scope : 'private';
+  document.getElementById('calEvStart').value = ev ? ev.start_date : defDate;
+  document.getElementById('calEvEnd').value = ev ? ev.end_date : defDate;
+  const allday = !(ev && ev.start_time);
+  document.getElementById('calEvAllday').checked = allday;
+  document.getElementById('calEvTimeRow').style.display = allday ? 'none' : 'flex';
+  document.getElementById('calEvTimeStart').value = ev && ev.start_time ? ev.start_time : '09:00';
+  document.getElementById('calEvTimeEnd').value = ev && ev.end_time ? ev.end_time : '10:00';
+  document.getElementById('calEvLocation').value = ev ? (ev.location || '') : '';
+  document.getElementById('calEvMemo').value = ev ? (ev.memo || '') : '';
+  calEvColor = ev && ev.color ? ev.color : 'blue';
+  renderCalEvColors();
+  document.getElementById('calEvDeleteBtn').style.display = ev ? '' : 'none';
+
+  document.getElementById('calEvOverlay').style.display = 'block';
+  document.getElementById('calEvSheet').style.display = 'block';
+};
+window.closeCalEventEditor = function() {
+  document.getElementById('calEvOverlay').style.display = 'none';
+  document.getElementById('calEvSheet').style.display = 'none';
+};
+
+window.saveCalEvent = async function() {
+  const title = document.getElementById('calEvTitle').value.trim();
+  if (!title) { showToast('タイトルを入力してください', 'error'); return; }
+  const startDate = document.getElementById('calEvStart').value;
+  const endDate = document.getElementById('calEvEnd').value || startDate;
+  if (!startDate) { showToast('開始日を選択してください', 'error'); return; }
+  if (endDate < startDate) { showToast('終了日は開始日以降にしてください', 'error'); return; }
+  const allday = document.getElementById('calEvAllday').checked;
+
+  const event = {
+    title,
+    scope: document.getElementById('calEvScope').value,
+    start_date: startDate,
+    end_date: endDate,
+    start_time: allday ? null : (document.getElementById('calEvTimeStart').value || null),
+    end_time: allday ? null : (document.getElementById('calEvTimeEnd').value || null),
+    location: document.getElementById('calEvLocation').value.trim() || null,
+    memo: document.getElementById('calEvMemo').value.trim() || null,
+    color: calEvColor,
+  };
+  if (calEvEditing) {
+    event.id = calEvEditing.id;
+    // 部門予定の編集は元の対象部門を維持（leader/masterが他部門の予定を編集しても部門が動かない）
+    if (calEvEditing.scope === 'dept' && event.scope === 'dept') event.dept_id = calEvEditing.dept_id;
+  }
+
+  showLoading();
+  try {
+    await dataApi({ action: 'events-save', event });
+    closeCalEventEditor();
+    showToast(calEvEditing ? '予定を更新しました ✓' : '予定を追加しました ✓', 'success');
+    await loadCalendarTab();
+    if (calSheetDay) openCalDaySheet(calSheetDay);
+  } catch(e) {
+    console.error(e);
+    showToast('保存に失敗しました：' + (e.message || ''), 'error');
+  }
+  hideLoading();
+};
+
+window.deleteCalEvent = async function() {
+  if (!calEvEditing) return;
+  if (!confirm(`予定「${calEvEditing.title}」を削除しますか？`)) return;
+  showLoading();
+  try {
+    await dataApi({ action: 'events-delete', id: calEvEditing.id });
+    closeCalEventEditor();
+    showToast('予定を削除しました', 'success');
+    await loadCalendarTab();
+    if (calSheetDay) openCalDaySheet(calSheetDay);
+  } catch(e) {
+    console.error(e);
+    showToast('削除に失敗しました：' + (e.message || ''), 'error');
+  }
+  hideLoading();
+};
+
+// ===== 外部カレンダー連携（ICS購読）設定 =====
+let calIcsToken = '';
+
+window.openCalIcsSheet = async function() {
+  document.getElementById('calIcsOverlay').style.display = 'block';
+  document.getElementById('calIcsSheet').style.display = 'block';
+  const body = document.getElementById('calIcsBody');
+  body.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:20px">読み込み中...</div>';
+  try {
+    const r = await dataApi({ action: 'ical-settings-get' });
+    if (!r.linked) {
+      body.innerHTML = '<div style="padding:16px;background:#fef3c7;border-radius:12px;font-size:13px;color:#92400e">このアカウントはスタッフ情報と紐付いていないため、外部連携を利用できません。管理者に連絡してください。</div>';
+      return;
+    }
+    renderIcsSheet(r.settings);
+  } catch(e) {
+    console.error(e);
+    body.innerHTML = `<div style="text-align:center;color:#dc2626;padding:20px">読み込みエラー：${escapeHtml(e.message || '')}</div>`;
+  }
+};
+window.closeCalIcsSheet = function() {
+  document.getElementById('calIcsOverlay').style.display = 'none';
+  document.getElementById('calIcsSheet').style.display = 'none';
+};
+
+function renderIcsSheet(st) {
+  calIcsToken = st.token;
+  const url = `${location.origin}/api/ical?token=${st.token}`;
+  const tgl = (key, label, checked) => `
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);font-size:14px">
+      ${label}
+      <input type="checkbox" ${checked ? 'checked' : ''} onchange="icsToggle('${key}', this.checked)" style="width:20px;height:20px">
+    </label>`;
+  document.getElementById('calIcsBody').innerHTML = `
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">
+      下のURLを Google カレンダーや iPhone のカレンダーに「照会（購読）」として登録すると、
+      確定シフトや予定が自動で表示されます。
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <input type="text" readonly value="${url}" id="calIcsUrl"
+        style="flex:1;min-width:0;padding:10px;border:1.5px solid var(--border);border-radius:10px;font-size:11px;font-family:inherit;color:var(--text-muted)">
+      <button onclick="icsCopyUrl()" style="padding:10px 14px;border:none;border-radius:10px;background:var(--primary);color:white;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap">コピー</button>
+    </div>
+    <div style="font-size:13px;font-weight:700;margin-bottom:4px">カレンダーに反映する内容</div>
+    ${tgl('include_shifts', '確定シフト', st.include_shifts !== false)}
+    ${tgl('include_private', '個人の予定', st.include_private !== false)}
+    ${tgl('include_dept', '部門の予定', st.include_dept === true)}
+    ${tgl('include_all', '全体の予定', st.include_all !== false)}
+    <details style="margin-top:14px;font-size:13px">
+      <summary style="font-weight:700;cursor:pointer">📱 登録手順（iPhone / Google）</summary>
+      <div style="padding:10px 4px;line-height:1.8;color:var(--text)">
+        <b>iPhone標準カレンダー</b><br>
+        設定 → カレンダー → アカウント → アカウントを追加 → その他 →
+        「照会カレンダーを追加」→ 上のURLを貼り付け → 保存<br><br>
+        <b>Googleカレンダー</b>（PCのブラウザから）<br>
+        Googleカレンダーを開く → 左の「他のカレンダー」の＋ → 「URLで追加」→ 上のURLを貼り付け
+      </div>
+    </details>
+    <div style="margin-top:12px;padding:10px 12px;background:var(--bg);border-radius:10px;font-size:11px;color:var(--text-muted);line-height:1.6">
+      ⚠️ 反映は Google / Apple 側の更新周期に依存し、数時間かかることがあります。<br>
+      ⚠️ URLを知っている人はこのカレンダーを見られます。他人に共有しないでください。
+    </div>
+    <button onclick="icsRotate()" style="width:100%;margin-top:12px;padding:12px;border:1.5px solid #fca5a5;border-radius:12px;background:#fef2f2;color:#dc2626;font-weight:700;font-family:inherit;cursor:pointer">URLを再発行（今のURLを無効化）</button>
+  `;
+}
+window.icsToggle = async function(key, checked) {
+  try {
+    await dataApi({ action: 'ical-settings-save', [key]: checked });
+    showToast('設定を保存しました ✓', 'success');
+  } catch(e) {
+    console.error(e);
+    showToast('保存に失敗しました', 'error');
+  }
+};
+window.icsCopyUrl = function() {
+  const url = document.getElementById('calIcsUrl').value;
+  navigator.clipboard.writeText(url)
+    .then(() => showToast('URLをコピーしました ✓', 'success'))
+    .catch(() => { document.getElementById('calIcsUrl').select(); showToast('長押しでコピーしてください', 'info'); });
+};
+window.icsRotate = async function() {
+  if (!confirm('購読URLを再発行しますか？\n今のURLは使えなくなり、登録済みのカレンダーには再登録が必要です。')) return;
+  showLoading();
+  try {
+    const r = await dataApi({ action: 'ical-token-rotate' });
+    showToast('URLを再発行しました ✓', 'success');
+    if (r.settings) renderIcsSheet(r.settings);
+  } catch(e) {
+    console.error(e);
+    showToast('再発行に失敗しました', 'error');
+  }
+  hideLoading();
 };
 
 document.getElementById('calTabPrev')?.addEventListener('click', () => {
