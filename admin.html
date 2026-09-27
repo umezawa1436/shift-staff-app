@@ -573,6 +573,20 @@
             </div>
             <div id="calendarReleaseBtns" style="display:flex;gap:8px;flex-wrap:wrap"></div>
           </div>
+          <!-- カレンダー管理（masterのみ表示。loadSettings が制御） -->
+          <div class="card" id="calendarAdminCard" style="display:none">
+            <div class="card-title">📅 カレンダー管理</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
+              スタッフ画面に表示されるカレンダーを管理画面から作成・編集・削除できます。
+              削除しても30日以内なら「削除済み」から復元できます。個人カレンダーの中身（予定）はここには表示されません。
+            </div>
+            <div id="calAdminList"></div>
+            <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+              <button class="btn btn-primary" onclick="openCalAdminEditor(null)">＋ カレンダーを作成</button>
+              <button class="btn btn-outline" onclick="toggleCalAdminTrash()">🗑 削除済み（30日以内）</button>
+            </div>
+            <div id="calAdminTrash" style="display:none;margin-top:12px"></div>
+          </div>
           <div class="card">
             <div class="card-title">月間所定労働時間</div>
             <div id="monthlyHoursGrid"></div>
@@ -782,6 +796,37 @@
 </div>
 
 <!-- MODALS -->
+<!-- カレンダー作成・編集モーダル（設定タブのカレンダー管理用） -->
+<div class="modal-overlay" id="calAdminModal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-title" id="calAdminModalTitle">カレンダーを作成</div>
+    <div class="form-group">
+      <label class="form-label">カレンダー名（20文字以内）<span style="color:#dc2626">*</span></label>
+      <input type="text" class="form-input" id="calAdminName" maxlength="20" placeholder="例：委員会">
+    </div>
+    <div class="form-group">
+      <label class="form-label">公開範囲</label>
+      <select class="form-input" id="calAdminVis" onchange="calAdminVisChanged()">
+        <option value="all">🌐 全体（全スタッフに表示）</option>
+        <option value="members">👥 メンバー限定（参加者のみ表示）</option>
+        <option value="private">🔒 個人（作成者のみ表示）</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">色</label>
+      <div id="calAdminColors" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    </div>
+    <div class="form-group" id="calAdminMemberWrap" style="display:none">
+      <label class="form-label">参加メンバー</label>
+      <div id="calAdminMembers" style="max-height:220px;overflow:auto;border:1.5px solid var(--border);border-radius:8px;padding:10px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('calAdminModal')">キャンセル</button>
+      <button class="btn btn-primary" onclick="saveCalAdmin()">保存</button>
+    </div>
+  </div>
+</div>
+
 <!-- カスタムシフト追加・編集モーダル -->
 <div class="modal-overlay" id="customShiftModal">
   <div class="modal">
@@ -974,7 +1019,7 @@
   </div>
 </div>
 
-<script src="admin.js?v=54"></script>
+<script src="admin.js?v=55"></script>
 <script src="admin-generate.js?v=13"></script>
 </body>
 </html>
