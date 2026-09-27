@@ -4963,6 +4963,108 @@ window.toggleCalAdminTrash = async function() {
   }
 };
 
+// ===== 共有カレンダーの予定ビュー（閲覧用・masterのみ）=====
+// data.js の calendar-admin-events を利用。個人カレンダーの予定はサーバ側で除外される。
+let calAdminViewYear = new Date().getFullYear();
+let calAdminViewMonth = new Date().getMonth() + 1;
+let calAdminViewEvents = [];
+let calAdminViewCals = {};
+
+async function loadCalAdminView() {
+  const grid = document.getElementById('calAdminViewGrid');
+  if (!grid) return;
+  document.getElementById('calAdminViewTitle').textContent = `${calAdminViewYear}年${calAdminViewMonth}月`;
+  grid.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px 0">読み込み中...</div>';
+  document.getElementById('calAdminViewDay').innerHTML = '';
+  try {
+    const r = await adminApi('/api/data', { action: 'calendar-admin-events', year: calAdminViewYear, month: calAdminViewMonth });
+    calAdminViewEvents = r.rows || [];
+    calAdminViewCals = {};
+    (r.calendars || []).forEach(c => { calAdminViewCals[c.id] = c; });
+    renderCalAdminViewGrid();
+  } catch(e) {
+    console.error(e);
+    grid.innerHTML = '<div style="color:#dc2626;font-size:12px;padding:8px 0">予定の読み込みに失敗しました：' + escapeHtml(e.message || '') + '</div>';
+  }
+}
+
+window.calAdminViewNav = function(delta) {
+  calAdminViewMonth += delta;
+  if (calAdminViewMonth < 1) { calAdminViewMonth = 12; calAdminViewYear--; }
+  if (calAdminViewMonth > 12) { calAdminViewMonth = 1; calAdminViewYear++; }
+  loadCalAdminView();
+};
+
+function calAdminEventsOnDay(day) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const d = `${calAdminViewYear}-${pad(calAdminViewMonth)}-${pad(day)}`;
+  return calAdminViewEvents.filter(ev => ev.start_date <= d && d <= (ev.end_date || ev.start_date));
+}
+
+function calAdminEventHex(ev) {
+  const cal = calAdminViewCals[ev.calendar_id];
+  return CAL_ADMIN_COLORS[ev.color] || (cal && CAL_ADMIN_COLORS[cal.color]) || CAL_ADMIN_COLORS.blue;
+}
+
+function renderCalAdminViewGrid() {
+  const grid = document.getElementById('calAdminViewGrid');
+  if (!grid) return;
+  const y = calAdminViewYear, m = calAdminViewMonth;
+  const firstDow = new Date(y, m - 1, 1).getDay();
+  const daysIn = new Date(y, m, 0).getDate();
+  const today = new Date();
+  const dowColors = ['#dc2626', 'var(--text)', 'var(--text)', 'var(--text)', 'var(--text)', 'var(--text)', '#2563eb'];
+
+  let html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">';
+  ['日','月','火','水','木','金','土'].forEach((w, i) => {
+    html += `<div style="text-align:center;font-size:11px;font-weight:700;color:${dowColors[i]};padding:2px 0">${w}</div>`;
+  });
+  for (let i = 0; i < firstDow; i++) html += '<div></div>';
+  for (let d = 1; d <= daysIn; d++) {
+    const dow = (firstDow + d - 1) % 7;
+    const isToday = (y === today.getFullYear() && m === today.getMonth() + 1 && d === today.getDate());
+    const evs = calAdminEventsOnDay(d);
+    const chips = evs.slice(0, 3).map(ev =>
+      `<div style="font-size:9px;line-height:1.3;color:white;background:${calAdminEventHex(ev)};border-radius:3px;padding:0 2px;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(ev.title)}</div>`
+    ).join('') + (evs.length > 3 ? `<div style="font-size:9px;color:var(--text-muted)">+${evs.length - 3}件</div>` : '');
+    html += `<div onclick="showCalAdminViewDay(${d})" style="min-height:56px;border-radius:8px;padding:2px 3px;cursor:pointer;overflow:hidden;
+      border:${isToday ? '2px solid var(--primary)' : '1.5px solid var(--border)'};background:white">
+      <div style="font-size:11px;font-weight:600;text-align:center;color:${dowColors[dow]}">${d}</div>${chips}
+    </div>`;
+  }
+  html += '</div>';
+  grid.innerHTML = html;
+}
+
+window.showCalAdminViewDay = function(day) {
+  const wrap = document.getElementById('calAdminViewDay');
+  if (!wrap) return;
+  const evs = calAdminEventsOnDay(day);
+  const dowJp = ['日','月','火','水','木','金','土'][new Date(calAdminViewYear, calAdminViewMonth - 1, day).getDay()];
+  let html = `<div style="font-weight:700;font-size:13px;margin-bottom:6px">${calAdminViewMonth}月${day}日（${dowJp}）の予定</div>`;
+  if (!evs.length) {
+    html += '<div style="color:var(--text-muted);font-size:12px">予定はありません</div>';
+  } else {
+    html += evs.map(ev => {
+      const cal = calAdminViewCals[ev.calendar_id] || {};
+      const time = ev.start_time ? `${ev.start_time}${ev.end_time ? '〜' + ev.end_time : ''}` : '終日';
+      const multi = ev.start_date !== (ev.end_date || ev.start_date)
+        ? `（${ev.start_date.slice(5).replace('-','/')}〜${(ev.end_date || '').slice(5).replace('-','/')}）` : '';
+      return `<div style="display:flex;gap:10px;padding:8px 2px;border-bottom:1px solid var(--border)">
+        <div style="width:4px;border-radius:2px;background:${calAdminEventHex(ev)};flex-shrink:0"></div>
+        <div style="min-width:0;flex:1">
+          <div style="font-weight:700;font-size:13px">${escapeHtml(ev.title)}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${time}${multi} ・ 📅${escapeHtml(cal.name || '')}${ev.owner_name ? ' ・ 作成: ' + escapeHtml(ev.owner_name) : ''}</div>
+          ${ev.location ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">📍 ${escapeHtml(ev.location)}</div>` : ''}
+          ${ev.url ? `<div style="font-size:11px;margin-top:2px"><a href="${escapeHtml(ev.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--primary);word-break:break-all">🔗 ${escapeHtml(ev.url)}</a></div>` : ''}
+          ${ev.memo ? `<div style="font-size:11px;margin-top:3px;white-space:pre-wrap;line-height:1.5">${escapeHtml(ev.memo)}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  }
+  wrap.innerHTML = html;
+};
+
 window.restoreCalAdmin = async function(calendarId) {
   showLoading();
   try {
@@ -5002,6 +5104,7 @@ async function loadSettings() {
     if (adminUser.role !== 'master') { card.style.display = 'none'; return; }
     card.style.display = '';
     await loadCalAdminList();
+    await loadCalAdminView();
   });
 
   // 必要人数設定（最重要：最初に実行）
