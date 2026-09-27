@@ -604,6 +604,8 @@
       </div>
       <input type="text" id="calEvLocation" maxlength="100" placeholder="場所（任意）"
         style="padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit">
+      <input type="url" id="calEvUrl" maxlength="300" placeholder="URL（https://〜・任意）" inputmode="url" autocapitalize="off" autocorrect="off"
+        style="padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit">
       <textarea id="calEvMemo" maxlength="500" rows="3" placeholder="メモ（500文字まで・任意）"
         style="padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;resize:vertical"></textarea>
       <div id="calEvColors" style="display:flex;gap:10px;flex-wrap:wrap"></div>
@@ -2430,6 +2432,7 @@ window.openCalDaySheet = function(day) {
         <div style="font-weight:700;font-size:14px">${escapeHtml(ev.title)}${editable ? ' <span style="font-size:11px;color:var(--text-muted)">✏️</span>' : ''}</div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${time}${multi} ・ 📅${escapeHtml((calById[ev.calendar_id] || {}).name || '')}${ev.owner_name ? ' ・ ' + escapeHtml(ev.owner_name) : ''}</div>
         ${ev.location ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px">📍 ${escapeHtml(ev.location)}</div>` : ''}
+        ${ev.url ? `<div style="font-size:12px;margin-top:2px"><a href="${escapeHtml(ev.url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:var(--primary);word-break:break-all">🔗 ${escapeHtml(ev.url)}</a></div>` : ''}
         ${ev.memo ? `<div style="font-size:12px;color:var(--text);margin-top:4px;white-space:pre-wrap;line-height:1.5">${escapeHtml(ev.memo)}</div>` : ''}
       </div>
     </div>`;
@@ -2484,6 +2487,7 @@ window.openCalEventEditor = function(ev, day) {
   document.getElementById('calEvTimeStart').value = ev && ev.start_time ? ev.start_time : '09:00';
   document.getElementById('calEvTimeEnd').value = ev && ev.end_time ? ev.end_time : '10:00';
   document.getElementById('calEvLocation').value = ev ? (ev.location || '') : '';
+  document.getElementById('calEvUrl').value = ev ? (ev.url || '') : '';
   document.getElementById('calEvMemo').value = ev ? (ev.memo || '') : '';
   calEvColor = ev && ev.color ? ev.color : 'blue';
   renderCalEvColors();
@@ -2508,6 +2512,10 @@ window.saveCalEvent = async function() {
 
   const calSel = document.getElementById('calEvCalendar').value;
   if (!calSel) { showToast('カレンダーを選択してください', 'error'); return; }
+  const evUrl = document.getElementById('calEvUrl').value.trim();
+  if (evUrl && !/^https?:\/\/\S+$/i.test(evUrl)) {
+    showToast('URLは https:// から始まる形式で入力してください', 'error'); return;
+  }
   const event = {
     title,
     calendar_id: calSel,
@@ -2516,6 +2524,7 @@ window.saveCalEvent = async function() {
     start_time: allday ? null : (document.getElementById('calEvTimeStart').value || null),
     end_time: allday ? null : (document.getElementById('calEvTimeEnd').value || null),
     location: document.getElementById('calEvLocation').value.trim() || null,
+    url: evUrl || null,
     memo: document.getElementById('calEvMemo').value.trim() || null,
     color: calEvColor,
   };
