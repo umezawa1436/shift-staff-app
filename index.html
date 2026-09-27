@@ -2285,8 +2285,8 @@ let staffDirCache = null;   // メンバー選択用の名簿キャッシュ
 let calTabShiftMap = {};    // day -> shift_type_id（自分の確定シフト）
 
 const CAL_EVENT_COLORS = { blue:'#3b82f6', green:'#10b981', red:'#ef4444', orange:'#f97316', purple:'#8b5cf6', teal:'#14b8a6', pink:'#ec4899', gray:'#6b7280' };
-const CAL_VIS_ICONS = { private:'🔒', members:'👥', all:'🌐' };
-const CAL_VIS_LABELS = { private:'自分のみ', members:'参加者のみ', all:'全体' };
+const CAL_VIS_ICONS = { private:'🔒', members:'👥', all:'🌐', external:'📥' };
+const CAL_VIS_LABELS = { private:'自分のみ', members:'参加者のみ', all:'全体', external:'外部取り込み（自分のみ・読み取り専用）' };
 
 async function loadCalendarTab() {
   if (!currentUser?.id) return;
@@ -2565,6 +2565,9 @@ window.deleteCalEvent = async function() {
 let calIcsToken = '';
 let icsCalsCache = [];        // ical-settings-get が返す可視カレンダー
 let icsExcludedSet = new Set(); // フィードから除外中のカレンダーID
+let icsExtCache = [];         // 取り込み済み外部カレンダー
+let icsExtEditing = null;     // 編集中の外部カレンダーid（null=新規）
+let icsExtColor = 'teal';
 
 window.openCalIcsSheet = async function() {
   document.getElementById('calIcsOverlay').style.display = 'block';
@@ -2579,6 +2582,9 @@ window.openCalIcsSheet = async function() {
     }
     icsCalsCache = r.calendars || [];
     icsExcludedSet = new Set(r.excluded || []);
+    icsExtCache = r.externals || [];
+    icsExtEditing = null;
+    icsExtColor = 'teal';
     renderIcsSheet(r.settings);
   } catch(e) {
     console.error(e);
@@ -2619,6 +2625,24 @@ function renderIcsSheet(st) {
         <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${CAL_VIS_ICONS[c.visibility] || ''} ${escapeHtml(c.name)}</span>
         <input type="checkbox" class="icsCalChk" value="${c.id}" ${icsExcludedSet.has(c.id) ? '' : 'checked'} onchange="icsCalToggle()" style="width:20px;height:20px">
       </label>`).join('')}
+    <div style="font-size:13px;font-weight:700;margin:18px 0 2px">📥 Googleカレンダーの取り込み</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">
+      Googleカレンダーの「非公開URL（iCal形式）」を貼ると、Googleの予定がこのアプリに表示されます
+      （自分にだけ表示・読み取り専用・最大3件）。URLはPC表示のGoogleカレンダー設定 → マイカレンダー →
+      「カレンダーの設定と共有」の一番下で取得できます。
+    </div>
+    <div id="icsExtList">${renderIcsExtRows()}</div>
+    <div style="margin-top:8px">
+      <input type="text" id="icsExtName" maxlength="20" placeholder="表示名（例：Google仕事用）"
+        style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit;margin-bottom:6px">
+      <input type="url" id="icsExtUrl" placeholder="https://calendar.google.com/calendar/ical/…/basic.ics" inputmode="url" autocapitalize="off" autocorrect="off"
+        style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid var(--border);border-radius:10px;font-size:11px;font-family:inherit;margin-bottom:6px">
+      <div style="display:flex;gap:8px;align-items:center">
+        <div id="icsExtColors" style="display:flex;gap:6px;flex:1;flex-wrap:wrap"></div>
+        <button onclick="icsExtSave()" id="icsExtSaveBtn"
+          style="padding:10px 16px;border:none;border-radius:10px;background:var(--primary);color:white;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap">追加</button>
+      </div>
+    </div>
     <details style="margin-top:14px;font-size:13px">
       <summary style="font-weight:700;cursor:pointer">📱 登録手順（iPhone / Google）</summary>
       <div style="padding:10px 4px;line-height:1.8;color:var(--text)">
@@ -2635,7 +2659,85 @@ function renderIcsSheet(st) {
     </div>
     <button onclick="icsRotate()" style="width:100%;margin-top:12px;padding:12px;border:1.5px solid #fca5a5;border-radius:12px;background:#fef2f2;color:#dc2626;font-weight:700;font-family:inherit;cursor:pointer">URLを再発行（今のURLを無効化）</button>
   `;
+  renderIcsExtColors();
 }
+
+// 取り込み済み外部カレンダーの一覧行
+function renderIcsExtRows() {
+  if (!icsExtCache.length) return '';
+  return icsExtCache.map(c => {
+    const hex = CAL_EVENT_COLORS[c.color] || CAL_EVENT_COLORS.teal;
+    const err = c.last_error ? `<div style="font-size:11px;color:#dc2626">⚠️ ${escapeHtml(c.last_error)}</div>` : '';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span style="width:10px;height:10px;border-radius:50%;background:${hex};flex-shrink:0"></span>
+      <div style="flex:1;min-width:0;cursor:pointer" onclick="icsExtEdit('${c.id}')">
+        <div style="font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(c.name)} <span style="font-size:11px;color:var(--text-muted)">✏️</span></div>
+        ${err}
+      </div>
+      <button onclick="icsExtDelete('${c.id}')" style="padding:7px 10px;border:1.5px solid #fca5a5;border-radius:8px;background:#fef2f2;color:#dc2626;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0">削除</button>
+    </div>`;
+  }).join('');
+}
+
+function renderIcsExtColors() {
+  const wrap = document.getElementById('icsExtColors');
+  if (!wrap) return;
+  wrap.innerHTML = Object.entries(CAL_EVENT_COLORS).map(([key, hex]) =>
+    `<button onclick="icsExtPickColor('${key}')" style="width:24px;height:24px;border-radius:50%;background:${hex};cursor:pointer;
+      border:${key === icsExtColor ? '3px solid var(--text)' : '3px solid transparent'};box-shadow:0 0 0 1px var(--border)"></button>`
+  ).join('');
+}
+window.icsExtPickColor = function(key) { icsExtColor = key; renderIcsExtColors(); };
+
+// 行タップで編集モード（フォームに読み込み）
+window.icsExtEdit = function(id) {
+  const c = icsExtCache.find(x => x.id === id);
+  if (!c) return;
+  icsExtEditing = id;
+  icsExtColor = c.color || 'teal';
+  document.getElementById('icsExtName').value = c.name || '';
+  document.getElementById('icsExtUrl').value = c.ics_url || '';
+  document.getElementById('icsExtSaveBtn').textContent = '更新';
+  renderIcsExtColors();
+};
+
+window.icsExtSave = async function() {
+  const url = document.getElementById('icsExtUrl').value.trim();
+  if (!url) { showToast('iCal形式のURLを貼り付けてください', 'error'); return; }
+  if (!/^https:\/\/\S+$/i.test(url)) { showToast('URLは https:// から始まる形式で入力してください', 'error'); return; }
+  const name = document.getElementById('icsExtName').value.trim();
+  showLoading();
+  try {
+    const payload = { action: 'ext-cal-save', name, color: icsExtColor, ics_url: url };
+    if (icsExtEditing) payload.id = icsExtEditing;
+    const r = await dataApi(payload);
+    showToast(`取り込みました ✓（予定 ${r.event_count ?? '-'} 件）`, 'success');
+    icsExtEditing = null;
+    await openCalIcsSheet();   // シートを再読込
+    loadCalendarTab();         // カレンダー表示にも反映
+  } catch(e) {
+    console.error(e);
+    showToast(e.message || '取り込みに失敗しました', 'error', 4500);
+  }
+  hideLoading();
+};
+
+window.icsExtDelete = async function(id) {
+  const c = icsExtCache.find(x => x.id === id);
+  if (!confirm(`「${c ? c.name : ''}」の取り込みを解除しますか？\n（Googleカレンダー側のデータは消えません）`)) return;
+  showLoading();
+  try {
+    await dataApi({ action: 'ext-cal-delete', id });
+    showToast('取り込みを解除しました', 'success');
+    icsExtEditing = null;
+    await openCalIcsSheet();
+    loadCalendarTab();
+  } catch(e) {
+    console.error(e);
+    showToast('解除に失敗しました', 'error');
+  }
+  hideLoading();
+};
 window.icsToggle = async function(key, checked) {
   try {
     await dataApi({ action: 'ical-settings-save', [key]: checked });
