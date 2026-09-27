@@ -714,8 +714,12 @@ async function assertCalendarAccess(res, payload) {
 async function calendarAccess(res, payload) {
   const level = await calendarReleaseLevel();
   const tier = await calendarEffectiveTier(payload);
+  const acc = await resolveAccount(payload.accountId);
   // tier はクライアントの編集ボタン表示にも使う（権限の強制はあくまでサーバ側の各アクション）
-  return res.status(200).json({ allowed: calendarTierAllowed(tier, level), level, tier });
+  return res.status(200).json({
+    allowed: calendarTierAllowed(tier, level), level, tier,
+    staff_id: (acc && acc.staff_id) || null,
+  });
 }
 
 const CAL_COLORS = ['blue', 'green', 'red', 'orange', 'purple', 'teal', 'pink', 'gray'];
@@ -829,6 +833,10 @@ async function purgeExpiredCalendars() {
     const expired = await sb(`calendars?deleted_at=lt.${encodeURIComponent(limit)}&select=id`);
     for (const c of expired || []) {
       const eid = encodeURIComponent(c.id);
+      const evIds = (await sb(`events?calendar_id=eq.${eid}&select=id&limit=1000`) || []).map(e => e.id);
+      for (let i = 0; i < evIds.length; i += 100) {
+        await sb(`event_participants?event_id=in.(${inFilter(evIds.slice(i, i + 100))})`, { method: 'DELETE' });
+      }
       await sb(`events?calendar_id=eq.${eid}`, { method: 'DELETE' });
       await sb(`calendar_members?calendar_id=eq.${eid}`, { method: 'DELETE' });
       await sb(`calendar_prefs?calendar_id=eq.${eid}`, { method: 'DELETE' });
@@ -956,6 +964,7 @@ async function calendarAdminEvents(res, payload, body) {
   const rows = cals.length ? await sbAll(
     `events?start_date=lte.${last}&end_date=gte.${first}&calendar_id=in.(${inFilter(cals.map(c => c.id))})&select=*`,
     'start_date,id') : [];
+  await attachParticipants(rows);
   const calendars = cals.map(c => ({ ...c }));
 
   // リクエストした管理者本人の取り込みカレンダー（Google等）も合流させる。
@@ -994,6 +1003,188 @@ async function calendarPrefSave(res, payload, body) {
   return res.status(200).json({ ok: true });
 }
 
+// in.(...) フィルタをID数が多くてもURL長超過しないよう分割して取得
+async function sbInChunks(pathTpl, ids, chunk = 100) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += chunk) {
+    const part = ids.slice(i, i + chunk);
+    const rows = await sb(pathTpl.replace('__IDS__', inFilter(part)));
+    if (Array.isArray(rows)) out.push(...rows);
+  }
+  return out;
+}
+
+// 予定行に participants: [{id, name}] を付与する（外部取り込みの合成行はスキップ）
+async function attachParticipants(rows) {
+  const ids = (rows || []).filter(r => r && r.id && !r.external).map(r => r.id);
+  if (!ids.length) return;
+  const eps = await sbInChunks('event_participants?event_id=in.(__IDS__)&select=event_id,staff_id&limit=1000', ids);
+  if (!eps.length) return;
+  const staffIds = [...new Set(eps.map(x => x.staff_id))];
+  const staffRows = await sbInChunks('staff?id=in.(__IDS__)&select=id,name&limit=1000', staffIds);
+  const nameMap = {};
+  (staffRows || []).forEach(st => { nameMap[st.id] = st.name; });
+  const byEvent = {};
+  eps.forEach(x => { (byEvent[x.event_id] = byEvent[x.event_id] || []).push({ id: x.staff_id, name: nameMap[x.staff_id] || '' }); });
+  rows.forEach(r => { if (r && byEvent[r.id]) r.participants = byEvent[r.id]; });
+}
+
+// ===== 空き時間の自動検索（参加者全員が空いている時間帯を提案する）=====
+// 空き判定の材料:
+//   ① 確定シフト … 勤務時間内だけを「出勤して院内にいる時間」とみなす。休み種別の日は終日不可。
+//                    シフトが未確定の日は情報なし＝指定時間帯すべてを候補にする。
+//   ② アプリ内の予定 … 「参加者になっている予定」＋「本人が作成した予定」をブロック。
+//                    終日予定はその日全体をブロック。他人の予定は空き判定のみで中身は返さない。
+//   ③ Google取り込み … 時間指定の予定のみブロック（誕生日など終日イベントは無視）。
+const FREE_MAX_STAFF = 20;
+const FREE_MAX_SPAN_DAYS = 31;
+const FREE_MAX_SLOTS = 10;
+const toMin = (hm) => { const [h, mn] = hm.split(':').map(Number); return h * 60 + mn; };
+const minToHm = (mi) => `${String(Math.floor(mi / 60)).padStart(2, '0')}:${String(mi % 60).padStart(2, '0')}`;
+
+async function freeSlotSearch(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+
+  // --- 入力検証 ---
+  let staffIds = validStaffIds(body.staff_ids || [], FREE_MAX_STAFF);
+  if (!staffIds) staffIds = [];
+  if (acc.staff_id && !staffIds.includes(acc.staff_id)) staffIds = staffIds.concat([acc.staff_id]); // 検索者本人を自動参加
+  if (!staffIds.length) return bad(res, 400, '参加者を指定してください');
+  if (staffIds.length > FREE_MAX_STAFF) return bad(res, 400, `参加者は${FREE_MAX_STAFF}人までです`);
+  const duration = body.duration_minutes;
+  if (!intOk(duration, 15, 480)) return bad(res, 400, '所要時間は15〜480分で指定してください');
+  let startDate = body.start_date, endDate = body.end_date;
+  if (typeof startDate !== 'string' || !EVENT_DATE_RE.test(startDate)) return bad(res, 400, '開始日が不正です');
+  if (typeof endDate !== 'string' || !EVENT_DATE_RE.test(endDate)) return bad(res, 400, '終了日が不正です');
+  const todayJst = extYmd(Date.now() + 9 * 3600000);
+  if (startDate < todayJst) startDate = todayJst; // 過去は提案しない
+  if (endDate < startDate) return bad(res, 400, '終了日は開始日以降にしてください');
+  if (extDiffDays(startDate, endDate) > FREE_MAX_SPAN_DAYS) return bad(res, 400, `検索期間は${FREE_MAX_SPAN_DAYS}日以内にしてください`);
+  const dayStart = (typeof body.day_start === 'string' && EVENT_TIME_RE.test(body.day_start)) ? body.day_start : '09:00';
+  const dayEnd = (typeof body.day_end === 'string' && EVENT_TIME_RE.test(body.day_end)) ? body.day_end : '18:00';
+  const winS = toMin(dayStart), winE = toMin(dayEnd);
+  if (winE - winS < duration) return bad(res, 400, '時間帯の幅が所要時間より短くなっています');
+
+  const days = [];
+  for (let d = startDate; d <= endDate; d = extAddDays(d, 1)) days.push(d);
+  const dayIdx = {};
+  days.forEach((d, i) => { dayIdx[d] = i; });
+  const sidIn = inFilter(staffIds);
+
+  // --- ① 確定シフト ---
+  const months = [...new Set(days.map(d => d.slice(0, 7)))].map(ym => ({ y: +ym.slice(0, 4), m: +ym.slice(5, 7) }));
+  const monthOr = months.map(mm => `and(year.eq.${mm.y},month.eq.${mm.m})`).join(',');
+  const [types, shifts] = await Promise.all([
+    sb('shift_types?select=id,start_time,end_time,is_off'),
+    sbAll(`shifts?staff_id=in.(${sidIn})&is_confirmed=eq.true&or=(${monthOr})&select=staff_id,year,month,day,shift_type_id`, 'year,month,day,staff_id'),
+  ]);
+  const typeMap = {};
+  (types || []).forEach(t => { typeMap[t.id] = t; });
+
+  // avail[staff][dayIdx] = Uint8Array(1440) 1=空き候補
+  const avail = {};
+  const shiftSeen = {}; // staff → Set(dayIdx) シフト情報があった日
+  staffIds.forEach(sid => {
+    avail[sid] = days.map(() => { const a = new Uint8Array(1440); a.fill(0, 0); a.fill(1, winS, winE); return a; });
+    shiftSeen[sid] = new Set();
+  });
+  for (const sh of shifts || []) {
+    const d = `${sh.year}-${String(sh.month).padStart(2, '0')}-${String(sh.day).padStart(2, '0')}`;
+    const di = dayIdx[d];
+    if (di == null || !avail[sh.staff_id]) continue;
+    const a = avail[sh.staff_id][di];
+    const t = typeMap[sh.shift_type_id];
+    const first = !shiftSeen[sh.staff_id].has(di);
+    shiftSeen[sh.staff_id].add(di);
+    if (first) a.fill(0); // シフト情報がある日は「勤務時間∩時間帯」だけを空きにする
+    if (!t || t.is_off || !t.start_time || !t.end_time) continue; // 休み・時間未定義 → その日は不可のまま
+    let st = toMin(t.start_time), en = toMin(t.end_time);
+    if (en <= st) en = 1440; // 夜勤の日跨ぎは当日24時まで
+    const from = Math.max(st, winS), to = Math.min(en, winE);
+    if (from < to) a.fill(1, from, to);
+  }
+
+  // --- ② アプリ内の予定 ---
+  const rangeEvents = await sbAll(
+    `events?start_date=lte.${endDate}&end_date=gte.${startDate}&select=id,owner_staff_id,start_date,end_date,start_time,end_time`,
+    'start_date,id');
+  const evIds = (rangeEvents || []).map(e => e.id);
+  const eps = evIds.length
+    ? await sbInChunks(`event_participants?event_id=in.(__IDS__)&staff_id=in.(${sidIn})&select=event_id,staff_id&limit=1000`, evIds)
+    : [];
+  const partByEvent = {};
+  eps.forEach(x => { (partByEvent[x.event_id] = partByEvent[x.event_id] || []).push(x.staff_id); });
+  const sidSet = new Set(staffIds);
+
+  const block = (sid, ev) => {
+    const arrs = avail[sid];
+    if (!arrs) return;
+    const evStart = ev.start_date, evEnd = ev.end_date || ev.start_date;
+    for (const d of days) {
+      if (d < evStart || d > evEnd) continue;
+      const a = arrs[dayIdx[d]];
+      if (!ev.start_time) { a.fill(0); continue; } // 終日 → その日全体
+      const st = (d === evStart) ? toMin(ev.start_time) : 0;
+      let en = (d === evEnd)
+        ? (ev.end_time ? toMin(ev.end_time) : (d === evStart ? st + 60 : 1440))
+        : 1440;
+      if (en <= st) en = Math.min(1440, st + 60); // 終了≦開始・未入力は60分扱い
+      a.fill(0, Math.max(0, st), Math.min(1440, en));
+    }
+  };
+  for (const ev of rangeEvents || []) {
+    const targets = new Set(partByEvent[ev.id] || []);
+    if (ev.owner_staff_id && sidSet.has(ev.owner_staff_id)) targets.add(ev.owner_staff_id);
+    targets.forEach(sid => block(sid, ev));
+  }
+
+  // --- ③ Google取り込み（時間指定のみ）---
+  try {
+    const accRows = await sb(`accounts?staff_id=in.(${sidIn})&select=id,staff_id`);
+    const accToStaff = {};
+    (accRows || []).forEach(a2 => { accToStaff[a2.id] = a2.staff_id; });
+    const accIds = Object.keys(accToStaff);
+    if (accIds.length) {
+      const exts = await sbInChunks('external_calendars?account_id=in.(__IDS__)&select=*&limit=1000', accIds);
+      const refreshed = await Promise.all((exts || []).map(c => extRefresh(c)));
+      for (const c of refreshed) {
+        const sid = accToStaff[c.account_id];
+        if (!sid || !avail[sid]) continue;
+        for (const m of extExpand(c.cache || [], startDate, endDate)) {
+          if (!m.st) continue; // 終日（誕生日等）はブロックしない
+          block(sid, { start_date: m.sd, end_date: m.ed, start_time: m.st, end_time: m.et });
+        }
+      }
+    }
+  } catch (e) { console.error('free search ext:', e); }
+
+  // --- 共通の空きから提案スロットを抽出（1日最大2件・全体で最大10件）---
+  const slots = [];
+  const nowJst = new Date(Date.now() + 9 * 3600000);
+  const nowMin = nowJst.getUTCHours() * 60 + nowJst.getUTCMinutes();
+  for (const d of days) {
+    if (slots.length >= FREE_MAX_SLOTS) break;
+    const di = dayIdx[d];
+    let perDay = 0;
+    let runStart = -1;
+    const minFloor = (d === todayJst) ? Math.max(winS, nowMin + 15) : winS; // 今日は15分後以降のみ
+    for (let mi = winS; mi <= winE; mi++) {
+      const free = mi < winE && mi >= minFloor && staffIds.every(sid => avail[sid][di][mi] === 1);
+      if (free && runStart < 0) runStart = mi;
+      if (!free && runStart >= 0) {
+        if (mi - runStart >= duration && perDay < 2 && slots.length < FREE_MAX_SLOTS) {
+          slots.push({ date: d, start: minToHm(runStart), end: minToHm(runStart + duration), gap_end: minToHm(mi) });
+          perDay++;
+        }
+        runStart = -1;
+      }
+    }
+  }
+  return res.status(200).json({ slots, searched: { staff_count: staffIds.length, start_date: startDate, end_date: endDate, day_start: dayStart, day_end: dayEnd, duration_minutes: duration } });
+}
+
 // 月に重なる予定＋見えるカレンダー一覧を返す（1往復で描画に必要な全て）
 async function eventsList(res, payload, body) {
   if (!(await assertCalendarAccess(res, payload))) return;
@@ -1011,6 +1202,7 @@ async function eventsList(res, payload, body) {
   const rows = await sbAll(
     `events?start_date=lte.${last}&end_date=gte.${first}&calendar_id=in.(${inFilter(ids)})&select=*`,
     'start_date,id');
+  await attachParticipants(rows);
 
   // 外部カレンダー（本人のみ・読み取り専用）をカレンダー一覧と予定に合流させる
   try {
@@ -1079,6 +1271,21 @@ async function eventsSave(res, payload, body) {
   }
   if (!canPost) return bad(res, 403, 'このカレンダーに予定を追加する権限がありません');
 
+  // 参加者（誰でも設定できる。編集権限は予定本体と同じ判定に従う）
+  const participantIds = Array.isArray(ev.participant_staff_ids)
+    ? validStaffIds(ev.participant_staff_ids, 100) : null;
+  if (Array.isArray(ev.participant_staff_ids) && participantIds === null && ev.participant_staff_ids.length) {
+    return bad(res, 400, '参加者の指定が不正です');
+  }
+  const saveParticipants = async (eventId) => {
+    if (participantIds === null && !Array.isArray(ev.participant_staff_ids)) return; // 未指定=変更しない
+    await sb(`event_participants?event_id=eq.${encodeURIComponent(eventId)}`, { method: 'DELETE' });
+    if (participantIds && participantIds.length) {
+      await sb('event_participants', { method: 'POST',
+        body: JSON.stringify(participantIds.map(sid => ({ event_id: eventId, staff_id: sid }))) });
+    }
+  };
+
   const record = {
     calendar_id: cal.id,
     title,
@@ -1105,6 +1312,7 @@ async function eventsSave(res, payload, body) {
       || tier === 'master';
     if (!allowed) return bad(res, 403, 'この予定を編集する権限がありません');
     const rows = await sb(`events?id=eq.${encodeURIComponent(ev.id)}`, { method: 'PATCH', body: JSON.stringify(record) });
+    await saveParticipants(ev.id);
     return res.status(200).json({ ok: true, rows });
   }
 
@@ -1112,6 +1320,8 @@ async function eventsSave(res, payload, body) {
   record.owner_staff_id = acc.staff_id || null;
   record.owner_name = acc.name || null;
   const rows = await sb('events', { method: 'POST', body: JSON.stringify([record]) });
+  const newId = rows && rows[0] ? rows[0].id : null;
+  if (newId) await saveParticipants(newId);
   return res.status(200).json({ ok: true, rows });
 }
 
@@ -1129,6 +1339,7 @@ async function eventsDelete(res, payload, body) {
     || (cal && cal.owner_account_id === acc.id)
     || tier === 'master';
   if (!allowed) return bad(res, 403, 'この予定を削除する権限がありません');
+  await sb(`event_participants?event_id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
   await sb(`events?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
   return res.status(200).json({ ok: true });
 }
@@ -1587,6 +1798,7 @@ export default async function handler(req, res) {
     if (action === 'calendar-members-list') return await calendarMembersList(res, payload, body);
     if (action === 'calendar-pref-save') return await calendarPrefSave(res, payload, body);
     if (action === 'staff-directory') return await staffDirectory(res, payload);
+    if (action === 'free-slot-search') return await freeSlotSearch(res, payload, body);
     if (action === 'events-list') return await eventsList(res, payload, body);
     if (action === 'events-save') return await eventsSave(res, payload, body);
     if (action === 'events-delete') return await eventsDelete(res, payload, body);
@@ -1658,6 +1870,8 @@ export default async function handler(req, res) {
           catch (e) { console.error('ical feed cascade delete:', e); }
           try { await sb(`ical_feed_excludes?staff_id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }); }
           catch (e) { console.error('ical excludes cascade delete:', e); }
+          try { await sb(`event_participants?staff_id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }); }
+          catch (e) { console.error('participants cascade delete:', e); }
         }
         await sb(`${table}?${p.idCol}=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
         return res.status(200).json({ ok: true });
