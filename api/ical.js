@@ -67,11 +67,12 @@ export default async function handler(req, res) {
     const staff = (await sb(`staff?id=eq.${encodeURIComponent(feed.staff_id)}&select=id,name,dept_id`))[0];
     if (!staff) return res.status(404).send('Not found');
 
-    // ③ 段階公開の判定: このスタッフに紐づくアカウントのロールで判定
+    // ③ このスタッフに紐づく全アカウント（段階公開の判定と、カレンダー可視判定の両方で使う）
+    const accs = await sb(`accounts?staff_id=eq.${encodeURIComponent(feed.staff_id)}&select=id,role`);
+    const accIds = (accs || []).map(a => a.id);
     const relRows = await sb(`app_settings?key=eq.calendar_release&select=value`);
     const level = relRows && relRows[0] ? (parseFloat(relRows[0].value) || 0) : 0;
     if (level < 2) {
-      const accs = await sb(`accounts?staff_id=eq.${encodeURIComponent(feed.staff_id)}&select=role`);
       const roles = (accs || []).map(a => a.role);
       const ok = roles.includes('master') || (level >= 1 && roles.includes('leader'));
       if (!ok) return res.status(404).send('Not found');
@@ -143,15 +144,28 @@ export default async function handler(req, res) {
       }
     }
 
-    // ⑥ カレンダー予定（本人設定の反映範囲に従う）
-    const conds = [];
-    if (feed.include_private !== false) conds.push(`and(scope.eq.private,owner_staff_id.eq.${encodeURIComponent(feed.staff_id)})`);
-    if (feed.include_dept === true && staff.dept_id != null) conds.push(`and(scope.eq.dept,dept_id.eq.${staff.dept_id})`);
-    if (feed.include_all !== false) conds.push('scope.eq.all');
+    // ⑥ カレンダー予定: 本人が「見える」カレンダー（全体公開＋所有＋参加）のうち、
+    //    アプリで非表示にしていないものを配信する＝アプリの表示とフィードが一致する
+    const cals = await sb('calendars?deleted_at=is.null&select=id,visibility,owner_account_id&limit=1000');
+    let memIds = new Set();
+    const mem = await sb(`calendar_members?staff_id=eq.${encodeURIComponent(feed.staff_id)}&select=calendar_id`);
+    (mem || []).forEach(m => memIds.add(m.calendar_id));
+    const accIdSet = new Set(accIds);
+    let visibleIds = (cals || []).filter(c =>
+      c.visibility === 'all' || accIdSet.has(c.owner_account_id) ||
+      (c.visibility === 'members' && memIds.has(c.id))
+    ).map(c => c.id);
+    if (accIds.length && visibleIds.length) {
+      const accIn = accIds.map(id => `"${id}"`).join(',');
+      const prefs = await sb(`calendar_prefs?account_id=in.(${accIn})&hidden=eq.true&select=calendar_id`);
+      const hiddenIds = new Set((prefs || []).map(p => p.calendar_id));
+      visibleIds = visibleIds.filter(id => !hiddenIds.has(id));
+    }
 
-    if (conds.length) {
+    if (visibleIds.length) {
+      const calIn = visibleIds.map(id => `"${id}"`).join(',');
       const events = await sb(
-        `events?start_date=lte.${rangeEnd}&end_date=gte.${rangeStart}&or=(${conds.join(',')})` +
+        `events?start_date=lte.${rangeEnd}&end_date=gte.${rangeStart}&calendar_id=in.(${calIn})` +
         `&select=id,title,start_date,end_date,start_time,end_time,location,memo&order=start_date,id&limit=1000`
       );
       for (const ev of events || []) {
