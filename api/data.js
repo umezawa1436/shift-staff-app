@@ -916,6 +916,28 @@ async function staffDirectory(res, payload) {
   return res.status(200).json({ staff: rows });
 }
 
+// ===== 管理画面用: 全カレンダー一覧（管理者のみ）=====
+// calendars-list と違い「マイカレンダー自動作成」を行わず、削除されていない全カレンダーを
+// メンバー数・予定数付きで返す。個人カレンダーの中身（予定そのもの）は返さない。
+async function calendarAdminList(res, payload) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const tier = await calendarEffectiveTier(payload);
+  if (tier !== 'master') return bad(res, 403, '管理者のみ閲覧できます');
+  const cals = await sbAll('calendars?deleted_at=is.null&select=id,name,color,visibility,owner_account_id,owner_name,created_at', 'created_at,id');
+  const mems = await sbAll('calendar_members?select=calendar_id', 'calendar_id,staff_id');
+  const evs = await sbAll('events?select=calendar_id', 'id');
+  const memCount = {};
+  (mems || []).forEach(m => { memCount[m.calendar_id] = (memCount[m.calendar_id] || 0) + 1; });
+  const evCount = {};
+  (evs || []).forEach(e => { if (e.calendar_id) evCount[e.calendar_id] = (evCount[e.calendar_id] || 0) + 1; });
+  const calendars = cals.map(c => ({
+    id: c.id, name: c.name, color: c.color, visibility: c.visibility,
+    owner_account_id: c.owner_account_id, owner_name: c.owner_name, created_at: c.created_at,
+    member_count: memCount[c.id] || 0, event_count: evCount[c.id] || 0,
+  }));
+  return res.status(200).json({ calendars });
+}
+
 // 表示/非表示の切替（本人の表示設定のみ）
 async function calendarPrefSave(res, payload, body) {
   if (!(await assertCalendarAccess(res, payload))) return;
@@ -1138,6 +1160,7 @@ export default async function handler(req, res) {
     if (action === 'calendar-save') return await calendarSave(res, payload, body);
     if (action === 'calendar-delete') return await calendarDelete(res, payload, body);
     if (action === 'calendar-trash-list') return await calendarTrashList(res, payload);
+    if (action === 'calendar-admin-list') return await calendarAdminList(res, payload);
     if (action === 'calendar-restore') return await calendarRestore(res, payload, body);
     if (action === 'calendar-members-list') return await calendarMembersList(res, payload, body);
     if (action === 'calendar-pref-save') return await calendarPrefSave(res, payload, body);
