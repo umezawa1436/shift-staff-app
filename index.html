@@ -606,6 +606,12 @@
         style="padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit">
       <input type="url" id="calEvUrl" maxlength="300" placeholder="URL（https://〜・任意）" inputmode="url" autocapitalize="off" autocorrect="off"
         style="padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:2px 0">
+        <span style="font-size:13px;color:var(--text-muted);font-weight:700">👥 参加者</span>
+        <span id="calEvPplChips" style="display:flex;flex-wrap:wrap;gap:5px;align-items:center"></span>
+        <button onclick="openCalPplSheet()" style="padding:7px 12px;border:1.5px solid var(--border);border-radius:20px;background:white;font-size:12px;font-family:inherit;cursor:pointer">＋追加</button>
+        <button onclick="openCalFreeSheet()" style="padding:7px 12px;border:1.5px solid #93c5fd;border-radius:20px;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">🔍 空き時間を探す</button>
+      </div>
       <textarea id="calEvMemo" maxlength="500" rows="3" placeholder="メモ（500文字まで・任意）"
         style="padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;resize:vertical"></textarea>
       <div id="calEvColors" style="display:flex;gap:10px;flex-wrap:wrap"></div>
@@ -619,6 +625,50 @@
   </div>
 
   <!-- 外部カレンダー連携（ICS購読）設定 -->
+  <!-- 参加者ピッカー -->
+  <div id="calPplOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:320" onclick="closeCalPplSheet()"></div>
+  <div id="calPplSheet" style="display:none;position:fixed;left:0;right:0;bottom:0;background:white;border-radius:20px 20px 0 0;z-index:321;max-height:75vh;overflow-y:auto;padding:20px 20px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,0.15)">
+    <div style="font-size:16px;font-weight:700;margin-bottom:10px">参加者を選ぶ</div>
+    <div id="calPplBody" style="margin-bottom:14px"></div>
+    <div style="display:flex;gap:10px">
+      <div style="flex:1"></div>
+      <button onclick="closeCalPplSheet()" style="padding:12px 16px;border:1.5px solid var(--border);border-radius:12px;background:white;font-family:inherit;cursor:pointer">キャンセル</button>
+      <button onclick="applyCalPpl()" style="padding:12px 22px;border:none;border-radius:12px;background:var(--primary);color:white;font-weight:700;font-family:inherit;cursor:pointer">決定</button>
+    </div>
+  </div>
+
+  <!-- 空き時間検索 -->
+  <div id="calFreeOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:320" onclick="closeCalFreeSheet()"></div>
+  <div id="calFreeSheet" style="display:none;position:fixed;left:0;right:0;bottom:0;background:white;border-radius:20px 20px 0 0;z-index:321;max-height:85vh;overflow-y:auto;padding:20px 20px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,0.15)">
+    <div style="font-size:16px;font-weight:700;margin-bottom:4px">🔍 空き時間を探す</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
+      参加者全員の確定シフト・予定・Google取り込みから、全員が空いている時間を提案します。自分は自動で含まれます。
+    </div>
+    <div id="calFreePplRow" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px"></div>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:10px 12px;align-items:center;margin-bottom:12px">
+      <span style="font-size:13px;font-weight:700">所要時間</span>
+      <select id="calFreeDur" style="padding:10px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit">
+        <option value="15">15分</option><option value="30">30分</option><option value="45">45分</option>
+        <option value="60" selected>1時間</option><option value="90">1時間30分</option><option value="120">2時間</option>
+      </select>
+      <span style="font-size:13px;font-weight:700">期間</span>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="date" id="calFreeFrom" style="flex:1;min-width:0;padding:9px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit">
+        <span style="color:var(--text-muted)">〜</span>
+        <input type="date" id="calFreeTo" style="flex:1;min-width:0;padding:9px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit">
+      </div>
+      <span style="font-size:13px;font-weight:700">時間帯</span>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="time" id="calFreeStart" value="09:00" style="flex:1;min-width:0;padding:9px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit">
+        <span style="color:var(--text-muted)">〜</span>
+        <input type="time" id="calFreeEnd" value="18:00" style="flex:1;min-width:0;padding:9px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit">
+      </div>
+    </div>
+    <button onclick="runFreeSearch()" style="width:100%;padding:13px;border:none;border-radius:12px;background:var(--primary);color:white;font-weight:700;font-size:14px;font-family:inherit;cursor:pointer;margin-bottom:12px">空き時間を検索</button>
+    <div id="calFreeResults"></div>
+    <button onclick="closeCalFreeSheet()" style="width:100%;margin-top:8px;padding:12px;border:1.5px solid var(--border);border-radius:12px;background:white;font-family:inherit;cursor:pointer">閉じる</button>
+  </div>
+
   <div id="calIcsOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:310" onclick="closeCalIcsSheet()"></div>
   <div id="calIcsSheet" style="display:none;position:fixed;left:0;right:0;bottom:0;background:white;border-radius:20px 20px 0 0;z-index:311;max-height:85vh;overflow-y:auto;padding:20px 20px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,0.15)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -1372,6 +1422,7 @@ async function showApp() {
   // leader/master アカウントまで見た「実効ロール」判定がサーバ側（calendar-access）にある。
   dataApi({ action: 'calendar-access' }).then(r => {
     CAL_MY_TIER = r.tier || 'staff';
+    CAL_MY_STAFF_ID = r.staff_id || null;
     const btn = document.getElementById('tabCalendar');
     if (btn) btn.style.display = r.allowed ? '' : 'none';
   }).catch(() => { /* 非公開・旧API等は非表示のまま */ });
@@ -2278,6 +2329,8 @@ let calTabCalendars = [];   // 自分から見えるカレンダー一覧（even
 let calById = {};           // id -> カレンダー
 let calTabClosedInfo = null; // 表示月の休診判定関数（再描画用に保持）
 let CAL_MY_TIER = 'staff';  // calendar-access が返す実効ロール（編集ボタン表示用。強制はサーバ側）
+let CAL_MY_STAFF_ID = null; // 自分のスタッフID（参加者表示用）
+let calEvPpl = [];          // 予定エディタで選択中の参加者 [{id, name}]
 let calSheetDay = null;     // 日別シートが開いている日
 let calEvEditing = null;    // 編集中の予定（null=新規）
 let calEdEditing = null;    // 編集中のカレンダー（null=新規）
@@ -2434,6 +2487,7 @@ window.openCalDaySheet = function(day) {
         ${ev.location ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px">📍 ${escapeHtml(ev.location)}</div>` : ''}
         ${ev.url ? `<div style="font-size:12px;margin-top:2px"><a href="${escapeHtml(ev.url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:var(--primary);word-break:break-all">🔗 ${escapeHtml(ev.url)}</a></div>` : ''}
         ${ev.memo ? `<div style="font-size:12px;color:var(--text);margin-top:4px;white-space:pre-wrap;line-height:1.5">${escapeHtml(ev.memo)}</div>` : ''}
+        ${(ev.participants && ev.participants.length) ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;align-items:center">${ev.participants.slice(0, 10).map(p => pplIcon(p, 22)).join('')}${ev.participants.length > 10 ? `<span style="font-size:11px;color:var(--text-muted)">+${ev.participants.length - 10}</span>` : ''}</div>` : ''}
       </div>
     </div>`;
   });
@@ -2458,6 +2512,150 @@ function renderCalEvColors() {
   ).join('');
 }
 window.selectCalEvColor = function(key) { calEvColor = key; renderCalEvColors(); };
+
+// ===== 参加者（苗字アイコン）=====
+const PPL_COLORS = ['#3b82f6','#10b981','#f97316','#8b5cf6','#14b8a6','#ec4899','#6b7280','#ef4444'];
+function pplColor(id) {
+  let h = 0;
+  for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return PPL_COLORS[h % PPL_COLORS.length];
+}
+// 苗字アイコン: スペース区切りの姓（無ければ先頭2文字）
+function pplIcon(p, size) {
+  const family = String(p.name || '?').split(/[ 　]/)[0].slice(0, 2);
+  const px = size || 26;
+  return `<span title="${escapeHtml(p.name || '')}" style="display:inline-flex;align-items:center;justify-content:center;
+    width:${px}px;height:${px}px;border-radius:50%;background:${pplColor(p.id)};color:white;
+    font-size:${Math.round(px * 0.42)}px;font-weight:700;flex-shrink:0">${escapeHtml(family)}</span>`;
+}
+
+function renderCalEvPpl() {
+  const wrap = document.getElementById('calEvPplChips');
+  wrap.innerHTML = calEvPpl.map(p =>
+    `<span onclick="removeCalPpl('${p.id}')" style="display:inline-flex;align-items:center;gap:3px;cursor:pointer">
+      ${pplIcon(p)}<span style="font-size:10px;color:var(--text-muted)">✕</span></span>`).join('')
+    || '<span style="font-size:12px;color:var(--text-muted)">なし</span>';
+}
+window.removeCalPpl = function(id) {
+  calEvPpl = calEvPpl.filter(p => p.id !== id);
+  renderCalEvPpl();
+};
+
+// 参加者ピッカー（部門ごとのチェックボックス）
+window.openCalPplSheet = async function() {
+  document.getElementById('calPplOverlay').style.display = 'block';
+  document.getElementById('calPplSheet').style.display = 'block';
+  const body = document.getElementById('calPplBody');
+  body.innerHTML = '<div style="color:var(--text-muted);font-size:12px">読み込み中...</div>';
+  try {
+    if (!staffDirCache) {
+      staffDirCache = (await dataApi({ action: 'staff-directory' })).staff || [];
+    }
+    const selSet = new Set(calEvPpl.map(p => p.id));
+    let html = '';
+    [0, 1, 2, 3].forEach(dept => {
+      const list = staffDirCache.filter(st => st.dept_id === dept);
+      if (!list.length) return;
+      html += `<div style="font-size:11px;font-weight:700;color:var(--text-muted);margin:8px 0 4px">${DEPT_NAMES[dept] || dept}</div>`;
+      html += list.map(st =>
+        `<label style="display:inline-flex;align-items:center;gap:5px;margin:0 10px 6px 0;font-size:13px">
+          <input type="checkbox" class="calPplChk" value="${st.id}" data-name="${escapeHtml(st.name)}" ${selSet.has(st.id) ? 'checked' : ''}>
+          ${escapeHtml(st.name)}
+        </label>`).join('');
+    });
+    body.innerHTML = html || '<div style="color:var(--text-muted);font-size:12px">スタッフがいません</div>';
+  } catch(e) {
+    console.error(e);
+    body.innerHTML = '<div style="color:#dc2626;font-size:12px">名簿の読み込みに失敗しました</div>';
+  }
+};
+window.closeCalPplSheet = function() {
+  document.getElementById('calPplOverlay').style.display = 'none';
+  document.getElementById('calPplSheet').style.display = 'none';
+};
+window.applyCalPpl = function() {
+  calEvPpl = [...document.querySelectorAll('.calPplChk:checked')].map(el => ({ id: el.value, name: el.dataset.name }));
+  renderCalEvPpl();
+  closeCalPplSheet();
+};
+
+// ===== 空き時間検索 =====
+window.openCalFreeSheet = function() {
+  const pad = (n) => String(n).padStart(2, '0');
+  const t = new Date();
+  const today = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
+  const t2 = new Date(Date.now() + 14 * 86400000);
+  const plus14 = `${t2.getFullYear()}-${pad(t2.getMonth() + 1)}-${pad(t2.getDate())}`;
+  if (!document.getElementById('calFreeFrom').value) document.getElementById('calFreeFrom').value = today;
+  if (!document.getElementById('calFreeTo').value) document.getElementById('calFreeTo').value = plus14;
+  // 参加者表示（自分＋選択済み）
+  const me = (CAL_MY_STAFF_ID && staffDirCache) ? staffDirCache.find(st => st.id === CAL_MY_STAFF_ID) : null;
+  const shown = [];
+  if (me && !calEvPpl.some(p => p.id === me.id)) shown.push({ id: me.id, name: me.name + '（自分）' });
+  else if (!me) shown.push({ id: 'me', name: (currentUser?.name || '自分') + '（自分）' });
+  shown.push(...calEvPpl);
+  document.getElementById('calFreePplRow').innerHTML =
+    shown.map(p => `<span style="display:inline-flex;align-items:center;gap:4px">${pplIcon(p, 24)}<span style="font-size:11px;color:var(--text-muted)">${escapeHtml(p.name)}</span></span>`).join('');
+  document.getElementById('calFreeResults').innerHTML = '';
+  document.getElementById('calFreeOverlay').style.display = 'block';
+  document.getElementById('calFreeSheet').style.display = 'block';
+};
+window.closeCalFreeSheet = function() {
+  document.getElementById('calFreeOverlay').style.display = 'none';
+  document.getElementById('calFreeSheet').style.display = 'none';
+};
+
+window.runFreeSearch = async function() {
+  const out = document.getElementById('calFreeResults');
+  const from = document.getElementById('calFreeFrom').value;
+  const to = document.getElementById('calFreeTo').value;
+  if (!from || !to) { showToast('期間を選択してください', 'error'); return; }
+  out.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:14px">検索中...</div>';
+  try {
+    const r = await dataApi({
+      action: 'free-slot-search',
+      staff_ids: calEvPpl.map(p => p.id),
+      duration_minutes: parseInt(document.getElementById('calFreeDur').value, 10),
+      start_date: from,
+      end_date: to,
+      day_start: document.getElementById('calFreeStart').value || '09:00',
+      day_end: document.getElementById('calFreeEnd').value || '18:00',
+    });
+    const slots = r.slots || [];
+    if (!slots.length) {
+      out.innerHTML = '<div style="padding:14px;background:#fef3c7;border-radius:12px;font-size:13px;color:#92400e">全員が空いている時間が見つかりませんでした。期間や時間帯を広げるか、参加者を減らして試してください。</div>';
+      return;
+    }
+    const dows = ['日','月','火','水','木','金','土'];
+    out.innerHTML = '<div style="font-size:13px;font-weight:700;margin-bottom:6px">💡 この時間はいかがですか？</div>' + slots.map(sl => {
+      const [y, m, d] = sl.date.split('-').map(Number);
+      const dow = dows[new Date(y, m - 1, d).getDay()];
+      return `<div style="display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid var(--border)">
+        <div style="flex:1;min-width:0">
+          <span style="font-weight:700;font-size:14px">${m}/${d}（${dow}）${sl.start}〜${sl.end}</span>
+          <span style="font-size:11px;color:var(--text-muted)">（${sl.gap_end}まで空き）</span>
+        </div>
+        <button onclick="applyFreeSlot('${sl.date}','${sl.start}','${sl.end}')"
+          style="padding:8px 12px;border:none;border-radius:10px;background:var(--primary);color:white;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0">この時間にする</button>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    console.error(e);
+    out.innerHTML = `<div style="padding:12px;background:#fef2f2;border-radius:12px;font-size:13px;color:#dc2626">${escapeHtml(e.message || '検索に失敗しました')}</div>`;
+  }
+};
+
+// 提案スロットを予定エディタに反映
+window.applyFreeSlot = function(date, start, end) {
+  document.getElementById('calEvStart').value = date;
+  document.getElementById('calEvEnd').value = date;
+  document.getElementById('calEvAllday').checked = false;
+  document.getElementById('calEvTimeRow').style.display = 'flex';
+  document.getElementById('calEvTimeStart').value = start;
+  document.getElementById('calEvTimeEnd').value = end;
+  closeCalFreeSheet();
+  showToast(`${date.slice(5).replace('-', '/')} ${start}〜${end} をセットしました ✓`, 'success');
+};
 
 window.openCalEventEditorById = function(id) {
   const ev = calTabEvents.find(x => x.id === id);
@@ -2489,6 +2687,8 @@ window.openCalEventEditor = function(ev, day) {
   document.getElementById('calEvLocation').value = ev ? (ev.location || '') : '';
   document.getElementById('calEvUrl').value = ev ? (ev.url || '') : '';
   document.getElementById('calEvMemo').value = ev ? (ev.memo || '') : '';
+  calEvPpl = ev && Array.isArray(ev.participants) ? ev.participants.map(p => ({ id: p.id, name: p.name })) : [];
+  renderCalEvPpl();
   calEvColor = ev && ev.color ? ev.color : 'blue';
   renderCalEvColors();
   document.getElementById('calEvDeleteBtn').style.display = ev ? '' : 'none';
@@ -2526,6 +2726,7 @@ window.saveCalEvent = async function() {
     location: document.getElementById('calEvLocation').value.trim() || null,
     url: evUrl || null,
     memo: document.getElementById('calEvMemo').value.trim() || null,
+    participant_staff_ids: calEvPpl.map(p => p.id),
     color: calEvColor,
   };
   if (calEvEditing) event.id = calEvEditing.id;
