@@ -554,8 +554,6 @@
       <div style="font-size:18px;font-weight:700" id="calTabTitle"></div>
       <button class="month-btn" id="calTabNext"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg></button>
       <button class="month-btn" id="calMgrBtn" onclick="openCalMgr()" title="カレンダー管理" style="margin-left:auto">📅</button>
-      <button id="calIcsBtn" onclick="openCalIcsSheet()" title="Googleカレンダー連携"
-        style="height:36px;padding:0 12px;border:1.5px solid #93c5fd;border-radius:10px;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap">🔗 Google連携</button>
     </div>
     <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px">
       <div style="text-align:center;font-size:11px;font-weight:600;color:#ef4444;padding:4px 0">日</div>
@@ -813,6 +811,7 @@
   </div>
   <div style="padding:16px">
     <button class="btn-submit" id="openPwFromSettingsBtn" style="background:var(--bg);color:var(--text);border:1.5px solid var(--border);margin-bottom:16px">🔑 パスワードを変更する</button>
+    <button class="btn-submit" id="openIcsFromSettingsBtn" style="display:none;background:#eff6ff;color:#1d4ed8;border:1.5px solid #93c5fd;margin-bottom:16px">🔗 Googleカレンダー連携</button>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;border:1.5px solid var(--border);border-radius:12px;margin-bottom:12px">
       <div>
         <div style="font-size:14px;font-weight:600;color:var(--text)">月の上限を表示</div>
@@ -1426,6 +1425,8 @@ async function showApp() {
     CAL_MY_STAFF_ID = r.staff_id || null;
     const btn = document.getElementById('tabCalendar');
     if (btn) btn.style.display = r.allowed ? '' : 'none';
+    const icsBtn = document.getElementById('openIcsFromSettingsBtn');
+    if (icsBtn) icsBtn.style.display = r.allowed ? '' : 'none';
   }).catch(() => { /* 非公開・旧API等は非表示のまま */ });
   // 残り6本は互いに独立 → 並列取得で直列の待ち時間を解消
   await Promise.all([
@@ -2236,6 +2237,12 @@ document.getElementById('openPwFromSettingsBtn').addEventListener('click', () =>
   closeSettingsSheet();
   document.getElementById('pwOverlay').classList.add('show');
   document.getElementById('pwSheet').classList.add('show');
+});
+
+// 設定シートから「Googleカレンダー連携」（カレンダー機能が公開されている人にだけ表示）
+document.getElementById('openIcsFromSettingsBtn').addEventListener('click', () => {
+  closeSettingsSheet();
+  openCalIcsSheet();
 });
 
 document.getElementById('pwOverlay').addEventListener('click', () => {
