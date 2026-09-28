@@ -296,6 +296,9 @@
     .bottom-nav { position: sticky; bottom: 0; background: white; border-top: 1px solid var(--border); display: flex; z-index: 100; padding-bottom: env(safe-area-inset-bottom); }
     .nav-tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 10px 8px; border: none; background: white; color: var(--text-muted); font-size: 11px; font-family: inherit; cursor: pointer; transition: all 0.15s; border-top: 2px solid transparent; }
     .nav-tab.active { color: var(--primary); border-top-color: var(--primary); font-weight: 600; }
+    /* 3タブ化の狭幅対策（仕様v3）: 320px幅でも折り返しを構造的に起こさない */
+    .nav-tab { min-width: 0; white-space: nowrap; overflow: hidden; }
+    .nav-tab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 
     .submit-bar { background: white; padding: 16px 20px; padding-bottom: calc(16px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); box-shadow: 0 -4px 20px rgba(0,0,0,0.08); }
     .submit-info { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
@@ -544,6 +547,179 @@
     <div id="confirmedGrid"></div>
   </div>
 
+  <!-- カレンダータブ（Phase1: シフト×予定の統合表示。段階公開 calendar_release で制御） -->
+  <div id="calTabWrap" style="display:none;padding:16px;flex:1;overflow-y:auto">
+    <div style="display:flex;gap:12px;margin-bottom:12px;align-items:center">
+      <button class="month-btn" id="calTabPrev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg></button>
+      <div style="font-size:18px;font-weight:700" id="calTabTitle"></div>
+      <button class="month-btn" id="calTabNext"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg></button>
+      <button class="month-btn" id="calMgrBtn" onclick="openCalMgr()" title="カレンダー管理" style="margin-left:auto">📅</button>
+      <button class="month-btn" id="calIcsBtn" onclick="openCalIcsSheet()" title="外部カレンダー連携">⚙️</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px">
+      <div style="text-align:center;font-size:11px;font-weight:600;color:#ef4444;padding:4px 0">日</div>
+      <div style="text-align:center;font-size:11px;font-weight:600;color:var(--text-muted);padding:4px 0">月</div>
+      <div style="text-align:center;font-size:11px;font-weight:600;color:var(--text-muted);padding:4px 0">火</div>
+      <div style="text-align:center;font-size:11px;font-weight:600;color:var(--text-muted);padding:4px 0">水</div>
+      <div style="text-align:center;font-size:11px;font-weight:600;color:var(--text-muted);padding:4px 0">木</div>
+      <div style="text-align:center;font-size:11px;font-weight:600;color:var(--text-muted);padding:4px 0">金</div>
+      <div style="text-align:center;font-size:11px;font-weight:600;color:#3b82f6;padding:4px 0">土</div>
+    </div>
+    <div id="calTabGrid"></div>
+    <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:10px">日付タップで詳細</div>
+  </div>
+
+  <!-- カレンダー日別シート（閲覧） -->
+  <div id="calDayOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:300" onclick="closeCalDaySheet()"></div>
+  <div id="calDaySheet" style="display:none;position:fixed;left:0;right:0;bottom:0;background:white;border-radius:20px 20px 0 0;z-index:301;max-height:70vh;overflow-y:auto;padding:20px 20px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,0.15)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-size:16px;font-weight:700" id="calDayTitle"></div>
+      <button onclick="closeCalDaySheet()" style="border:none;background:var(--bg);border-radius:8px;padding:6px 14px;font-size:13px;font-family:inherit;cursor:pointer">閉じる</button>
+    </div>
+    <div id="calDayBody"></div>
+    <button onclick="openCalEventEditor(null, calSheetDay)" style="width:100%;margin-top:12px;padding:12px;border:1.5px dashed var(--primary);border-radius:12px;background:#eef2ff;color:var(--primary);font-weight:700;font-size:14px;font-family:inherit;cursor:pointer">＋ 予定を追加</button>
+  </div>
+
+  <!-- 予定エディタ -->
+  <div id="calEvOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:310" onclick="closeCalEventEditor()"></div>
+  <div id="calEvSheet" style="display:none;position:fixed;left:0;right:0;bottom:0;background:white;border-radius:20px 20px 0 0;z-index:311;max-height:85vh;overflow-y:auto;padding:20px 20px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,0.15)">
+    <div style="font-size:16px;font-weight:700;margin-bottom:14px" id="calEvSheetTitle">予定を追加</div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <input type="text" id="calEvTitle" maxlength="30" placeholder="タイトル（30文字まで）"
+        style="padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit">
+      <select id="calEvCalendar" style="padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;background:white"></select>
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px">
+        <input type="checkbox" id="calEvAllday" checked onchange="document.getElementById('calEvTimeRow').style.display = this.checked ? 'none' : 'flex'">
+        終日
+      </label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="date" id="calEvStart" style="flex:1;padding:10px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit">
+        <span style="color:var(--text-muted)">〜</span>
+        <input type="date" id="calEvEnd" style="flex:1;padding:10px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit">
+      </div>
+      <div id="calEvTimeRow" style="display:none;gap:8px;align-items:center">
+        <input type="time" id="calEvTimeStart" style="flex:1;padding:10px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit">
+        <span style="color:var(--text-muted)">〜</span>
+        <input type="time" id="calEvTimeEnd" style="flex:1;padding:10px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit">
+      </div>
+      <input type="text" id="calEvLocation" maxlength="100" placeholder="場所（任意）"
+        style="padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit">
+      <input type="url" id="calEvUrl" maxlength="300" placeholder="URL（https://〜・任意）" inputmode="url" autocapitalize="off" autocorrect="off"
+        style="padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:2px 0">
+        <span style="font-size:13px;color:var(--text-muted);font-weight:700">👥 参加者</span>
+        <span id="calEvPplChips" style="display:flex;flex-wrap:wrap;gap:5px;align-items:center"></span>
+        <button onclick="openCalPplSheet()" style="padding:7px 12px;border:1.5px solid var(--border);border-radius:20px;background:white;font-size:12px;font-family:inherit;cursor:pointer">＋追加</button>
+        <button onclick="openCalFreeSheet()" style="padding:7px 12px;border:1.5px solid #93c5fd;border-radius:20px;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">🔍 空き時間を探す</button>
+      </div>
+      <textarea id="calEvMemo" maxlength="500" rows="3" placeholder="メモ（500文字まで・任意）"
+        style="padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;resize:vertical"></textarea>
+      <div id="calEvColors" style="display:flex;gap:10px;flex-wrap:wrap"></div>
+      <div style="display:flex;gap:10px;margin-top:4px">
+        <button id="calEvDeleteBtn" onclick="deleteCalEvent()" style="display:none;padding:12px 16px;border:1.5px solid #fca5a5;border-radius:12px;background:#fef2f2;color:#dc2626;font-weight:700;font-family:inherit;cursor:pointer">削除</button>
+        <div style="flex:1"></div>
+        <button onclick="closeCalEventEditor()" style="padding:12px 16px;border:1.5px solid var(--border);border-radius:12px;background:white;font-family:inherit;cursor:pointer">キャンセル</button>
+        <button onclick="saveCalEvent()" style="padding:12px 22px;border:none;border-radius:12px;background:var(--primary);color:white;font-weight:700;font-family:inherit;cursor:pointer">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 外部カレンダー連携（ICS購読）設定 -->
+  <!-- 参加者ピッカー -->
+  <div id="calPplOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:320" onclick="closeCalPplSheet()"></div>
+  <div id="calPplSheet" style="display:none;position:fixed;left:0;right:0;bottom:0;background:white;border-radius:20px 20px 0 0;z-index:321;max-height:75vh;overflow-y:auto;padding:20px 20px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,0.15)">
+    <div style="font-size:16px;font-weight:700;margin-bottom:10px">参加者を選ぶ</div>
+    <div id="calPplBody" style="margin-bottom:14px"></div>
+    <div style="display:flex;gap:10px">
+      <div style="flex:1"></div>
+      <button onclick="closeCalPplSheet()" style="padding:12px 16px;border:1.5px solid var(--border);border-radius:12px;background:white;font-family:inherit;cursor:pointer">キャンセル</button>
+      <button onclick="applyCalPpl()" style="padding:12px 22px;border:none;border-radius:12px;background:var(--primary);color:white;font-weight:700;font-family:inherit;cursor:pointer">決定</button>
+    </div>
+  </div>
+
+  <!-- 空き時間検索 -->
+  <div id="calFreeOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:320" onclick="closeCalFreeSheet()"></div>
+  <div id="calFreeSheet" style="display:none;position:fixed;left:0;right:0;bottom:0;background:white;border-radius:20px 20px 0 0;z-index:321;max-height:85vh;overflow-y:auto;padding:20px 20px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,0.15)">
+    <div style="font-size:16px;font-weight:700;margin-bottom:4px">🔍 空き時間を探す</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
+      参加者全員の確定シフト・予定・Google取り込みから、全員が空いている時間を提案します。自分は自動で含まれます。
+    </div>
+    <div id="calFreePplRow" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px"></div>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:10px 12px;align-items:center;margin-bottom:12px">
+      <span style="font-size:13px;font-weight:700">所要時間</span>
+      <select id="calFreeDur" style="padding:10px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit">
+        <option value="15">15分</option><option value="30">30分</option><option value="45">45分</option>
+        <option value="60" selected>1時間</option><option value="90">1時間30分</option><option value="120">2時間</option>
+      </select>
+      <span style="font-size:13px;font-weight:700">期間</span>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="date" id="calFreeFrom" style="flex:1;min-width:0;padding:9px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit">
+        <span style="color:var(--text-muted)">〜</span>
+        <input type="date" id="calFreeTo" style="flex:1;min-width:0;padding:9px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit">
+      </div>
+      <span style="font-size:13px;font-weight:700">時間帯</span>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="time" id="calFreeStart" value="09:00" style="flex:1;min-width:0;padding:9px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit">
+        <span style="color:var(--text-muted)">〜</span>
+        <input type="time" id="calFreeEnd" value="18:00" style="flex:1;min-width:0;padding:9px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit">
+      </div>
+    </div>
+    <button onclick="runFreeSearch()" style="width:100%;padding:13px;border:none;border-radius:12px;background:var(--primary);color:white;font-weight:700;font-size:14px;font-family:inherit;cursor:pointer;margin-bottom:12px">空き時間を検索</button>
+    <div id="calFreeResults"></div>
+    <button onclick="closeCalFreeSheet()" style="width:100%;margin-top:8px;padding:12px;border:1.5px solid var(--border);border-radius:12px;background:white;font-family:inherit;cursor:pointer">閉じる</button>
+  </div>
+
+  <div id="calIcsOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:310" onclick="closeCalIcsSheet()"></div>
+  <div id="calIcsSheet" style="display:none;position:fixed;left:0;right:0;bottom:0;background:white;border-radius:20px 20px 0 0;z-index:311;max-height:85vh;overflow-y:auto;padding:20px 20px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,0.15)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-size:16px;font-weight:700">外部カレンダー連携</div>
+      <button onclick="closeCalIcsSheet()" style="border:none;background:var(--bg);border-radius:8px;padding:6px 14px;font-size:13px;font-family:inherit;cursor:pointer">閉じる</button>
+    </div>
+    <div id="calIcsBody"><div style="text-align:center;color:var(--text-muted);padding:20px">読み込み中...</div></div>
+  </div>
+
+  <!-- カレンダー管理（一覧・表示切替） -->
+  <div id="calMgrOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:310" onclick="closeCalMgr()"></div>
+  <div id="calMgrSheet" style="display:none;position:fixed;left:0;right:0;bottom:0;background:white;border-radius:20px 20px 0 0;z-index:311;max-height:85vh;overflow-y:auto;padding:20px 20px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,0.15)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <div style="font-size:16px;font-weight:700">カレンダー</div>
+      <button onclick="closeCalMgr()" style="border:none;background:var(--bg);border-radius:8px;padding:6px 14px;font-size:13px;font-family:inherit;cursor:pointer">閉じる</button>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">チェックで表示/非表示を切替。✏️付きは自分が管理者（タップで編集）</div>
+    <div id="calMgrBody"></div>
+    <button onclick="openCalEditor(null)" style="width:100%;margin-top:12px;padding:12px;border:1.5px dashed var(--primary);border-radius:12px;background:#eef2ff;color:var(--primary);font-weight:700;font-size:14px;font-family:inherit;cursor:pointer">＋ 新しいカレンダー</button>
+    <div id="calTrashWrap" style="display:none;margin-top:14px">
+      <button onclick="toggleCalTrash()" id="calTrashToggle" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:12px;background:white;color:var(--text-muted);font-size:13px;font-family:inherit;cursor:pointer">🗑 削除済みカレンダー（30日以内は復元可）</button>
+      <div id="calTrashBody" style="display:none;margin-top:8px"></div>
+    </div>
+  </div>
+
+  <!-- カレンダー編集 -->
+  <div id="calEdOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:320" onclick="closeCalEditor()"></div>
+  <div id="calEdSheet" style="display:none;position:fixed;left:0;right:0;bottom:0;background:white;border-radius:20px 20px 0 0;z-index:321;max-height:85vh;overflow-y:auto;padding:20px 20px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,0.15)">
+    <div style="font-size:16px;font-weight:700;margin-bottom:14px" id="calEdTitle">新しいカレンダー</div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <input type="text" id="calEdName" maxlength="20" placeholder="カレンダー名（20文字まで）"
+        style="padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit">
+      <select id="calEdVis" onchange="calEdVisChanged()" style="padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;background:white">
+        <option value="private">🔒 自分のみ</option>
+        <option value="members">👥 参加者のみ（メンバーを選ぶ）</option>
+        <option value="all">🌐 全体（全員に表示）</option>
+      </select>
+      <div id="calEdColors" style="display:flex;gap:10px;flex-wrap:wrap"></div>
+      <div id="calEdMembersWrap" style="display:none">
+        <div style="font-size:13px;font-weight:700;margin-bottom:6px">参加メンバー</div>
+        <div id="calEdMembers" style="max-height:220px;overflow-y:auto;border:1.5px solid var(--border);border-radius:10px;padding:10px"></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:4px">
+        <button id="calEdDeleteBtn" onclick="deleteCalEd()" style="display:none;padding:12px 16px;border:1.5px solid #fca5a5;border-radius:12px;background:#fef2f2;color:#dc2626;font-weight:700;font-family:inherit;cursor:pointer">削除</button>
+        <div style="flex:1"></div>
+        <button onclick="closeCalEditor()" style="padding:12px 16px;border:1.5px solid var(--border);border-radius:12px;background:white;font-family:inherit;cursor:pointer">キャンセル</button>
+        <button onclick="saveCalEd()" style="padding:12px 22px;border:none;border-radius:12px;background:var(--primary);color:white;font-weight:700;font-family:inherit;cursor:pointer">保存</button>
+      </div>
+    </div>
+  </div>
+
   <div class="calendar-wrap" id="calendarWrap">
     <div class="weekdays">
       <div class="weekday sun">日</div><div class="weekday">月</div><div class="weekday">火</div><div class="weekday">水</div><div class="weekday">木</div><div class="weekday">金</div><div class="weekday sat">土</div>
@@ -559,6 +735,10 @@
     <button class="nav-tab" id="tabConfirmed" onclick="switchTab('confirmed')">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 14h8M8 18h5"/></svg>
       <span>確定シフト</span>
+    </button>
+    <button class="nav-tab" id="tabCalendar" onclick="switchTab('calendar')" style="display:none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><circle cx="12" cy="16" r="2.5"/></svg>
+      <span>カレンダー</span>
     </button>
   </div>
 
@@ -716,6 +896,7 @@ async function loadAppSettings() {
     (rows || []).forEach(r => {
       if (r.key === 'short_ratio' && r.value != null) APP_SHORT_RATIO = parseFloat(r.value);
       if (r.key === 'default_planned_hours' && r.value != null) APP_DEFAULT_PLAN_HOURS = parseFloat(r.value);
+      if (r.key === 'calendar_release' && r.value != null) CALENDAR_RELEASE = parseFloat(r.value) || 0;
     });
   } catch(e) {
     console.warn('app_settings 読み込みスキップ（デフォルト値を使用）:', e);
@@ -1236,6 +1417,15 @@ async function showApp() {
   // appSettings（所定時間の定数 APP_SHORT_RATIO/APP_DEFAULT_PLAN_HOURS）は
   // loadClinicSettings→loadPlannedHours が参照するため、これだけ先に取得
   await loadAppSettings();
+  // カレンダータブの表示判定はサーバに問い合わせる。
+  // スタッフ画面のトークンは全員 role='staff'（auth.jsの仕様）のため、同じスタッフに紐づく
+  // leader/master アカウントまで見た「実効ロール」判定がサーバ側（calendar-access）にある。
+  dataApi({ action: 'calendar-access' }).then(r => {
+    CAL_MY_TIER = r.tier || 'staff';
+    CAL_MY_STAFF_ID = r.staff_id || null;
+    const btn = document.getElementById('tabCalendar');
+    if (btn) btn.style.display = r.allowed ? '' : 'none';
+  }).catch(() => { /* 非公開・旧API等は非表示のまま */ });
   // 残り6本は互いに独立 → 並列取得で直列の待ち時間を解消
   await Promise.all([
     loadSharedWords(),
@@ -2103,15 +2293,19 @@ function switchTab(tab) {
   currentTab = tab;
   const tabReq = document.getElementById('tabRequest');
   const tabConf = document.getElementById('tabConfirmed');
+  const tabCal = document.getElementById('tabCalendar');
   const calWrap = document.getElementById('calendarWrap');
   const subBar = document.getElementById('submitBar');
   const confWrap = document.getElementById('confirmedWrap');
+  const calTabWrap = document.getElementById('calTabWrap');
 
   if (tabReq) tabReq.classList.toggle('active', tab === 'request');
   if (tabConf) tabConf.classList.toggle('active', tab === 'confirmed');
+  if (tabCal) tabCal.classList.toggle('active', tab === 'calendar');
   if (calWrap) calWrap.style.display = tab === 'request' ? 'block' : 'none';
   if (subBar) subBar.style.display = tab === 'request' ? 'block' : 'none';
   if (confWrap) confWrap.style.display = tab === 'confirmed' ? 'block' : 'none';
+  if (calTabWrap) calTabWrap.style.display = tab === 'calendar' ? 'block' : 'none';
 
   if (tab === 'confirmed') {
     confYear = currentYear;
@@ -2119,7 +2313,887 @@ function switchTab(tab) {
     updateConfMonthTitle();
     loadConfirmedShifts();
   }
+  if (tab === 'calendar') {
+    calTabYear = currentYear;
+    calTabMonth = currentMonth;
+    loadCalendarTab();
+  }
 }
+
+// ===== カレンダータブ（Phase1: シフト×予定の統合表示・閲覧） =====
+let CALENDAR_RELEASE = 0;   // app_settings.calendar_release（loadAppSettings が設定）
+let calTabYear = new Date().getFullYear();
+let calTabMonth = new Date().getMonth() + 1;
+let calTabEvents = [];      // 表示月の予定（サーバ側で可視範囲フィルタ済み）
+let calTabCalendars = [];   // 自分から見えるカレンダー一覧（events-list が同時に返す）
+let calById = {};           // id -> カレンダー
+let calTabClosedInfo = null; // 表示月の休診判定関数（再描画用に保持）
+let CAL_MY_TIER = 'staff';  // calendar-access が返す実効ロール（編集ボタン表示用。強制はサーバ側）
+let CAL_MY_STAFF_ID = null; // 自分のスタッフID（参加者表示用）
+let calEvPpl = [];          // 予定エディタで選択中の参加者 [{id, name}]
+let calSheetDay = null;     // 日別シートが開いている日
+let calEvEditing = null;    // 編集中の予定（null=新規）
+let calEdEditing = null;    // 編集中のカレンダー（null=新規）
+let staffDirCache = null;   // メンバー選択用の名簿キャッシュ
+let calTabShiftMap = {};    // day -> shift_type_id（自分の確定シフト）
+
+const CAL_EVENT_COLORS = { blue:'#3b82f6', green:'#10b981', red:'#ef4444', orange:'#f97316', purple:'#8b5cf6', teal:'#14b8a6', pink:'#ec4899', gray:'#6b7280' };
+const CAL_VIS_ICONS = { private:'🔒', members:'👥', all:'🌐', external:'📥' };
+const CAL_VIS_LABELS = { private:'自分のみ', members:'参加者のみ', all:'全体', external:'外部取り込み（自分のみ・読み取り専用）' };
+
+async function loadCalendarTab() {
+  if (!currentUser?.id) return;
+  document.getElementById('calTabTitle').textContent = `${calTabYear}年${calTabMonth}月`;
+  const grid = document.getElementById('calTabGrid');
+  grid.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:20px">読み込み中...</div>';
+  try {
+    const [shifts, spRows, thuRows, evRes] = await Promise.all([
+      dataApi({ action:'list', table:'shifts', view:'my-month-confirmed', params:{ year: calTabYear, month: calTabMonth } }).then(r => r.rows || []),
+      supabaseRequest(`special_days?year=eq.${calTabYear}&month=eq.${calTabMonth}&select=day,is_closed,label`).catch(() => []),
+      supabaseRequest(`thursday_types?year=eq.${calTabYear}&month=eq.${calTabMonth}&select=day,is_open`).catch(() => []),
+      dataApi({ action:'events-list', year: calTabYear, month: calTabMonth }),
+    ]);
+    calTabShiftMap = {};
+    shifts.forEach(sh => { calTabShiftMap[sh.day] = sh.shift_type_id; });
+    calTabEvents = evRes.rows || [];
+    calTabCalendars = evRes.calendars || [];
+    calById = {};
+    calTabCalendars.forEach(c => { calById[c.id] = c; });
+
+    // 休診判定（確定タブと同一ロジック: special_days の is_closed ＋ 木曜デフォルト休診）
+    const closedDays = {};
+    (spRows || []).forEach(r => { if (r.is_closed) closedDays[r.day] = r.label || '休診'; });
+    const thuOpen = new Set();
+    (thuRows || []).forEach(t => { if (t.is_open) thuOpen.add(t.day); });
+    const closedInfo = (d) => {
+      if (closedDays[d]) return { closed: true, label: closedDays[d] };
+      const dow = new Date(calTabYear, calTabMonth - 1, d).getDay();
+      if (dow === 4 && !thuOpen.has(d)) return { closed: true, label: '休診' };
+      return { closed: false };
+    };
+
+    calTabClosedInfo = closedInfo;
+    renderCalendarTab();
+  } catch(e) {
+    console.error('[calendar tab]', e);
+    grid.innerHTML = `<div style="text-align:center;color:#dc2626;padding:20px">読み込みエラー：${escapeHtml(e.message || '')}</div>`;
+  }
+}
+
+// 指定日に重なる予定（非表示カレンダーの分は除外。終日→時刻順で安定ソート）
+function calEventsOnDay(d) {
+  const ds = `${calTabYear}-${String(calTabMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  return calTabEvents
+    .filter(ev => ev.start_date <= ds && ev.end_date >= ds)
+    .filter(ev => !(calById[ev.calendar_id] && calById[ev.calendar_id].hidden))
+    .sort((a, b) => (a.start_time || '') < (b.start_time || '') ? -1 : 1);
+}
+// 予定の表示色（予定の色 → 無ければ所属カレンダーの色）
+function calEventHex(ev) {
+  const key = ev.color || (calById[ev.calendar_id] && calById[ev.calendar_id].color) || 'blue';
+  return CAL_EVENT_COLORS[key] || CAL_EVENT_COLORS.blue;
+}
+
+function renderCalendarTab() {
+  const closedInfo = calTabClosedInfo || (() => ({ closed: false }));
+  const daysInMonth = new Date(calTabYear, calTabMonth, 0).getDate();
+  const firstDow = new Date(calTabYear, calTabMonth - 1, 1).getDay();
+  const today = new Date();
+  const isThisMonth = today.getFullYear() === calTabYear && (today.getMonth() + 1) === calTabMonth;
+
+  let html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">';
+  for (let i = 0; i < firstDow; i++) html += '<div></div>';
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dow = new Date(calTabYear, calTabMonth - 1, d).getDay();
+    const ci = closedInfo(d);
+    const dowColor = dow === 0 ? '#ef4444' : dow === 6 ? '#3b82f6' : 'var(--text)';
+    const isToday = isThisMonth && today.getDate() === d;
+
+    // 自分のシフト（休み系はセルでは省略＝予定スペースを優先）
+    let shiftHtml = '';
+    if (!ci.closed) {
+      const shId = calTabShiftMap[d];
+      const st = shId ? shiftTypesMap[shId] : null;
+      if (st && !st.is_off) {
+        const bg = st.bg_color || '#dbeafe';
+        const fg = st.color || '#1d4ed8';
+        shiftHtml = `<div style="font-size:8px;font-weight:700;color:${fg};background:${bg};border-radius:3px;padding:0 2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(st.short_label || shId)}</div>`;
+      }
+    }
+
+    // 予定チップ（最大2件＋件数）
+    const evs = calEventsOnDay(d);
+    let evHtml = '';
+    evs.slice(0, 2).forEach(ev => {
+      const c = calEventHex(ev);
+      evHtml += `<div style="font-size:8px;line-height:1.35;color:white;background:${c};border-radius:3px;padding:0 2px;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(ev.title)}</div>`;
+    });
+    if (evs.length > 2) evHtml += `<div style="font-size:8px;color:var(--text-muted)">+${evs.length - 2}件</div>`;
+
+    const bg = ci.closed ? '#f3f4f6' : 'white';
+    const border = isToday ? '2px solid var(--primary)' : '1.5px solid var(--border)';
+    const closedLabel = ci.closed ? `<div style="font-size:8px;color:#9ca3af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(ci.label)}</div>` : '';
+
+    html += `<div onclick="openCalDaySheet(${d})" style="min-height:64px;border-radius:10px;padding:4px 3px;background:${bg};border:${border};cursor:pointer;overflow:hidden">
+      <div style="font-size:12px;font-weight:600;color:${ci.closed ? '#9ca3af' : dowColor};text-align:center;line-height:1.2">${d}</div>
+      ${closedLabel}${shiftHtml}${evHtml}
+    </div>`;
+  }
+  html += '</div>';
+  document.getElementById('calTabGrid').innerHTML = html;
+}
+
+function canEditCalEvent(ev) {
+  // 予定の作成者本人 / 所属カレンダーの管理者（所有者・master）。強制はサーバ側でも実施
+  if (ev.owner_account_id === currentUser?.accountId) return true;
+  const cal = calById[ev.calendar_id];
+  return !!(cal && cal.can_manage);
+}
+
+window.openCalDaySheet = function(day) {
+  calSheetDay = day;
+  const dowJp = ['日','月','火','水','木','金','土'][new Date(calTabYear, calTabMonth - 1, day).getDay()];
+  document.getElementById('calDayTitle').textContent = `${calTabMonth}月${day}日（${dowJp}）`;
+
+  let html = '';
+  // 自分のシフト
+  const shId = calTabShiftMap[day];
+  const st = shId ? shiftTypesMap[shId] : null;
+  if (st) {
+    const time = (st.start_time && st.end_time) ? ` ${st.start_time}〜${st.end_time}` : '';
+    html += `<div style="background:${st.bg_color || '#dbeafe'};border-radius:10px;padding:10px 12px;margin-bottom:10px">
+      <span style="font-size:12px;color:var(--text-muted)">自分のシフト：</span>
+      <span style="font-weight:700;color:${st.color || '#1d4ed8'}">${escapeHtml(st.label || shId)}</span>
+      <span style="font-size:12px;color:var(--text-muted)">${time}</span>
+    </div>`;
+  }
+  // 予定一覧
+  const evs = calEventsOnDay(day);
+  if (!evs.length && !st) {
+    html += '<div style="text-align:center;color:var(--text-muted);padding:20px 0">この日の予定はありません</div>';
+  }
+  evs.forEach(ev => {
+    const c = calEventHex(ev);
+    const time = ev.start_time ? `${ev.start_time}${ev.end_time ? '〜' + ev.end_time : ''}` : '終日';
+    const multi = ev.start_date !== ev.end_date ? `（${ev.start_date.slice(5).replace('-','/')}〜${ev.end_date.slice(5).replace('-','/')}）` : '';
+    const editable = canEditCalEvent(ev);
+    // 編集可能な予定はタップでエディタを開く（権限の強制はサーバ側でも実施）
+    html += `<div ${editable ? `onclick="openCalEventEditorById('${ev.id}')"` : ''} style="display:flex;gap:10px;padding:10px 2px;border-bottom:1px solid var(--border);${editable ? 'cursor:pointer' : ''}">
+      <div style="width:4px;border-radius:2px;background:${c};flex-shrink:0"></div>
+      <div style="min-width:0;flex:1">
+        <div style="font-weight:700;font-size:14px">${escapeHtml(ev.title)}${editable ? ' <span style="font-size:11px;color:var(--text-muted)">✏️</span>' : ''}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${time}${multi} ・ 📅${escapeHtml((calById[ev.calendar_id] || {}).name || '')}${ev.owner_name ? ' ・ ' + escapeHtml(ev.owner_name) : ''}</div>
+        ${ev.location ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px">📍 ${escapeHtml(ev.location)}</div>` : ''}
+        ${ev.url ? `<div style="font-size:12px;margin-top:2px"><a href="${escapeHtml(ev.url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:var(--primary);word-break:break-all">🔗 ${escapeHtml(ev.url)}</a></div>` : ''}
+        ${ev.memo ? `<div style="font-size:12px;color:var(--text);margin-top:4px;white-space:pre-wrap;line-height:1.5">${escapeHtml(ev.memo)}</div>` : ''}
+        ${(ev.participants && ev.participants.length) ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;align-items:center">${ev.participants.slice(0, 10).map(p => pplIcon(p, 22)).join('')}${ev.participants.length > 10 ? `<span style="font-size:11px;color:var(--text-muted)">+${ev.participants.length - 10}</span>` : ''}</div>` : ''}
+      </div>
+    </div>`;
+  });
+
+  document.getElementById('calDayBody').innerHTML = html;
+  document.getElementById('calDayOverlay').style.display = 'block';
+  document.getElementById('calDaySheet').style.display = 'block';
+};
+window.closeCalDaySheet = function() {
+  document.getElementById('calDayOverlay').style.display = 'none';
+  document.getElementById('calDaySheet').style.display = 'none';
+};
+
+// ===== 予定エディタ =====
+let calEvColor = 'blue';
+
+function renderCalEvColors() {
+  const wrap = document.getElementById('calEvColors');
+  wrap.innerHTML = Object.entries(CAL_EVENT_COLORS).map(([key, hex]) =>
+    `<button onclick="selectCalEvColor('${key}')" style="width:32px;height:32px;border-radius:50%;background:${hex};cursor:pointer;
+      border:${key === calEvColor ? '3px solid var(--text)' : '3px solid transparent'};box-shadow:0 0 0 1px var(--border)"></button>`
+  ).join('');
+}
+window.selectCalEvColor = function(key) { calEvColor = key; renderCalEvColors(); };
+
+// ===== 参加者（苗字アイコン）=====
+const PPL_COLORS = ['#3b82f6','#10b981','#f97316','#8b5cf6','#14b8a6','#ec4899','#6b7280','#ef4444'];
+function pplColor(id) {
+  let h = 0;
+  for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return PPL_COLORS[h % PPL_COLORS.length];
+}
+// 苗字アイコン: スペース区切りの姓（無ければ先頭2文字）
+function pplIcon(p, size) {
+  const family = String(p.name || '?').split(/[ 　]/)[0].slice(0, 2);
+  const px = size || 26;
+  return `<span title="${escapeHtml(p.name || '')}" style="display:inline-flex;align-items:center;justify-content:center;
+    width:${px}px;height:${px}px;border-radius:50%;background:${pplColor(p.id)};color:white;
+    font-size:${Math.round(px * 0.42)}px;font-weight:700;flex-shrink:0">${escapeHtml(family)}</span>`;
+}
+
+function renderCalEvPpl() {
+  const wrap = document.getElementById('calEvPplChips');
+  wrap.innerHTML = calEvPpl.map(p =>
+    `<span onclick="removeCalPpl('${p.id}')" style="display:inline-flex;align-items:center;gap:3px;cursor:pointer">
+      ${pplIcon(p)}<span style="font-size:10px;color:var(--text-muted)">✕</span></span>`).join('')
+    || '<span style="font-size:12px;color:var(--text-muted)">なし</span>';
+}
+window.removeCalPpl = function(id) {
+  calEvPpl = calEvPpl.filter(p => p.id !== id);
+  renderCalEvPpl();
+};
+
+// 参加者ピッカー（部門ごとのチェックボックス）
+window.openCalPplSheet = async function() {
+  document.getElementById('calPplOverlay').style.display = 'block';
+  document.getElementById('calPplSheet').style.display = 'block';
+  const body = document.getElementById('calPplBody');
+  body.innerHTML = '<div style="color:var(--text-muted);font-size:12px">読み込み中...</div>';
+  try {
+    if (!staffDirCache) {
+      staffDirCache = (await dataApi({ action: 'staff-directory' })).staff || [];
+    }
+    const selSet = new Set(calEvPpl.map(p => p.id));
+    let html = '';
+    [0, 1, 2, 3].forEach(dept => {
+      const list = staffDirCache.filter(st => st.dept_id === dept);
+      if (!list.length) return;
+      html += `<div style="font-size:11px;font-weight:700;color:var(--text-muted);margin:8px 0 4px">${DEPT_NAMES[dept] || dept}</div>`;
+      html += list.map(st =>
+        `<label style="display:inline-flex;align-items:center;gap:5px;margin:0 10px 6px 0;font-size:13px">
+          <input type="checkbox" class="calPplChk" value="${st.id}" data-name="${escapeHtml(st.name)}" ${selSet.has(st.id) ? 'checked' : ''}>
+          ${escapeHtml(st.name)}
+        </label>`).join('');
+    });
+    body.innerHTML = html || '<div style="color:var(--text-muted);font-size:12px">スタッフがいません</div>';
+  } catch(e) {
+    console.error(e);
+    body.innerHTML = '<div style="color:#dc2626;font-size:12px">名簿の読み込みに失敗しました</div>';
+  }
+};
+window.closeCalPplSheet = function() {
+  document.getElementById('calPplOverlay').style.display = 'none';
+  document.getElementById('calPplSheet').style.display = 'none';
+};
+window.applyCalPpl = function() {
+  calEvPpl = [...document.querySelectorAll('.calPplChk:checked')].map(el => ({ id: el.value, name: el.dataset.name }));
+  renderCalEvPpl();
+  closeCalPplSheet();
+};
+
+// ===== 空き時間検索 =====
+window.openCalFreeSheet = function() {
+  const pad = (n) => String(n).padStart(2, '0');
+  const t = new Date();
+  const today = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
+  const t2 = new Date(Date.now() + 14 * 86400000);
+  const plus14 = `${t2.getFullYear()}-${pad(t2.getMonth() + 1)}-${pad(t2.getDate())}`;
+  if (!document.getElementById('calFreeFrom').value) document.getElementById('calFreeFrom').value = today;
+  if (!document.getElementById('calFreeTo').value) document.getElementById('calFreeTo').value = plus14;
+  // 参加者表示（自分＋選択済み）
+  const me = (CAL_MY_STAFF_ID && staffDirCache) ? staffDirCache.find(st => st.id === CAL_MY_STAFF_ID) : null;
+  const shown = [];
+  if (me && !calEvPpl.some(p => p.id === me.id)) shown.push({ id: me.id, name: me.name + '（自分）' });
+  else if (!me) shown.push({ id: 'me', name: (currentUser?.name || '自分') + '（自分）' });
+  shown.push(...calEvPpl);
+  document.getElementById('calFreePplRow').innerHTML =
+    shown.map(p => `<span style="display:inline-flex;align-items:center;gap:4px">${pplIcon(p, 24)}<span style="font-size:11px;color:var(--text-muted)">${escapeHtml(p.name)}</span></span>`).join('');
+  document.getElementById('calFreeResults').innerHTML = '';
+  document.getElementById('calFreeOverlay').style.display = 'block';
+  document.getElementById('calFreeSheet').style.display = 'block';
+};
+window.closeCalFreeSheet = function() {
+  document.getElementById('calFreeOverlay').style.display = 'none';
+  document.getElementById('calFreeSheet').style.display = 'none';
+};
+
+window.runFreeSearch = async function() {
+  const out = document.getElementById('calFreeResults');
+  const from = document.getElementById('calFreeFrom').value;
+  const to = document.getElementById('calFreeTo').value;
+  if (!from || !to) { showToast('期間を選択してください', 'error'); return; }
+  out.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:14px">検索中...</div>';
+  try {
+    const r = await dataApi({
+      action: 'free-slot-search',
+      staff_ids: calEvPpl.map(p => p.id),
+      duration_minutes: parseInt(document.getElementById('calFreeDur').value, 10),
+      start_date: from,
+      end_date: to,
+      day_start: document.getElementById('calFreeStart').value || '09:00',
+      day_end: document.getElementById('calFreeEnd').value || '18:00',
+    });
+    const slots = r.slots || [];
+    if (!slots.length) {
+      out.innerHTML = '<div style="padding:14px;background:#fef3c7;border-radius:12px;font-size:13px;color:#92400e">全員が空いている時間が見つかりませんでした。期間や時間帯を広げるか、参加者を減らして試してください。</div>';
+      return;
+    }
+    const dows = ['日','月','火','水','木','金','土'];
+    out.innerHTML = '<div style="font-size:13px;font-weight:700;margin-bottom:6px">💡 この時間はいかがですか？</div>' + slots.map(sl => {
+      const [y, m, d] = sl.date.split('-').map(Number);
+      const dow = dows[new Date(y, m - 1, d).getDay()];
+      return `<div style="display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid var(--border)">
+        <div style="flex:1;min-width:0">
+          <span style="font-weight:700;font-size:14px">${m}/${d}（${dow}）${sl.start}〜${sl.end}</span>
+          <span style="font-size:11px;color:var(--text-muted)">（${sl.gap_end}まで空き）</span>
+        </div>
+        <button onclick="applyFreeSlot('${sl.date}','${sl.start}','${sl.end}')"
+          style="padding:8px 12px;border:none;border-radius:10px;background:var(--primary);color:white;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0">この時間にする</button>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    console.error(e);
+    out.innerHTML = `<div style="padding:12px;background:#fef2f2;border-radius:12px;font-size:13px;color:#dc2626">${escapeHtml(e.message || '検索に失敗しました')}</div>`;
+  }
+};
+
+// 提案スロットを予定エディタに反映
+window.applyFreeSlot = function(date, start, end) {
+  document.getElementById('calEvStart').value = date;
+  document.getElementById('calEvEnd').value = date;
+  document.getElementById('calEvAllday').checked = false;
+  document.getElementById('calEvTimeRow').style.display = 'flex';
+  document.getElementById('calEvTimeStart').value = start;
+  document.getElementById('calEvTimeEnd').value = end;
+  closeCalFreeSheet();
+  showToast(`${date.slice(5).replace('-', '/')} ${start}〜${end} をセットしました ✓`, 'success');
+};
+
+window.openCalEventEditorById = function(id) {
+  const ev = calTabEvents.find(x => x.id === id);
+  if (ev) openCalEventEditor(ev, calSheetDay);
+};
+
+window.openCalEventEditor = function(ev, day) {
+  calEvEditing = ev || null;
+  const pad = (n) => String(n).padStart(2, '0');
+  const defDate = day ? `${calTabYear}-${pad(calTabMonth)}-${pad(day)}` : `${calTabYear}-${pad(calTabMonth)}-01`;
+
+  document.getElementById('calEvSheetTitle').textContent = ev ? '予定を編集' : '予定を追加';
+  document.getElementById('calEvTitle').value = ev ? (ev.title || '') : '';
+  // 投稿先カレンダーの選択肢（書き込めるカレンダーのみ）
+  const postable = calTabCalendars.filter(c => c.can_post);
+  const sel = document.getElementById('calEvCalendar');
+  sel.innerHTML = postable.map(c =>
+    `<option value="${c.id}">${CAL_VIS_ICONS[c.visibility] || ''} ${escapeHtml(c.name)}</option>`).join('');
+  const defCal = ev ? ev.calendar_id
+    : (postable.find(c => c.visibility === 'private' && c.is_owner) || postable[0] || {}).id;
+  if (defCal) sel.value = defCal;
+  document.getElementById('calEvStart').value = ev ? ev.start_date : defDate;
+  document.getElementById('calEvEnd').value = ev ? ev.end_date : defDate;
+  const allday = !(ev && ev.start_time);
+  document.getElementById('calEvAllday').checked = allday;
+  document.getElementById('calEvTimeRow').style.display = allday ? 'none' : 'flex';
+  document.getElementById('calEvTimeStart').value = ev && ev.start_time ? ev.start_time : '09:00';
+  document.getElementById('calEvTimeEnd').value = ev && ev.end_time ? ev.end_time : '10:00';
+  document.getElementById('calEvLocation').value = ev ? (ev.location || '') : '';
+  document.getElementById('calEvUrl').value = ev ? (ev.url || '') : '';
+  document.getElementById('calEvMemo').value = ev ? (ev.memo || '') : '';
+  calEvPpl = ev && Array.isArray(ev.participants) ? ev.participants.map(p => ({ id: p.id, name: p.name })) : [];
+  renderCalEvPpl();
+  calEvColor = ev && ev.color ? ev.color : 'blue';
+  renderCalEvColors();
+  document.getElementById('calEvDeleteBtn').style.display = ev ? '' : 'none';
+
+  document.getElementById('calEvOverlay').style.display = 'block';
+  document.getElementById('calEvSheet').style.display = 'block';
+};
+window.closeCalEventEditor = function() {
+  document.getElementById('calEvOverlay').style.display = 'none';
+  document.getElementById('calEvSheet').style.display = 'none';
+};
+
+window.saveCalEvent = async function() {
+  const title = document.getElementById('calEvTitle').value.trim();
+  if (!title) { showToast('タイトルを入力してください', 'error'); return; }
+  const startDate = document.getElementById('calEvStart').value;
+  const endDate = document.getElementById('calEvEnd').value || startDate;
+  if (!startDate) { showToast('開始日を選択してください', 'error'); return; }
+  if (endDate < startDate) { showToast('終了日は開始日以降にしてください', 'error'); return; }
+  const allday = document.getElementById('calEvAllday').checked;
+
+  const calSel = document.getElementById('calEvCalendar').value;
+  if (!calSel) { showToast('カレンダーを選択してください', 'error'); return; }
+  const evUrl = document.getElementById('calEvUrl').value.trim();
+  if (evUrl && !/^https?:\/\/\S+$/i.test(evUrl)) {
+    showToast('URLは https:// から始まる形式で入力してください', 'error'); return;
+  }
+  const event = {
+    title,
+    calendar_id: calSel,
+    start_date: startDate,
+    end_date: endDate,
+    start_time: allday ? null : (document.getElementById('calEvTimeStart').value || null),
+    end_time: allday ? null : (document.getElementById('calEvTimeEnd').value || null),
+    location: document.getElementById('calEvLocation').value.trim() || null,
+    url: evUrl || null,
+    memo: document.getElementById('calEvMemo').value.trim() || null,
+    participant_staff_ids: calEvPpl.map(p => p.id),
+    color: calEvColor,
+  };
+  if (calEvEditing) event.id = calEvEditing.id;
+
+  showLoading();
+  try {
+    await dataApi({ action: 'events-save', event });
+    closeCalEventEditor();
+    showToast(calEvEditing ? '予定を更新しました ✓' : '予定を追加しました ✓', 'success');
+    await loadCalendarTab();
+    if (calSheetDay) openCalDaySheet(calSheetDay);
+  } catch(e) {
+    console.error(e);
+    showToast('保存に失敗しました：' + (e.message || ''), 'error');
+  }
+  hideLoading();
+};
+
+window.deleteCalEvent = async function() {
+  if (!calEvEditing) return;
+  if (!confirm(`予定「${calEvEditing.title}」を削除しますか？`)) return;
+  showLoading();
+  try {
+    await dataApi({ action: 'events-delete', id: calEvEditing.id });
+    closeCalEventEditor();
+    showToast('予定を削除しました', 'success');
+    await loadCalendarTab();
+    if (calSheetDay) openCalDaySheet(calSheetDay);
+  } catch(e) {
+    console.error(e);
+    showToast('削除に失敗しました：' + (e.message || ''), 'error');
+  }
+  hideLoading();
+};
+
+// ===== 外部カレンダー連携（ICS購読）設定 =====
+let calIcsToken = '';
+let icsCalsCache = [];        // ical-settings-get が返す可視カレンダー
+let icsExcludedSet = new Set(); // フィードから除外中のカレンダーID
+let icsExtCache = [];         // 取り込み済み外部カレンダー
+let icsExtEditing = null;     // 編集中の外部カレンダーid（null=新規）
+let icsExtColor = 'teal';
+
+window.openCalIcsSheet = async function() {
+  document.getElementById('calIcsOverlay').style.display = 'block';
+  document.getElementById('calIcsSheet').style.display = 'block';
+  const body = document.getElementById('calIcsBody');
+  body.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:20px">読み込み中...</div>';
+  try {
+    const r = await dataApi({ action: 'ical-settings-get' });
+    if (!r.linked) {
+      body.innerHTML = '<div style="padding:16px;background:#fef3c7;border-radius:12px;font-size:13px;color:#92400e">このアカウントはスタッフ情報と紐付いていないため、外部連携を利用できません。管理者に連絡してください。</div>';
+      return;
+    }
+    icsCalsCache = r.calendars || [];
+    icsExcludedSet = new Set(r.excluded || []);
+    icsExtCache = r.externals || [];
+    icsExtEditing = null;
+    icsExtColor = 'teal';
+    renderIcsSheet(r.settings);
+  } catch(e) {
+    console.error(e);
+    body.innerHTML = `<div style="text-align:center;color:#dc2626;padding:20px">読み込みエラー：${escapeHtml(e.message || '')}</div>`;
+  }
+};
+window.closeCalIcsSheet = function() {
+  document.getElementById('calIcsOverlay').style.display = 'none';
+  document.getElementById('calIcsSheet').style.display = 'none';
+};
+
+function renderIcsSheet(st) {
+  calIcsToken = st.token;
+  const url = `${location.origin}/api/ical?token=${st.token}`;
+  const tgl = (key, label, checked) => `
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);font-size:14px">
+      ${label}
+      <input type="checkbox" ${checked ? 'checked' : ''} onchange="icsToggle('${key}', this.checked)" style="width:20px;height:20px">
+    </label>`;
+  document.getElementById('calIcsBody').innerHTML = `
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">
+      下のURLを Google カレンダーや iPhone のカレンダーに「照会（購読）」として登録すると、
+      確定シフトや予定が自動で表示されます。
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <input type="text" readonly value="${url}" id="calIcsUrl"
+        style="flex:1;min-width:0;padding:10px;border:1.5px solid var(--border);border-radius:10px;font-size:11px;font-family:inherit;color:var(--text-muted)">
+      <button onclick="icsCopyUrl()" style="padding:10px 14px;border:none;border-radius:10px;background:var(--primary);color:white;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap">コピー</button>
+    </div>
+    <div style="font-size:13px;font-weight:700;margin-bottom:4px">カレンダーに反映する内容</div>
+    ${tgl('include_shifts', '確定シフト', st.include_shifts !== false)}
+    <div style="font-size:12px;color:var(--text-muted);padding:8px 0 2px">
+      送るカレンダーを選べます（チェックを外すと Google / iPhone 側に表示されません）
+    </div>
+    ${icsCalsCache.map(c => `
+      <label style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border);font-size:14px">
+        <span style="width:10px;height:10px;border-radius:50%;background:${CAL_EVENT_COLORS[c.color] || CAL_EVENT_COLORS.blue};flex-shrink:0"></span>
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${CAL_VIS_ICONS[c.visibility] || ''} ${escapeHtml(c.name)}</span>
+        <input type="checkbox" class="icsCalChk" value="${c.id}" ${icsExcludedSet.has(c.id) ? '' : 'checked'} onchange="icsCalToggle()" style="width:20px;height:20px">
+      </label>`).join('')}
+    <div style="font-size:13px;font-weight:700;margin:18px 0 2px">📥 Googleカレンダーの取り込み</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">
+      Googleカレンダーの「非公開URL（iCal形式）」を貼ると、Googleの予定がこのアプリに表示されます
+      （自分にだけ表示・読み取り専用・最大3件）。URLはPC表示のGoogleカレンダー設定 → マイカレンダー →
+      「カレンダーの設定と共有」の一番下で取得できます。
+    </div>
+    <div id="icsExtList">${renderIcsExtRows()}</div>
+    <div style="margin-top:8px">
+      <input type="text" id="icsExtName" maxlength="20" placeholder="表示名（例：Google仕事用）"
+        style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit;margin-bottom:6px">
+      <input type="url" id="icsExtUrl" placeholder="https://calendar.google.com/calendar/ical/…/basic.ics" inputmode="url" autocapitalize="off" autocorrect="off"
+        style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid var(--border);border-radius:10px;font-size:11px;font-family:inherit;margin-bottom:6px">
+      <div style="display:flex;gap:8px;align-items:center">
+        <div id="icsExtColors" style="display:flex;gap:6px;flex:1;flex-wrap:wrap"></div>
+        <button onclick="icsExtSave()" id="icsExtSaveBtn"
+          style="padding:10px 16px;border:none;border-radius:10px;background:var(--primary);color:white;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap">追加</button>
+      </div>
+    </div>
+    <details style="margin-top:14px;font-size:13px">
+      <summary style="font-weight:700;cursor:pointer">📱 登録手順（iPhone / Google）</summary>
+      <div style="padding:10px 4px;line-height:1.8;color:var(--text)">
+        <b>iPhone標準カレンダー</b><br>
+        設定 → カレンダー → アカウント → アカウントを追加 → その他 →
+        「照会カレンダーを追加」→ 上のURLを貼り付け → 保存<br><br>
+        <b>Googleカレンダー</b>（PCのブラウザから）<br>
+        Googleカレンダーを開く → 左の「他のカレンダー」の＋ → 「URLで追加」→ 上のURLを貼り付け
+      </div>
+    </details>
+    <div style="margin-top:12px;padding:10px 12px;background:var(--bg);border-radius:10px;font-size:11px;color:var(--text-muted);line-height:1.6">
+      ⚠️ 反映は Google / Apple 側の更新周期に依存し、数時間かかることがあります。<br>
+      ⚠️ URLを知っている人はこのカレンダーを見られます。他人に共有しないでください。
+    </div>
+    <button onclick="icsRotate()" style="width:100%;margin-top:12px;padding:12px;border:1.5px solid #fca5a5;border-radius:12px;background:#fef2f2;color:#dc2626;font-weight:700;font-family:inherit;cursor:pointer">URLを再発行（今のURLを無効化）</button>
+  `;
+  renderIcsExtColors();
+}
+
+// 取り込み済み外部カレンダーの一覧行
+function renderIcsExtRows() {
+  if (!icsExtCache.length) return '';
+  return icsExtCache.map(c => {
+    const hex = CAL_EVENT_COLORS[c.color] || CAL_EVENT_COLORS.teal;
+    const err = c.last_error ? `<div style="font-size:11px;color:#dc2626">⚠️ ${escapeHtml(c.last_error)}</div>` : '';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span style="width:10px;height:10px;border-radius:50%;background:${hex};flex-shrink:0"></span>
+      <div style="flex:1;min-width:0;cursor:pointer" onclick="icsExtEdit('${c.id}')">
+        <div style="font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(c.name)} <span style="font-size:11px;color:var(--text-muted)">✏️</span></div>
+        ${err}
+      </div>
+      <button onclick="icsExtDelete('${c.id}')" style="padding:7px 10px;border:1.5px solid #fca5a5;border-radius:8px;background:#fef2f2;color:#dc2626;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0">削除</button>
+    </div>`;
+  }).join('');
+}
+
+function renderIcsExtColors() {
+  const wrap = document.getElementById('icsExtColors');
+  if (!wrap) return;
+  wrap.innerHTML = Object.entries(CAL_EVENT_COLORS).map(([key, hex]) =>
+    `<button onclick="icsExtPickColor('${key}')" style="width:24px;height:24px;border-radius:50%;background:${hex};cursor:pointer;
+      border:${key === icsExtColor ? '3px solid var(--text)' : '3px solid transparent'};box-shadow:0 0 0 1px var(--border)"></button>`
+  ).join('');
+}
+window.icsExtPickColor = function(key) { icsExtColor = key; renderIcsExtColors(); };
+
+// 行タップで編集モード（フォームに読み込み）
+window.icsExtEdit = function(id) {
+  const c = icsExtCache.find(x => x.id === id);
+  if (!c) return;
+  icsExtEditing = id;
+  icsExtColor = c.color || 'teal';
+  document.getElementById('icsExtName').value = c.name || '';
+  document.getElementById('icsExtUrl').value = c.ics_url || '';
+  document.getElementById('icsExtSaveBtn').textContent = '更新';
+  renderIcsExtColors();
+};
+
+window.icsExtSave = async function() {
+  const url = document.getElementById('icsExtUrl').value.trim();
+  if (!url) { showToast('iCal形式のURLを貼り付けてください', 'error'); return; }
+  if (!/^https:\/\/\S+$/i.test(url)) { showToast('URLは https:// から始まる形式で入力してください', 'error'); return; }
+  const name = document.getElementById('icsExtName').value.trim();
+  showLoading();
+  try {
+    const payload = { action: 'ext-cal-save', name, color: icsExtColor, ics_url: url };
+    if (icsExtEditing) payload.id = icsExtEditing;
+    const r = await dataApi(payload);
+    showToast(`取り込みました ✓（予定 ${r.event_count ?? '-'} 件）`, 'success');
+    icsExtEditing = null;
+    await openCalIcsSheet();   // シートを再読込
+    loadCalendarTab();         // カレンダー表示にも反映
+  } catch(e) {
+    console.error(e);
+    showToast(e.message || '取り込みに失敗しました', 'error', 4500);
+  }
+  hideLoading();
+};
+
+window.icsExtDelete = async function(id) {
+  const c = icsExtCache.find(x => x.id === id);
+  if (!confirm(`「${c ? c.name : ''}」の取り込みを解除しますか？\n（Googleカレンダー側のデータは消えません）`)) return;
+  showLoading();
+  try {
+    await dataApi({ action: 'ext-cal-delete', id });
+    showToast('取り込みを解除しました', 'success');
+    icsExtEditing = null;
+    await openCalIcsSheet();
+    loadCalendarTab();
+  } catch(e) {
+    console.error(e);
+    showToast('解除に失敗しました', 'error');
+  }
+  hideLoading();
+};
+window.icsToggle = async function(key, checked) {
+  try {
+    await dataApi({ action: 'ical-settings-save', [key]: checked });
+    showToast('設定を保存しました ✓', 'success');
+  } catch(e) {
+    console.error(e);
+    showToast('保存に失敗しました', 'error');
+  }
+};
+// フィードに送るカレンダーの選択（チェックなし = 除外として保存）
+window.icsCalToggle = async function() {
+  const excluded = [...document.querySelectorAll('.icsCalChk')].filter(el => !el.checked).map(el => el.value);
+  icsExcludedSet = new Set(excluded);
+  try {
+    await dataApi({ action: 'ical-settings-save', excluded_calendar_ids: excluded });
+    showToast('設定を保存しました ✓', 'success');
+  } catch(e) {
+    console.error(e);
+    showToast('保存に失敗しました', 'error');
+  }
+};
+window.icsCopyUrl = function() {
+  const url = document.getElementById('calIcsUrl').value;
+  navigator.clipboard.writeText(url)
+    .then(() => showToast('URLをコピーしました ✓', 'success'))
+    .catch(() => { document.getElementById('calIcsUrl').select(); showToast('長押しでコピーしてください', 'info'); });
+};
+// ===== カレンダー管理（一覧・表示切替・作成・編集） =====
+window.openCalMgr = function() {
+  document.getElementById('calMgrOverlay').style.display = 'block';
+  document.getElementById('calMgrSheet').style.display = 'block';
+  renderCalMgr();
+  // ゴミ箱は管理者（master）のみ
+  const tw = document.getElementById('calTrashWrap');
+  if (tw) tw.style.display = CAL_MY_TIER === 'master' ? '' : 'none';
+  const tb = document.getElementById('calTrashBody');
+  if (tb) tb.style.display = 'none';
+};
+
+window.toggleCalTrash = async function() {
+  const body = document.getElementById('calTrashBody');
+  if (body.style.display !== 'none') { body.style.display = 'none'; return; }
+  body.style.display = '';
+  body.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px">読み込み中...</div>';
+  try {
+    const r = await dataApi({ action: 'calendar-trash-list' });
+    const trash = r.trash || [];
+    if (!trash.length) {
+      body.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px">削除済みのカレンダーはありません</div>';
+      return;
+    }
+    body.innerHTML = trash.map(c => {
+      const hex = CAL_EVENT_COLORS[c.color] || CAL_EVENT_COLORS.blue;
+      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--border)">
+        <div style="width:12px;height:12px;border-radius:50%;background:${hex};flex-shrink:0;opacity:0.5"></div>
+        <div style="min-width:0;flex:1">
+          <div style="font-size:13px;font-weight:600;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(c.name)}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${CAL_VIS_ICONS[c.visibility] || ''} 復元期限まで あと${c.days_left}日</div>
+        </div>
+        <button onclick="restoreCalendar('${c.id}')" style="padding:6px 12px;border:1.5px solid var(--primary);border-radius:8px;background:white;color:var(--primary);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0">復元</button>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    console.error(e);
+    body.innerHTML = `<div style="color:#dc2626;font-size:12px;padding:8px">読み込みエラー：${escapeHtml(e.message || '')}</div>`;
+  }
+};
+
+window.restoreCalendar = async function(id) {
+  showLoading();
+  try {
+    await dataApi({ action: 'calendar-restore', id });
+    showToast('カレンダーを復元しました ✓', 'success');
+    await loadCalendarTab();
+    renderCalMgr();
+    document.getElementById('calTrashBody').style.display = 'none';
+    toggleCalTrash();
+  } catch(e) {
+    console.error(e);
+    showToast('復元に失敗しました：' + (e.message || ''), 'error');
+  }
+  hideLoading();
+};
+window.closeCalMgr = function() {
+  document.getElementById('calMgrOverlay').style.display = 'none';
+  document.getElementById('calMgrSheet').style.display = 'none';
+};
+
+function renderCalMgr() {
+  const body = document.getElementById('calMgrBody');
+  if (!calTabCalendars.length) {
+    body.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:16px">カレンダーがありません</div>';
+    return;
+  }
+  body.innerHTML = calTabCalendars.map(c => {
+    const hex = CAL_EVENT_COLORS[c.color] || CAL_EVENT_COLORS.blue;
+    const sub = `${CAL_VIS_ICONS[c.visibility] || ''} ${CAL_VIS_LABELS[c.visibility] || ''}${c.owner_name ? ' ・ 作成: ' + escapeHtml(c.owner_name) : ''}`;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid var(--border)">
+      <input type="checkbox" ${c.hidden ? '' : 'checked'} onchange="toggleCalPref('${c.id}', !this.checked)" style="width:20px;height:20px;flex-shrink:0">
+      <div style="width:12px;height:12px;border-radius:50%;background:${hex};flex-shrink:0"></div>
+      <div style="min-width:0;flex:1" ${c.can_manage ? `onclick="openCalEditor('${c.id}')"` : ''}>
+        <div style="font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${c.can_manage ? 'cursor:pointer' : ''}">${escapeHtml(c.name)}${c.can_manage ? ' <span style="font-size:11px;color:var(--text-muted)">✏️</span>' : ''}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${sub}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// 表示/非表示: 即時反映＋サーバ保存
+window.toggleCalPref = async function(calendarId, hidden) {
+  const c = calById[calendarId];
+  if (c) c.hidden = hidden;
+  renderCalendarTab();
+  try {
+    await dataApi({ action: 'calendar-pref-save', calendar_id: calendarId, hidden });
+  } catch(e) {
+    console.error(e);
+    showToast('表示設定の保存に失敗しました', 'error');
+  }
+};
+
+// ===== カレンダー編集 =====
+let calEdColor = 'blue';
+
+function renderCalEdColors() {
+  const wrap = document.getElementById('calEdColors');
+  wrap.innerHTML = Object.entries(CAL_EVENT_COLORS).map(([key, hex]) =>
+    `<button onclick="selectCalEdColor('${key}')" style="width:32px;height:32px;border-radius:50%;background:${hex};cursor:pointer;
+      border:${key === calEdColor ? '3px solid var(--text)' : '3px solid transparent'};box-shadow:0 0 0 1px var(--border)"></button>`
+  ).join('');
+}
+window.selectCalEdColor = function(key) { calEdColor = key; renderCalEdColors(); };
+
+window.calEdVisChanged = function() {
+  const vis = document.getElementById('calEdVis').value;
+  document.getElementById('calEdMembersWrap').style.display = vis === 'members' ? '' : 'none';
+  if (vis === 'members') loadCalEdMembers();
+};
+
+async function loadCalEdMembers(selectedIds) {
+  const wrap = document.getElementById('calEdMembers');
+  wrap.innerHTML = '<div style="color:var(--text-muted);font-size:12px">読み込み中...</div>';
+  try {
+    if (!staffDirCache) {
+      staffDirCache = (await dataApi({ action: 'staff-directory' })).staff || [];
+    }
+    let selected = selectedIds;
+    if (!selected && calEdEditing && calEdEditing.visibility === 'members') {
+      const r = await dataApi({ action: 'calendar-members-list', calendar_id: calEdEditing.id });
+      selected = (r.members || []).map(m => m.id);
+    }
+    const selSet = new Set(selected || []);
+    // 部門ごとにグループ表示
+    let html = '';
+    [0, 1, 2, 3].forEach(dept => {
+      const list = staffDirCache.filter(st => st.dept_id === dept);
+      if (!list.length) return;
+      html += `<div style="font-size:11px;font-weight:700;color:var(--text-muted);margin:8px 0 4px">${DEPT_NAMES[dept] || dept}</div>`;
+      html += list.map(st =>
+        `<label style="display:inline-flex;align-items:center;gap:5px;margin:0 10px 6px 0;font-size:13px">
+          <input type="checkbox" class="calEdMem" value="${st.id}" ${selSet.has(st.id) ? 'checked' : ''}>
+          ${escapeHtml(st.name)}
+        </label>`).join('');
+    });
+    wrap.innerHTML = html || '<div style="color:var(--text-muted);font-size:12px">スタッフがいません</div>';
+  } catch(e) {
+    console.error(e);
+    wrap.innerHTML = '<div style="color:#dc2626;font-size:12px">名簿の読み込みに失敗しました</div>';
+  }
+}
+
+window.openCalEditor = function(calendarId) {
+  calEdEditing = calendarId ? calById[calendarId] : null;
+  document.getElementById('calEdTitle').textContent = calEdEditing ? 'カレンダーを編集' : '新しいカレンダー';
+  document.getElementById('calEdName').value = calEdEditing ? calEdEditing.name : '';
+  const visSel = document.getElementById('calEdVis');
+  // 全体公開の作成はリーダー以上のみ（サーバ側でも強制）
+  const allOpt = visSel.querySelector('option[value="all"]');
+  if (allOpt) allOpt.disabled = (CAL_MY_TIER === 'staff' && !(calEdEditing && calEdEditing.visibility === 'all'));
+  visSel.value = calEdEditing ? calEdEditing.visibility : 'private';
+  calEdColor = calEdEditing && calEdEditing.color ? calEdEditing.color : 'blue';
+  renderCalEdColors();
+  // 削除は管理者（master）のみ（サーバ側でも強制）
+  document.getElementById('calEdDeleteBtn').style.display = (calEdEditing && CAL_MY_TIER === 'master') ? '' : 'none';
+  calEdVisChanged();
+  document.getElementById('calEdOverlay').style.display = 'block';
+  document.getElementById('calEdSheet').style.display = 'block';
+};
+window.closeCalEditor = function() {
+  document.getElementById('calEdOverlay').style.display = 'none';
+  document.getElementById('calEdSheet').style.display = 'none';
+};
+
+window.saveCalEd = async function() {
+  const name = document.getElementById('calEdName').value.trim();
+  if (!name) { showToast('カレンダー名を入力してください', 'error'); return; }
+  const visibility = document.getElementById('calEdVis').value;
+  const calendar = { name, visibility, color: calEdColor };
+  if (calEdEditing) calendar.id = calEdEditing.id;
+  if (visibility === 'members') {
+    calendar.member_staff_ids = [...document.querySelectorAll('.calEdMem:checked')].map(el => el.value);
+  }
+  showLoading();
+  try {
+    await dataApi({ action: 'calendar-save', calendar });
+    closeCalEditor();
+    showToast(calEdEditing ? 'カレンダーを更新しました ✓' : 'カレンダーを作成しました ✓', 'success');
+    await loadCalendarTab();
+    renderCalMgr();
+  } catch(e) {
+    console.error(e);
+    showToast('保存に失敗しました：' + (e.message || ''), 'error');
+  }
+  hideLoading();
+};
+
+window.deleteCalEd = async function() {
+  if (!calEdEditing) return;
+  if (!confirm(`カレンダー「${calEdEditing.name}」を削除しますか？\n\n・予定ごと非表示になります\n・30日以内なら「削除済みカレンダー」から復元できます\n・30日を過ぎると完全に削除されます`)) return;
+  showLoading();
+  try {
+    await dataApi({ action: 'calendar-delete', id: calEdEditing.id });
+    closeCalEditor();
+    showToast('カレンダーを削除しました', 'success');
+    await loadCalendarTab();
+    renderCalMgr();
+  } catch(e) {
+    console.error(e);
+    showToast('削除に失敗しました：' + (e.message || ''), 'error');
+  }
+  hideLoading();
+};
+
+window.icsRotate = async function() {
+  if (!confirm('購読URLを再発行しますか？\n今のURLは使えなくなり、登録済みのカレンダーには再登録が必要です。')) return;
+  showLoading();
+  try {
+    const r = await dataApi({ action: 'ical-token-rotate' });
+    showToast('URLを再発行しました ✓', 'success');
+    if (r.settings) renderIcsSheet(r.settings);
+  } catch(e) {
+    console.error(e);
+    showToast('再発行に失敗しました', 'error');
+  }
+  hideLoading();
+};
+
+document.getElementById('calTabPrev')?.addEventListener('click', () => {
+  calTabMonth--; if (calTabMonth < 1) { calTabMonth = 12; calTabYear--; }
+  loadCalendarTab();
+});
+document.getElementById('calTabNext')?.addEventListener('click', () => {
+  calTabMonth++; if (calTabMonth > 12) { calTabMonth = 1; calTabYear++; }
+  loadCalendarTab();
+});
 
 function updateConfMonthTitle() {
   document.getElementById('confMonthTitle').textContent = `${confYear}年${confMonth}月`;

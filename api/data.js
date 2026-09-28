@@ -15,6 +15,10 @@
 //                  submit-requests: 本人分の一括提出（月内を全削除→再INSERT、staff_idはサーバ強制）
 //
 // 所有者解決: トークンの accountId → accounts テーブル → staff_id / dept_id（自己申告は信用しない）
+//
+// カレンダー機能（events-* / ical-*）:
+//   段階公開 app_settings.calendar_release（0=masterのみ/1=leaderまで/2=全員）をサーバ側で強制。
+//   個人予定(scope='private')は所有アカウント以外に絶対に返さない。
 
 import crypto from 'crypto';
 
@@ -660,6 +664,1078 @@ async function settingsGateway(res, payload, body) {
   return res.status(200).json({ rows, ok: true });
 }
 
+// ===== カレンダー機能（calendars / calendar_members / calendar_prefs / events / ical_feed_settings）=====
+// モデル: 予定はどれかの「カレンダー」に属する（TimeTree型）。
+//   カレンダーの visibility: 'private'(所有者のみ) / 'members'(参加者のみ) / 'all'(全体)
+//   メンバー管理・名前変更・削除はカレンダー所有者（＋master）のみ。
+//   表示/非表示は calendar_prefs で各自が制御（データは消えない）。
+// 段階公開: app_settings.calendar_release  0=masterのみ / 1=leaderまで / 2=全員（行なし=0）
+async function calendarReleaseLevel() {
+  try {
+    const rows = await sb(`app_settings?key=eq.calendar_release&select=value`);
+    return rows && rows[0] ? (parseFloat(rows[0].value) || 0) : 0;
+  } catch { return 0; }
+}
+// 実効ティア判定。
+// スタッフ画面のログインは role='staff' のアカウント限定（auth.js の照合条件）なので、
+// トークンの role だけでは master/leader 本人の試験利用を判定できない。
+// 同じ staff_id に紐づく別アカウント（leader/master の二重アカウント運用）まで見て実効ロールを決める。
+async function calendarEffectiveTier(payload) {
+  if (payload.role === 'master') return 'master';
+  let tier = payload.role === 'leader' ? 'leader' : 'staff';
+  try {
+    const acc = await resolveAccount(payload.accountId);
+    if (acc && acc.staff_id) {
+      const linked = await sb(`accounts?staff_id=eq.${encodeURIComponent(acc.staff_id)}&select=role`);
+      const roles = (linked || []).map(x => x.role);
+      if (roles.includes('master')) return 'master';
+      if (roles.includes('leader')) tier = 'leader';
+    }
+  } catch (e) { console.error('calendar tier resolve:', e); }
+  return tier;
+}
+function calendarTierAllowed(tier, level) {
+  if (tier === 'master') return true;
+  if (tier === 'leader') return level >= 1;
+  return level >= 2;
+}
+// タブ非表示だけに頼らず、APIを直接叩かれても公開レベル未満なら 403 にする
+async function assertCalendarAccess(res, payload) {
+  const level = await calendarReleaseLevel();
+  const tier = await calendarEffectiveTier(payload);
+  if (!calendarTierAllowed(tier, level)) {
+    bad(res, 403, 'カレンダー機能は公開されていません');
+    return false;
+  }
+  return true;
+}
+
+// クライアントがタブ表示可否を問い合わせる（ログイン直後に1回）
+async function calendarAccess(res, payload) {
+  const level = await calendarReleaseLevel();
+  const tier = await calendarEffectiveTier(payload);
+  const acc = await resolveAccount(payload.accountId);
+  // tier はクライアントの編集ボタン表示にも使う（権限の強制はあくまでサーバ側の各アクション）
+  return res.status(200).json({
+    allowed: calendarTierAllowed(tier, level), level, tier,
+    staff_id: (acc && acc.staff_id) || null,
+  });
+}
+
+const CAL_COLORS = ['blue', 'green', 'red', 'orange', 'purple', 'teal', 'pink', 'gray'];
+const CAL_VISIBILITIES = ['private', 'members', 'all'];
+// 名称注意: TIME_RE は休憩バリデーション用に既存。イベント用は別名にする
+const EVENT_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const EVENT_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// 自分から見えるカレンダー一覧を返す（所有 / 参加 / 全体公開）。
+// 個人用「マイカレンダー」が無ければ自動作成（全員が最初から1つ持てる）。
+async function fetchVisibleCalendars(acc, tier) {
+  let all = await sbAll('calendars?deleted_at=is.null&select=*', 'created_at,id');
+  if (!all.some(c => c.visibility === 'private' && c.owner_account_id === acc.id)) {
+    const created = await sb('calendars', { method: 'POST', body: JSON.stringify([{
+      name: 'マイカレンダー', color: 'blue', visibility: 'private',
+      owner_account_id: acc.id, owner_staff_id: acc.staff_id || null, owner_name: acc.name || null,
+    }]) });
+    all = all.concat(created || []);
+  }
+  let memSet = new Set();
+  if (acc.staff_id) {
+    const mem = await sb(`calendar_members?staff_id=eq.${encodeURIComponent(acc.staff_id)}&select=calendar_id`);
+    memSet = new Set((mem || []).map(m => m.calendar_id));
+  }
+  const visible = all.filter(c =>
+    c.visibility === 'all' ||
+    c.owner_account_id === acc.id ||
+    (c.visibility === 'members' && memSet.has(c.id))
+  );
+  const prefs = await sb(`calendar_prefs?account_id=eq.${encodeURIComponent(acc.id)}&select=calendar_id,hidden`);
+  const hiddenSet = new Set((prefs || []).filter(p => p.hidden).map(p => p.calendar_id));
+  return visible.map(c => ({
+    id: c.id, name: c.name, color: c.color, visibility: c.visibility,
+    owner_account_id: c.owner_account_id, owner_name: c.owner_name,
+    is_owner: c.owner_account_id === acc.id,
+    is_member: memSet.has(c.id),
+    hidden: hiddenSet.has(c.id),
+    can_post: c.visibility === 'all' ? true
+      : c.visibility === 'members' ? (memSet.has(c.id) || c.owner_account_id === acc.id)
+      : c.owner_account_id === acc.id,
+    can_manage: c.owner_account_id === acc.id || tier === 'master',
+  }));
+}
+
+async function calendarsList(res, payload) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const tier = await calendarEffectiveTier(payload);
+  const calendars = await fetchVisibleCalendars(acc, tier);
+  return res.status(200).json({ calendars });
+}
+
+// カレンダー作成/更新。全体公開(all)の作成・変更はリーダー以上のみ
+async function calendarSave(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const tier = await calendarEffectiveTier(payload);
+  const cal = body.calendar;
+  if (!cal || typeof cal !== 'object' || Array.isArray(cal)) return bad(res, 400, 'calendar が不正です');
+
+  const name = String(cal.name || '').trim().slice(0, 20);
+  if (!name) return bad(res, 400, 'カレンダー名を入力してください');
+  if (!CAL_VISIBILITIES.includes(cal.visibility)) return bad(res, 400, '公開種別が不正です');
+  if (cal.visibility === 'all' && tier === 'staff') return bad(res, 403, '全体公開カレンダーはリーダー以上のみ作成できます');
+  const color = CAL_COLORS.includes(cal.color) ? cal.color : 'blue';
+  const memberIds = (cal.visibility === 'members' && Array.isArray(cal.member_staff_ids))
+    ? (validStaffIds(cal.member_staff_ids, 200) || []) : null;
+
+  if (cal.id) {
+    if (typeof cal.id !== 'string' || !UUIDISH.test(cal.id)) return bad(res, 400, 'id が不正です');
+    const cur = (await sb(`calendars?id=eq.${encodeURIComponent(cal.id)}&select=id,owner_account_id,deleted_at`))[0];
+    if (!cur || cur.deleted_at) return bad(res, 404, 'カレンダーが見つかりません');
+    if (cur.owner_account_id !== acc.id && tier !== 'master') return bad(res, 403, 'このカレンダーを編集する権限がありません');
+    await sb(`calendars?id=eq.${encodeURIComponent(cal.id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name, color, visibility: cal.visibility, updated_at: new Date().toISOString() }),
+    });
+    if (memberIds !== null) {
+      await sb(`calendar_members?calendar_id=eq.${encodeURIComponent(cal.id)}`, { method: 'DELETE' });
+      if (memberIds.length) {
+        await sb('calendar_members', { method: 'POST',
+          body: JSON.stringify(memberIds.map(sid => ({ calendar_id: cal.id, staff_id: sid }))) });
+      }
+    }
+    return res.status(200).json({ ok: true, id: cal.id });
+  }
+
+  const rows = await sb('calendars', { method: 'POST', body: JSON.stringify([{
+    name, color, visibility: cal.visibility,
+    owner_account_id: acc.id, owner_staff_id: acc.staff_id || null, owner_name: acc.name || null,
+  }]) });
+  const newId = rows && rows[0] ? rows[0].id : null;
+  if (newId && memberIds && memberIds.length) {
+    await sb('calendar_members', { method: 'POST',
+      body: JSON.stringify(memberIds.map(sid => ({ calendar_id: newId, staff_id: sid }))) });
+  }
+  return res.status(200).json({ ok: true, id: newId });
+}
+
+// ===== カレンダー削除（ソフトデリート方式）=====
+// 削除は「管理者（実効ティア master）」のみ。deleted_at を立てるだけで、
+// 予定・メンバー・表示設定はそのまま残す＝30日以内なら復元で完全に元に戻る。
+const CAL_TRASH_DAYS = 30;
+
+// 30日を過ぎた削除済みカレンダーを物理削除（削除・ゴミ箱閲覧のタイミングで遅延実行）
+async function purgeExpiredCalendars() {
+  try {
+    const limit = new Date(Date.now() - CAL_TRASH_DAYS * 24 * 3600 * 1000).toISOString();
+    const expired = await sb(`calendars?deleted_at=lt.${encodeURIComponent(limit)}&select=id`);
+    for (const c of expired || []) {
+      const eid = encodeURIComponent(c.id);
+      const evIds = (await sb(`events?calendar_id=eq.${eid}&select=id&limit=1000`) || []).map(e => e.id);
+      for (let i = 0; i < evIds.length; i += 100) {
+        await sb(`event_participants?event_id=in.(${inFilter(evIds.slice(i, i + 100))})`, { method: 'DELETE' });
+      }
+      await sb(`events?calendar_id=eq.${eid}`, { method: 'DELETE' });
+      await sb(`calendar_members?calendar_id=eq.${eid}`, { method: 'DELETE' });
+      await sb(`calendar_prefs?calendar_id=eq.${eid}`, { method: 'DELETE' });
+      await sb(`ical_feed_excludes?calendar_id=eq.${eid}`, { method: 'DELETE' });
+      await sb(`calendars?id=eq.${eid}`, { method: 'DELETE' });
+    }
+  } catch (e) { console.error('calendar purge:', e); }
+}
+
+async function calendarDelete(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const tier = await calendarEffectiveTier(payload);
+  if (tier !== 'master') return bad(res, 403, 'カレンダーの削除は管理者のみ行えます');
+  const id = body.id;
+  if (typeof id !== 'string' || !UUIDISH.test(id)) return bad(res, 400, 'id が不正です');
+  await sb(`calendars?id=eq.${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
+  });
+  await purgeExpiredCalendars();
+  return res.status(200).json({ ok: true });
+}
+
+// 削除済み一覧（管理者のみ。残り日数付き）
+async function calendarTrashList(res, payload) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const tier = await calendarEffectiveTier(payload);
+  if (tier !== 'master') return bad(res, 403, '管理者のみ閲覧できます');
+  await purgeExpiredCalendars();
+  const rows = await sb(`calendars?deleted_at=not.is.null&select=id,name,color,visibility,owner_name,deleted_at&order=deleted_at.desc`);
+  const now = Date.now();
+  const trash = (rows || []).map(c => ({
+    ...c,
+    days_left: Math.max(0, CAL_TRASH_DAYS - Math.floor((now - new Date(c.deleted_at).getTime()) / 86400000)),
+  }));
+  return res.status(200).json({ trash });
+}
+
+// 復元（管理者のみ・30日以内）
+async function calendarRestore(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const tier = await calendarEffectiveTier(payload);
+  if (tier !== 'master') return bad(res, 403, 'カレンダーの復元は管理者のみ行えます');
+  const id = body.id;
+  if (typeof id !== 'string' || !UUIDISH.test(id)) return bad(res, 400, 'id が不正です');
+  const cur = (await sb(`calendars?id=eq.${encodeURIComponent(id)}&select=id,deleted_at`))[0];
+  if (!cur || !cur.deleted_at) return bad(res, 404, '削除済みカレンダーが見つかりません');
+  if (Date.now() - new Date(cur.deleted_at).getTime() > CAL_TRASH_DAYS * 24 * 3600 * 1000) {
+    return bad(res, 400, '削除から30日を過ぎているため復元できません');
+  }
+  await sb(`calendars?id=eq.${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ deleted_at: null, updated_at: new Date().toISOString() }),
+  });
+  return res.status(200).json({ ok: true });
+}
+
+// メンバー一覧（所有者・参加者のみ閲覧可）
+async function calendarMembersList(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const tier = await calendarEffectiveTier(payload);
+  const id = body.calendar_id;
+  if (typeof id !== 'string' || !UUIDISH.test(id)) return bad(res, 400, 'calendar_id が不正です');
+  const cal = (await sb(`calendars?id=eq.${encodeURIComponent(id)}&select=id,owner_account_id,visibility`))[0];
+  if (!cal) return bad(res, 404, 'カレンダーが見つかりません');
+  const mem = await sb(`calendar_members?calendar_id=eq.${encodeURIComponent(id)}&select=staff_id`);
+  const memIds = (mem || []).map(m => m.staff_id);
+  const isOwner = cal.owner_account_id === acc.id;
+  const isMember = acc.staff_id && memIds.includes(acc.staff_id);
+  if (!isOwner && !isMember && tier !== 'master' && cal.visibility !== 'all') {
+    return bad(res, 403, '閲覧権限がありません');
+  }
+  let members = [];
+  if (memIds.length) {
+    members = await sb(`staff?id=in.(${inFilter(memIds)})&select=id,name,dept_id&order=dept_id,staff_code`);
+  }
+  return res.status(200).json({ members });
+}
+
+// メンバー選択用の最小名簿（id・名前・部門のみ。ログイン画面が既に全氏名を公開している範囲を超えない）
+async function staffDirectory(res, payload) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const rows = await sbAll('staff?select=id,name,dept_id', 'dept_id,staff_code');
+  return res.status(200).json({ staff: rows });
+}
+
+// ===== 管理画面用: 全カレンダー一覧（管理者のみ）=====
+// calendars-list と違い「マイカレンダー自動作成」を行わず、削除されていない全カレンダーを
+// メンバー数・予定数付きで返す。個人カレンダーの中身（予定そのもの）は返さない。
+async function calendarAdminList(res, payload) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const tier = await calendarEffectiveTier(payload);
+  if (tier !== 'master') return bad(res, 403, '管理者のみ閲覧できます');
+  const cals = await sbAll('calendars?deleted_at=is.null&select=id,name,color,visibility,owner_account_id,owner_name,created_at', 'created_at,id');
+  const mems = await sbAll('calendar_members?select=calendar_id', 'calendar_id,staff_id');
+  const evs = await sbAll('events?select=calendar_id', 'id');
+  const memCount = {};
+  (mems || []).forEach(m => { memCount[m.calendar_id] = (memCount[m.calendar_id] || 0) + 1; });
+  const evCount = {};
+  (evs || []).forEach(e => { if (e.calendar_id) evCount[e.calendar_id] = (evCount[e.calendar_id] || 0) + 1; });
+  const calendars = cals.map(c => ({
+    id: c.id, name: c.name, color: c.color, visibility: c.visibility,
+    owner_account_id: c.owner_account_id, owner_name: c.owner_name, created_at: c.created_at,
+    member_count: memCount[c.id] || 0, event_count: evCount[c.id] || 0,
+  }));
+  return res.status(200).json({ calendars });
+}
+
+// 管理画面用: 共有カレンダー（全体・メンバー限定）の月間予定（管理者のみ・閲覧用）
+// 個人(private)カレンダーの予定は「本人以外に表示しない」方針のため、管理者にも返さない
+async function calendarAdminEvents(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const tier = await calendarEffectiveTier(payload);
+  if (tier !== 'master') return bad(res, 403, '管理者のみ閲覧できます');
+  const year = body.year, month = body.month;
+  if (!intOk(year, 2000, 2100) || !intOk(month, 1, 12)) return bad(res, 400, 'year/month が不正です');
+  const cals = await sbAll(
+    'calendars?deleted_at=is.null&visibility=in.("all","members")&select=id,name,color,visibility,owner_name',
+    'created_at,id');
+  const mm = String(month).padStart(2, '0');
+  const first = `${year}-${mm}-01`;
+  const last = `${year}-${mm}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`;
+  const rows = cals.length ? await sbAll(
+    `events?start_date=lte.${last}&end_date=gte.${first}&calendar_id=in.(${inFilter(cals.map(c => c.id))})&select=*`,
+    'start_date,id') : [];
+  await attachParticipants(rows);
+  const calendars = cals.map(c => ({ ...c }));
+
+  // リクエストした管理者本人の取り込みカレンダー（Google等）も合流させる。
+  // レスポンスは本人ごとに生成されるため、他の管理者のGoogle予定が混ざることはない
+  try {
+    const acc = await resolveAccount(payload.accountId);
+    if (acc) {
+      const linkedIds = await extLinkedAccountIds(acc);
+      const exts = await sb(`external_calendars?account_id=in.(${inFilter(linkedIds)})&select=*`);
+      const refreshed = await Promise.all((exts || []).map(c => extRefresh(c)));
+      for (const c of refreshed) {
+        calendars.push({ id: c.id, name: c.name, color: c.color, visibility: 'external', owner_name: null, external: true, last_error: c.last_error || null });
+        const inst = extExpand(c.cache || [], first, last);
+        inst.forEach((m, i) => rows.push({
+          id: `ext-${c.id}-${i}`, calendar_id: c.id, title: m.title,
+          start_date: m.sd, end_date: m.ed, start_time: m.st, end_time: m.et,
+          location: m.location, url: m.url, memo: null, external: true,
+        }));
+      }
+    }
+  } catch (e) { console.error('admin external merge:', e); }
+  return res.status(200).json({ rows, calendars });
+}
+
+// 表示/非表示の切替（本人の表示設定のみ）
+async function calendarPrefSave(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const id = body.calendar_id;
+  if (typeof id !== 'string' || !UUIDISH.test(id)) return bad(res, 400, 'calendar_id が不正です');
+  const hidden = body.hidden === true;
+  await sb(`calendar_prefs?account_id=eq.${encodeURIComponent(acc.id)}&calendar_id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+  await sb('calendar_prefs', { method: 'POST',
+    body: JSON.stringify([{ account_id: acc.id, calendar_id: id, hidden }]) });
+  return res.status(200).json({ ok: true });
+}
+
+// in.(...) フィルタをID数が多くてもURL長超過しないよう分割して取得
+async function sbInChunks(pathTpl, ids, chunk = 100) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += chunk) {
+    const part = ids.slice(i, i + chunk);
+    const rows = await sb(pathTpl.replace('__IDS__', inFilter(part)));
+    if (Array.isArray(rows)) out.push(...rows);
+  }
+  return out;
+}
+
+// 予定行に participants: [{id, name}] を付与する（外部取り込みの合成行はスキップ）
+async function attachParticipants(rows) {
+  const ids = (rows || []).filter(r => r && r.id && !r.external).map(r => r.id);
+  if (!ids.length) return;
+  const eps = await sbInChunks('event_participants?event_id=in.(__IDS__)&select=event_id,staff_id&limit=1000', ids);
+  if (!eps.length) return;
+  const staffIds = [...new Set(eps.map(x => x.staff_id))];
+  const staffRows = await sbInChunks('staff?id=in.(__IDS__)&select=id,name&limit=1000', staffIds);
+  const nameMap = {};
+  (staffRows || []).forEach(st => { nameMap[st.id] = st.name; });
+  const byEvent = {};
+  eps.forEach(x => { (byEvent[x.event_id] = byEvent[x.event_id] || []).push({ id: x.staff_id, name: nameMap[x.staff_id] || '' }); });
+  rows.forEach(r => { if (r && byEvent[r.id]) r.participants = byEvent[r.id]; });
+}
+
+// ===== 空き時間の自動検索（参加者全員が空いている時間帯を提案する）=====
+// 空き判定の材料:
+//   ① 確定シフト … 勤務時間内だけを「出勤して院内にいる時間」とみなす。休み種別の日は終日不可。
+//                    シフトが未確定の日は情報なし＝指定時間帯すべてを候補にする。
+//   ② アプリ内の予定 … 「参加者になっている予定」＋「本人が作成した予定」をブロック。
+//                    終日予定はその日全体をブロック。他人の予定は空き判定のみで中身は返さない。
+//   ③ Google取り込み … 時間指定の予定のみブロック（誕生日など終日イベントは無視）。
+const FREE_MAX_STAFF = 20;
+const FREE_MAX_SPAN_DAYS = 31;
+const FREE_MAX_SLOTS = 10;
+const toMin = (hm) => { const [h, mn] = hm.split(':').map(Number); return h * 60 + mn; };
+const minToHm = (mi) => `${String(Math.floor(mi / 60)).padStart(2, '0')}:${String(mi % 60).padStart(2, '0')}`;
+
+async function freeSlotSearch(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+
+  // --- 入力検証 ---
+  let staffIds = validStaffIds(body.staff_ids || [], FREE_MAX_STAFF);
+  if (!staffIds) staffIds = [];
+  if (acc.staff_id && !staffIds.includes(acc.staff_id)) staffIds = staffIds.concat([acc.staff_id]); // 検索者本人を自動参加
+  if (!staffIds.length) return bad(res, 400, '参加者を指定してください');
+  if (staffIds.length > FREE_MAX_STAFF) return bad(res, 400, `参加者は${FREE_MAX_STAFF}人までです`);
+  const duration = body.duration_minutes;
+  if (!intOk(duration, 15, 480)) return bad(res, 400, '所要時間は15〜480分で指定してください');
+  let startDate = body.start_date, endDate = body.end_date;
+  if (typeof startDate !== 'string' || !EVENT_DATE_RE.test(startDate)) return bad(res, 400, '開始日が不正です');
+  if (typeof endDate !== 'string' || !EVENT_DATE_RE.test(endDate)) return bad(res, 400, '終了日が不正です');
+  const todayJst = extYmd(Date.now() + 9 * 3600000);
+  if (startDate < todayJst) startDate = todayJst; // 過去は提案しない
+  if (endDate < startDate) return bad(res, 400, '終了日は開始日以降にしてください');
+  if (extDiffDays(startDate, endDate) > FREE_MAX_SPAN_DAYS) return bad(res, 400, `検索期間は${FREE_MAX_SPAN_DAYS}日以内にしてください`);
+  const dayStart = (typeof body.day_start === 'string' && EVENT_TIME_RE.test(body.day_start)) ? body.day_start : '09:00';
+  const dayEnd = (typeof body.day_end === 'string' && EVENT_TIME_RE.test(body.day_end)) ? body.day_end : '18:00';
+  const winS = toMin(dayStart), winE = toMin(dayEnd);
+  if (winE - winS < duration) return bad(res, 400, '時間帯の幅が所要時間より短くなっています');
+
+  const days = [];
+  for (let d = startDate; d <= endDate; d = extAddDays(d, 1)) days.push(d);
+  const dayIdx = {};
+  days.forEach((d, i) => { dayIdx[d] = i; });
+  const sidIn = inFilter(staffIds);
+
+  // --- ① 確定シフト ---
+  const months = [...new Set(days.map(d => d.slice(0, 7)))].map(ym => ({ y: +ym.slice(0, 4), m: +ym.slice(5, 7) }));
+  const monthOr = months.map(mm => `and(year.eq.${mm.y},month.eq.${mm.m})`).join(',');
+  const [types, shifts] = await Promise.all([
+    sb('shift_types?select=id,start_time,end_time,is_off'),
+    sbAll(`shifts?staff_id=in.(${sidIn})&is_confirmed=eq.true&or=(${monthOr})&select=staff_id,year,month,day,shift_type_id`, 'year,month,day,staff_id'),
+  ]);
+  const typeMap = {};
+  (types || []).forEach(t => { typeMap[t.id] = t; });
+
+  // avail[staff][dayIdx] = Uint8Array(1440) 1=空き候補
+  const avail = {};
+  const shiftSeen = {}; // staff → Set(dayIdx) シフト情報があった日
+  staffIds.forEach(sid => {
+    avail[sid] = days.map(() => { const a = new Uint8Array(1440); a.fill(0, 0); a.fill(1, winS, winE); return a; });
+    shiftSeen[sid] = new Set();
+  });
+  for (const sh of shifts || []) {
+    const d = `${sh.year}-${String(sh.month).padStart(2, '0')}-${String(sh.day).padStart(2, '0')}`;
+    const di = dayIdx[d];
+    if (di == null || !avail[sh.staff_id]) continue;
+    const a = avail[sh.staff_id][di];
+    const t = typeMap[sh.shift_type_id];
+    const first = !shiftSeen[sh.staff_id].has(di);
+    shiftSeen[sh.staff_id].add(di);
+    if (first) a.fill(0); // シフト情報がある日は「勤務時間∩時間帯」だけを空きにする
+    if (!t || t.is_off || !t.start_time || !t.end_time) continue; // 休み・時間未定義 → その日は不可のまま
+    let st = toMin(t.start_time), en = toMin(t.end_time);
+    if (en <= st) en = 1440; // 夜勤の日跨ぎは当日24時まで
+    const from = Math.max(st, winS), to = Math.min(en, winE);
+    if (from < to) a.fill(1, from, to);
+  }
+
+  // --- ② アプリ内の予定 ---
+  const rangeEvents = await sbAll(
+    `events?start_date=lte.${endDate}&end_date=gte.${startDate}&select=id,owner_staff_id,start_date,end_date,start_time,end_time`,
+    'start_date,id');
+  const evIds = (rangeEvents || []).map(e => e.id);
+  const eps = evIds.length
+    ? await sbInChunks(`event_participants?event_id=in.(__IDS__)&staff_id=in.(${sidIn})&select=event_id,staff_id&limit=1000`, evIds)
+    : [];
+  const partByEvent = {};
+  eps.forEach(x => { (partByEvent[x.event_id] = partByEvent[x.event_id] || []).push(x.staff_id); });
+  const sidSet = new Set(staffIds);
+
+  const block = (sid, ev) => {
+    const arrs = avail[sid];
+    if (!arrs) return;
+    const evStart = ev.start_date, evEnd = ev.end_date || ev.start_date;
+    for (const d of days) {
+      if (d < evStart || d > evEnd) continue;
+      const a = arrs[dayIdx[d]];
+      if (!ev.start_time) { a.fill(0); continue; } // 終日 → その日全体
+      const st = (d === evStart) ? toMin(ev.start_time) : 0;
+      let en = (d === evEnd)
+        ? (ev.end_time ? toMin(ev.end_time) : (d === evStart ? st + 60 : 1440))
+        : 1440;
+      if (en <= st) en = Math.min(1440, st + 60); // 終了≦開始・未入力は60分扱い
+      a.fill(0, Math.max(0, st), Math.min(1440, en));
+    }
+  };
+  for (const ev of rangeEvents || []) {
+    const targets = new Set(partByEvent[ev.id] || []);
+    if (ev.owner_staff_id && sidSet.has(ev.owner_staff_id)) targets.add(ev.owner_staff_id);
+    targets.forEach(sid => block(sid, ev));
+  }
+
+  // --- ③ Google取り込み（時間指定のみ）---
+  try {
+    const accRows = await sb(`accounts?staff_id=in.(${sidIn})&select=id,staff_id`);
+    const accToStaff = {};
+    (accRows || []).forEach(a2 => { accToStaff[a2.id] = a2.staff_id; });
+    const accIds = Object.keys(accToStaff);
+    if (accIds.length) {
+      const exts = await sbInChunks('external_calendars?account_id=in.(__IDS__)&select=*&limit=1000', accIds);
+      const refreshed = await Promise.all((exts || []).map(c => extRefresh(c)));
+      for (const c of refreshed) {
+        const sid = accToStaff[c.account_id];
+        if (!sid || !avail[sid]) continue;
+        for (const m of extExpand(c.cache || [], startDate, endDate)) {
+          if (!m.st) continue; // 終日（誕生日等）はブロックしない
+          block(sid, { start_date: m.sd, end_date: m.ed, start_time: m.st, end_time: m.et });
+        }
+      }
+    }
+  } catch (e) { console.error('free search ext:', e); }
+
+  // --- 共通の空きから提案スロットを抽出（1日最大2件・全体で最大10件）---
+  const slots = [];
+  const nowJst = new Date(Date.now() + 9 * 3600000);
+  const nowMin = nowJst.getUTCHours() * 60 + nowJst.getUTCMinutes();
+  for (const d of days) {
+    if (slots.length >= FREE_MAX_SLOTS) break;
+    const di = dayIdx[d];
+    let perDay = 0;
+    let runStart = -1;
+    const minFloor = (d === todayJst) ? Math.max(winS, nowMin + 15) : winS; // 今日は15分後以降のみ
+    for (let mi = winS; mi <= winE; mi++) {
+      const free = mi < winE && mi >= minFloor && staffIds.every(sid => avail[sid][di][mi] === 1);
+      if (free && runStart < 0) runStart = mi;
+      if (!free && runStart >= 0) {
+        if (mi - runStart >= duration && perDay < 2 && slots.length < FREE_MAX_SLOTS) {
+          slots.push({ date: d, start: minToHm(runStart), end: minToHm(runStart + duration), gap_end: minToHm(mi) });
+          perDay++;
+        }
+        runStart = -1;
+      }
+    }
+  }
+  return res.status(200).json({ slots, searched: { staff_count: staffIds.length, start_date: startDate, end_date: endDate, day_start: dayStart, day_end: dayEnd, duration_minutes: duration } });
+}
+
+// 月に重なる予定＋見えるカレンダー一覧を返す（1往復で描画に必要な全て）
+async function eventsList(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const year = body.year, month = body.month;
+  if (!intOk(year, 2000, 2100) || !intOk(month, 1, 12)) return bad(res, 400, 'year/month が不正です');
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const tier = await calendarEffectiveTier(payload);
+  const calendars = await fetchVisibleCalendars(acc, tier);
+  if (!calendars.length) return res.status(200).json({ rows: [], calendars });
+  const mm = String(month).padStart(2, '0');
+  const first = `${year}-${mm}-01`;
+  const last = `${year}-${mm}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`;
+  const ids = calendars.map(c => c.id);
+  const rows = await sbAll(
+    `events?start_date=lte.${last}&end_date=gte.${first}&calendar_id=in.(${inFilter(ids)})&select=*`,
+    'start_date,id');
+  await attachParticipants(rows);
+
+  // 外部カレンダー（本人のみ・読み取り専用）をカレンダー一覧と予定に合流させる
+  try {
+    const linkedIds = await extLinkedAccountIds(acc);
+    const exts = await sb(`external_calendars?account_id=in.(${inFilter(linkedIds)})&select=*`);
+    if (exts && exts.length) {
+      const prefs2 = await sb(`calendar_prefs?account_id=eq.${encodeURIComponent(acc.id)}&hidden=eq.true&select=calendar_id`);
+      const hidden2 = new Set((prefs2 || []).map(x => x.calendar_id));
+      const refreshed = await Promise.all(exts.map(c => extRefresh(c)));
+      for (const c of refreshed) {
+        calendars.push({
+          id: c.id, name: c.name, color: c.color, visibility: 'external', external: true,
+          owner_account_id: acc.id, owner_name: null, is_owner: true, is_member: false,
+          hidden: hidden2.has(c.id), can_post: false, can_manage: false, last_error: c.last_error || null,
+        });
+        const inst = extExpand(c.cache || [], first, last);
+        inst.forEach((m, i) => rows.push({
+          id: `ext-${c.id}-${i}`, calendar_id: c.id, title: m.title,
+          start_date: m.sd, end_date: m.ed, start_time: m.st, end_time: m.et,
+          location: m.location, url: m.url, memo: null, external: true,
+        }));
+      }
+    }
+  } catch (e) { console.error('external calendars merge:', e); }
+  return res.status(200).json({ rows, calendars });
+}
+
+// 予定の新規/更新。所有者はトークンから強制（自己申告不可）
+async function eventsSave(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const tier = await calendarEffectiveTier(payload);
+  const ev = body.event;
+  if (!ev || typeof ev !== 'object' || Array.isArray(ev)) return bad(res, 400, 'event が不正です');
+
+  const title = String(ev.title || '').trim().slice(0, 30);
+  if (!title) return bad(res, 400, 'タイトルを入力してください');
+  if (typeof ev.calendar_id !== 'string' || !UUIDISH.test(ev.calendar_id)) return bad(res, 400, 'カレンダーを選択してください');
+  const startDate = ev.start_date;
+  const endDate = ev.end_date || ev.start_date;
+  if (typeof startDate !== 'string' || !EVENT_DATE_RE.test(startDate)) return bad(res, 400, '開始日が不正です');
+  if (typeof endDate !== 'string' || !EVENT_DATE_RE.test(endDate)) return bad(res, 400, '終了日が不正です');
+  if (endDate < startDate) return bad(res, 400, '終了日は開始日以降にしてください');
+  let startTime = ev.start_time || null;
+  let endTime = ev.end_time || null;
+  if (startTime != null && !EVENT_TIME_RE.test(startTime)) return bad(res, 400, '開始時刻が不正です');
+  if (endTime != null && !EVENT_TIME_RE.test(endTime)) return bad(res, 400, '終了時刻が不正です');
+  if (startTime == null) endTime = null; // 開始時刻なし = 終日
+
+  // URL（任意）。リンクとして表示するため http/https のみ許可（javascript: 等の注入を遮断）
+  const url = String(ev.url || '').trim().slice(0, 300);
+  if (url && !/^https?:\/\/\S+$/i.test(url)) {
+    return bad(res, 400, 'URLは http:// または https:// で始まる形式で入力してください');
+  }
+
+  // 投稿先カレンダーの権限チェック
+  const cal = (await sb(`calendars?id=eq.${encodeURIComponent(ev.calendar_id)}&select=id,owner_account_id,visibility,color,deleted_at`))[0];
+  if (!cal || cal.deleted_at) return bad(res, 404, 'カレンダーが見つかりません');
+  let canPost = false;
+  if (cal.visibility === 'all') canPost = true;
+  else if (cal.owner_account_id === acc.id) canPost = true;
+  else if (cal.visibility === 'members' && acc.staff_id) {
+    const m = await sb(`calendar_members?calendar_id=eq.${encodeURIComponent(cal.id)}&staff_id=eq.${encodeURIComponent(acc.staff_id)}&select=staff_id`);
+    canPost = (m && m.length > 0);
+  }
+  if (!canPost) return bad(res, 403, 'このカレンダーに予定を追加する権限がありません');
+
+  // 参加者（誰でも設定できる。編集権限は予定本体と同じ判定に従う）
+  const participantIds = Array.isArray(ev.participant_staff_ids)
+    ? validStaffIds(ev.participant_staff_ids, 100) : null;
+  if (Array.isArray(ev.participant_staff_ids) && participantIds === null && ev.participant_staff_ids.length) {
+    return bad(res, 400, '参加者の指定が不正です');
+  }
+  const saveParticipants = async (eventId) => {
+    if (participantIds === null && !Array.isArray(ev.participant_staff_ids)) return; // 未指定=変更しない
+    await sb(`event_participants?event_id=eq.${encodeURIComponent(eventId)}`, { method: 'DELETE' });
+    if (participantIds && participantIds.length) {
+      await sb('event_participants', { method: 'POST',
+        body: JSON.stringify(participantIds.map(sid => ({ event_id: eventId, staff_id: sid }))) });
+    }
+  };
+
+  const record = {
+    calendar_id: cal.id,
+    title,
+    start_date: startDate,
+    end_date: endDate,
+    start_time: startTime,
+    end_time: endTime,
+    location: String(ev.location || '').slice(0, 100) || null,
+    url: url || null,
+    memo: String(ev.memo || '').slice(0, 500) || null,
+    color: CAL_COLORS.includes(ev.color) ? ev.color : (cal.color || 'blue'),
+    updated_at: new Date().toISOString(),
+  };
+
+  if (ev.id) {
+    if (typeof ev.id !== 'string' || !UUIDISH.test(ev.id)) return bad(res, 400, 'id が不正です');
+    const cur = (await sb(`events?id=eq.${encodeURIComponent(ev.id)}&select=id,owner_account_id,calendar_id`))[0];
+    if (!cur) return bad(res, 404, '予定が見つかりません');
+    // 編集権: 予定の作成者本人 / 所属カレンダーの所有者 / master
+    const curCal = (cur.calendar_id === cal.id) ? cal
+      : (await sb(`calendars?id=eq.${encodeURIComponent(cur.calendar_id)}&select=id,owner_account_id`))[0];
+    const allowed = cur.owner_account_id === acc.id
+      || (curCal && curCal.owner_account_id === acc.id)
+      || tier === 'master';
+    if (!allowed) return bad(res, 403, 'この予定を編集する権限がありません');
+    const rows = await sb(`events?id=eq.${encodeURIComponent(ev.id)}`, { method: 'PATCH', body: JSON.stringify(record) });
+    await saveParticipants(ev.id);
+    return res.status(200).json({ ok: true, rows });
+  }
+
+  record.owner_account_id = acc.id;
+  record.owner_staff_id = acc.staff_id || null;
+  record.owner_name = acc.name || null;
+  const rows = await sb('events', { method: 'POST', body: JSON.stringify([record]) });
+  const newId = rows && rows[0] ? rows[0].id : null;
+  if (newId) await saveParticipants(newId);
+  return res.status(200).json({ ok: true, rows });
+}
+
+async function eventsDelete(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const tier = await calendarEffectiveTier(payload);
+  const id = body.id;
+  if (typeof id !== 'string' || !UUIDISH.test(id)) return bad(res, 400, 'id が不正です');
+  const cur = (await sb(`events?id=eq.${encodeURIComponent(id)}&select=id,owner_account_id,calendar_id`))[0];
+  if (!cur) return res.status(200).json({ ok: true }); // 既に無い＝成功扱い
+  const cal = (await sb(`calendars?id=eq.${encodeURIComponent(cur.calendar_id)}&select=id,owner_account_id`))[0];
+  const allowed = cur.owner_account_id === acc.id
+    || (cal && cal.owner_account_id === acc.id)
+    || tier === 'master';
+  if (!allowed) return bad(res, 403, 'この予定を削除する権限がありません');
+  await sb(`event_participants?event_id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+  await sb(`events?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+  return res.status(200).json({ ok: true });
+}
+
+// ===== 外部カレンダー取り込み（Google等の非公開ICS URL・読み取り専用）=====
+// 本人のアカウントにのみ表示する。ical.js のフィード（アプリ→外部）には含めない＝ループ防止。
+const EXT_CAL_MAX = 3;
+const EXT_FETCH_TTL_MS = 15 * 60 * 1000; // 取得キャッシュ15分
+const EXT_MAX_BYTES = 5 * 1024 * 1024;
+const EXT_MAX_EVENTS = 2000;
+
+function extUrlOk(u) {
+  let parsed;
+  try { parsed = new URL(String(u)); } catch { return false; }
+  if (parsed.protocol !== 'https:') return false;
+  const h = parsed.hostname.toLowerCase();
+  // SSRF対策: IPリテラル・内部ホスト名は拒否
+  if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal') || h.startsWith('[')) return false;
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) return false;
+  return true;
+}
+
+const extMs = (ymd) => { const [y, m, d] = ymd.split('-').map(Number); return Date.UTC(y, m - 1, d); };
+const extYmd = (ms) => { const dt = new Date(ms); return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`; };
+const extAddDays = (ymd, n) => extYmd(extMs(ymd) + n * 86400000);
+const extDiffDays = (a, b) => Math.round((extMs(b) - extMs(a)) / 86400000);
+
+function icsUnescape(v) {
+  return String(v).replace(/\\n/gi, '\n').replace(/\\,/g, ',').replace(/\;/g, ';').replace(/\\\\/g, '\\');
+}
+
+// ICSの日時値をJSTの {date, time} に変換。
+// UTC(Z)は+9時間。TZID付き・浮動時刻はそのまま採用（日本のGoogleカレンダーは Asia/Tokyo で出力）。
+function icsToJst(val, params) {
+  const v = String(val).trim();
+  if ((params && params.VALUE === 'DATE') || /^\d{8}$/.test(v)) {
+    if (!/^\d{8}/.test(v)) return null;
+    return { date: `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}`, time: null };
+  }
+  const m = v.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/);
+  if (!m) return null;
+  if (m[7] === 'Z') {
+    const ms = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) + 9 * 3600000;
+    const dt = new Date(ms);
+    return { date: extYmd(ms), time: `${String(dt.getUTCHours()).padStart(2, '0')}:${String(dt.getUTCMinutes()).padStart(2, '0')}` };
+  }
+  return { date: `${m[1]}-${m[2]}-${m[3]}`, time: `${m[4]}:${m[5]}` };
+}
+
+// ICSテキスト → VEVENT配列（行の折返し復元込み）
+function parseIcsEvents(text) {
+  const raw = text.split(/\r?\n/);
+  const lines = [];
+  for (const ln of raw) {
+    if ((ln.startsWith(' ') || ln.startsWith('\t')) && lines.length) lines[lines.length - 1] += ln.slice(1);
+    else lines.push(ln);
+  }
+  const events = [];
+  let cur = null;
+  for (const ln of lines) {
+    if (ln === 'BEGIN:VEVENT') { cur = { exdates: [] }; continue; }
+    if (ln === 'END:VEVENT') { if (cur) events.push(cur); cur = null; continue; }
+    if (!cur) continue;
+    const ci = ln.indexOf(':');
+    if (ci < 0) continue;
+    const left = ln.slice(0, ci);
+    const val = ln.slice(ci + 1);
+    const parts = left.split(';');
+    const prop = parts[0].toUpperCase();
+    const params = {};
+    for (let i = 1; i < parts.length; i++) {
+      const eq = parts[i].indexOf('=');
+      if (eq > 0) params[parts[i].slice(0, eq).toUpperCase()] = parts[i].slice(eq + 1);
+    }
+    if (prop === 'UID') cur.uid = val;
+    else if (prop === 'SUMMARY') cur.title = icsUnescape(val);
+    else if (prop === 'LOCATION') cur.location = icsUnescape(val);
+    else if (prop === 'URL') cur.url = val;
+    else if (prop === 'STATUS') cur.cancelled = /CANCELLED/i.test(val);
+    else if (prop === 'RRULE') cur.rrule = val;
+    else if (prop === 'DTSTART') cur.start = icsToJst(val, params);
+    else if (prop === 'DTEND') cur.end = icsToJst(val, params);
+    else if (prop === 'EXDATE') val.split(',').forEach(x => { const d = icsToJst(x, params); if (d) cur.exdates.push(d.date); });
+    else if (prop === 'RECURRENCE-ID') { const d = icsToJst(val, params); cur.recurId = d ? d.date : null; }
+  }
+  return events;
+}
+
+// パース結果をキャッシュ用の最小形に変換（繰り返し以外は過去1年〜先2年に間引く）
+function extDigest(events) {
+  const today = extYmd(Date.now());
+  const lo = extAddDays(today, -366);
+  const hi = extAddDays(today, 731);
+  const out = [];
+  for (const e of events) {
+    if (!e.start || !e.title) continue;
+    const allday = !e.start.time;
+    const sd = e.start.date;
+    let ed = e.end ? e.end.date : sd;
+    if (allday && e.end) ed = extAddDays(e.end.date, -1); // 終日DTENDは翌日日付（排他）→ 実終了日へ
+    if (ed < sd) ed = sd;
+    const rec = {
+      uid: e.uid ? String(e.uid).slice(0, 200) : '',
+      title: String(e.title).slice(0, 60),
+      location: e.location ? String(e.location).slice(0, 100) : null,
+      url: (e.url && /^https?:\/\/\S+$/i.test(e.url)) ? String(e.url).slice(0, 300) : null,
+      sd, st: e.start.time || null, ed, et: (e.end && e.end.time) || null,
+      rrule: e.rrule ? String(e.rrule).slice(0, 300) : null,
+      ex: (e.exdates || []).slice(0, 100),
+      rid: e.recurId || null,
+      x: !!e.cancelled,
+    };
+    if (!rec.rrule && !rec.rid && (rec.ed < lo || rec.sd > hi)) continue;
+    out.push(rec);
+    if (out.length >= EXT_MAX_EVENTS) break;
+  }
+  return out;
+}
+
+function parseRrule(str) {
+  const r = {};
+  String(str).split(';').forEach(pp => { const i = pp.indexOf('='); if (i > 0) r[pp.slice(0, i).toUpperCase()] = pp.slice(i + 1); });
+  return r;
+}
+const EXT_DOW = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+
+// 月内のn番目の曜日（n<0は末尾から）。該当なしは null
+function extNthWeekday(y, mo, dowIdx, n) {
+  const daysIn = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  const hits = [];
+  for (let d = 1; d <= daysIn; d++) {
+    if (new Date(Date.UTC(y, mo - 1, d)).getUTCDay() === dowIdx) hits.push(d);
+  }
+  return (n > 0 ? hits[n - 1] : hits[hits.length + n]) || null;
+}
+
+// RRULE を [first..last] に展開。FREQ=DAILY/WEEKLY/MONTHLY/YEARLY、
+// INTERVAL / BYDAY / BYMONTHDAY / COUNT / UNTIL に対応（EXDATEはCOUNTに数えたうえで除外＝RFC5545準拠）
+function extOccurrences(m, first, last, skipSet) {
+  const out = [];
+  const r = parseRrule(m.rrule);
+  const freq = r.FREQ;
+  const interval = Math.max(1, parseInt(r.INTERVAL || '1', 10) || 1);
+  const count = r.COUNT ? (parseInt(r.COUNT, 10) || null) : null;
+  let until = null;
+  if (r.UNTIL && /^\d{8}/.test(r.UNTIL)) until = `${r.UNTIL.slice(0, 4)}-${r.UNTIL.slice(4, 6)}-${r.UNTIL.slice(6, 8)}`;
+  const durDays = extDiffDays(m.sd, m.ed);
+  let made = 0;
+  const emit = (d) => {
+    made++;
+    if (skipSet.has(d) || (m.ex || []).includes(d)) return;
+    const ed2 = extAddDays(d, durDays);
+    if (d <= last && ed2 >= first) out.push({ ...m, sd: d, ed: ed2 });
+  };
+
+  if (freq === 'DAILY' || freq === 'WEEKLY') {
+    const startMs = extMs(m.sd);
+    const startDow = new Date(startMs).getUTCDay();
+    const byday = (freq === 'WEEKLY' && r.BYDAY)
+      ? r.BYDAY.split(',').map(x => x.slice(-2)) : [EXT_DOW[startDow]];
+    for (let i = 0; i < 16000; i++) {
+      const d = extYmd(startMs + i * 86400000);
+      if (d > last || (until && d > until)) break;
+      if (freq === 'DAILY') {
+        if (i % interval === 0) emit(d);
+      } else {
+        const weekIdx = Math.floor((i + startDow) / 7);
+        if (weekIdx % interval === 0 && byday.includes(EXT_DOW[(startDow + i) % 7])) emit(d);
+      }
+      if (count && made >= count) break;
+    }
+  } else if (freq === 'MONTHLY') {
+    const sy = parseInt(m.sd.slice(0, 4), 10);
+    const sm = parseInt(m.sd.slice(5, 7), 10);
+    const sday = parseInt(m.sd.slice(8, 10), 10);
+    const bydayM = r.BYDAY ? /^(-?\d)([A-Z]{2})$/.exec(r.BYDAY) : null;
+    const bymd = r.BYMONTHDAY ? parseInt(r.BYMONTHDAY, 10) : null;
+    for (let k = 0; k < 600; k++) {
+      if (k % interval !== 0) continue;
+      const total = (sm - 1) + k;
+      const y = sy + Math.floor(total / 12);
+      const mo = (total % 12) + 1;
+      let day = null;
+      if (bydayM) day = extNthWeekday(y, mo, EXT_DOW.indexOf(bydayM[2]), parseInt(bydayM[1], 10));
+      else {
+        const want = bymd || sday;
+        const daysIn = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+        day = want <= daysIn ? want : null;
+      }
+      if (day == null) continue;
+      const d = `${y}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      if (d < m.sd) continue;
+      if (d > last || (until && d > until)) break;
+      emit(d);
+      if (count && made >= count) break;
+    }
+  } else if (freq === 'YEARLY') {
+    const sy = parseInt(m.sd.slice(0, 4), 10);
+    for (let k = 0; k < 100; k += interval) {
+      const d = `${sy + k}${m.sd.slice(4)}`;
+      if (d > last || (until && d > until)) break;
+      emit(d);
+      if (count && made >= count) break;
+    }
+  }
+  return out;
+}
+
+// キャッシュを月範囲に展開（RECURRENCE-ID上書き・STATUS:CANCELLED対応）
+function extExpand(cache, first, last) {
+  const rows = [];
+  const overr = {};
+  for (const m of cache || []) if (m.rid && m.uid) (overr[m.uid] = overr[m.uid] || new Set()).add(m.rid);
+  for (const m of cache || []) {
+    if (m.x) continue; // キャンセル済み
+    if (m.rid || !m.rrule) {
+      if (m.sd <= last && m.ed >= first) rows.push(m);
+      continue;
+    }
+    rows.push(...extOccurrences(m, first, last, overr[m.uid] || new Set()));
+  }
+  return rows;
+}
+
+async function extFetchAndDigest(url) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 8000);
+  try {
+    const resp = await fetch(url, { signal: ctl.signal, redirect: 'follow' });
+    if (!resp.ok) throw new Error(`取得失敗（HTTP ${resp.status}）`);
+    const text = await resp.text();
+    if (text.length > EXT_MAX_BYTES) throw new Error('カレンダーデータが大きすぎます');
+    if (!text.includes('BEGIN:VCALENDAR')) throw new Error('iCal形式のURLではありません');
+    return extDigest(parseIcsEvents(text));
+  } catch (e) {
+    if (e && e.name === 'AbortError') throw new Error('取得がタイムアウトしました');
+    throw e;
+  } finally { clearTimeout(t); }
+}
+
+// キャッシュが15分より古ければ再取得（失敗時は旧キャッシュ維持＋エラー記録。次の再試行も15分後）
+async function extRefresh(cal) {
+  const stale = !cal.last_fetched_at || (Date.now() - new Date(cal.last_fetched_at).getTime() > EXT_FETCH_TTL_MS);
+  if (!stale) return cal;
+  try {
+    const cache = await extFetchAndDigest(cal.ics_url);
+    const upd = { cache, last_fetched_at: new Date().toISOString(), last_error: null, updated_at: new Date().toISOString() };
+    await sb(`external_calendars?id=eq.${encodeURIComponent(cal.id)}`, { method: 'PATCH', body: JSON.stringify(upd) });
+    return { ...cal, ...upd };
+  } catch (e) {
+    const upd = { last_fetched_at: new Date().toISOString(), last_error: String(e.message || e).slice(0, 200), updated_at: new Date().toISOString() };
+    try { await sb(`external_calendars?id=eq.${encodeURIComponent(cal.id)}`, { method: 'PATCH', body: JSON.stringify(upd) }); } catch {}
+    return { ...cal, ...upd };
+  }
+}
+
+// 同一スタッフに紐付く全アカウントID（master/leader/staff の二重アカウント運用対応）。
+// 取り込みカレンダーは「本人単位」で共有する＝スタッフ画面で登録したものが管理画面にも出る
+async function extLinkedAccountIds(acc) {
+  if (!acc.staff_id) return [acc.id];
+  try {
+    const linked = await sb(`accounts?staff_id=eq.${encodeURIComponent(acc.staff_id)}&select=id`);
+    const ids = (linked || []).map(x => x.id);
+    return ids.includes(acc.id) ? ids : ids.concat([acc.id]);
+  } catch { return [acc.id]; }
+}
+
+// 取り込みカレンダーの一覧（本人の紐付きアカウント全体）
+async function extCalList(res, payload) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const linkedIds = await extLinkedAccountIds(acc);
+  const externals = await sb(
+    `external_calendars?account_id=in.(${inFilter(linkedIds)})&select=id,name,color,ics_url,last_error,last_fetched_at&order=created_at`);
+  return res.status(200).json({ externals: externals || [] });
+}
+
+// 取り込みカレンダーの追加/更新（本人のみ・最大3件。保存時に即取得して検証する）
+async function extCalSave(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const name = String(body.name || '').trim().slice(0, 20) || 'Googleカレンダー';
+  const color = CAL_COLORS.includes(body.color) ? body.color : 'teal';
+  const icsUrl = String(body.ics_url || '').trim().slice(0, 500);
+  if (!extUrlOk(icsUrl)) return bad(res, 400, 'URLが不正です（https:// のiCal URLを貼り付けてください）');
+  let cache;
+  try { cache = await extFetchAndDigest(icsUrl); }
+  catch (e) { return bad(res, 400, `カレンダーを取得できません：${e.message || e}`); }
+  const now = new Date().toISOString();
+
+  const linkedIds = await extLinkedAccountIds(acc);
+  if (body.id) {
+    if (typeof body.id !== 'string' || !UUIDISH.test(body.id)) return bad(res, 400, 'id が不正です');
+    const cur = (await sb(`external_calendars?id=eq.${encodeURIComponent(body.id)}&select=id,account_id`))[0];
+    if (!cur || !linkedIds.includes(cur.account_id)) return bad(res, 404, '取り込みカレンダーが見つかりません');
+    await sb(`external_calendars?id=eq.${encodeURIComponent(body.id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name, color, ics_url: icsUrl, cache, last_fetched_at: now, last_error: null, updated_at: now }),
+    });
+    return res.status(200).json({ ok: true, id: body.id, event_count: cache.length });
+  }
+
+  const mine = await sb(`external_calendars?account_id=in.(${inFilter(linkedIds)})&select=id`);
+  if ((mine || []).length >= EXT_CAL_MAX) return bad(res, 400, `取り込みカレンダーは${EXT_CAL_MAX}件までです`);
+  const rows = await sb('external_calendars', {
+    method: 'POST',
+    body: JSON.stringify([{ account_id: acc.id, name, color, ics_url: icsUrl, cache, last_fetched_at: now }]),
+  });
+  return res.status(200).json({ ok: true, id: rows && rows[0] ? rows[0].id : null, event_count: cache.length });
+}
+
+async function extCalDelete(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  const id = body.id;
+  if (typeof id !== 'string' || !UUIDISH.test(id)) return bad(res, 400, 'id が不正です');
+  const cur = (await sb(`external_calendars?id=eq.${encodeURIComponent(id)}&select=id,account_id`))[0];
+  const linkedIds = await extLinkedAccountIds(acc);
+  if (!cur || !linkedIds.includes(cur.account_id)) return res.status(200).json({ ok: true }); // 既に無い＝成功扱い
+  await sb(`calendar_prefs?calendar_id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+  await sb(`external_calendars?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+  return res.status(200).json({ ok: true });
+}
+
+// ===== ICS購読フィード設定（本人分のみ）=====
+function newFeedToken() { return crypto.randomBytes(32).toString('hex'); }
+
+async function icalSettingsGet(res, payload) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc) return bad(res, 401, 'アカウントが見つかりません');
+  if (!acc.staff_id) return res.status(200).json({ linked: false }); // スタッフ未紐付け → 連携不可の案内表示用
+  let row = (await sb(`ical_feed_settings?staff_id=eq.${encodeURIComponent(acc.staff_id)}&select=*`))[0];
+  if (!row) {
+    // 初回アクセス時に自動生成
+    row = (await sb('ical_feed_settings', {
+      method: 'POST',
+      body: JSON.stringify([{ staff_id: acc.staff_id, token: newFeedToken() }]),
+    }))[0];
+  }
+  // フィード対象の選択UI用: 見えるカレンダー一覧と除外済みID
+  const tier = await calendarEffectiveTier(payload);
+  const cals = await fetchVisibleCalendars(acc, tier);
+  const excl = await sb(`ical_feed_excludes?staff_id=eq.${encodeURIComponent(acc.staff_id)}&select=calendar_id`);
+  const linkedIds2 = await extLinkedAccountIds(acc);
+  const externals = await sb(
+    `external_calendars?account_id=in.(${inFilter(linkedIds2)})&select=id,name,color,ics_url,last_error,last_fetched_at&order=created_at`);
+  return res.status(200).json({
+    linked: true, settings: row,
+    calendars: cals.map(c => ({ id: c.id, name: c.name, color: c.color, visibility: c.visibility })),
+    excluded: (excl || []).map(x => x.calendar_id),
+    externals: externals || [],
+  });
+}
+
+async function icalSettingsSave(res, payload, body) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc || !acc.staff_id) return bad(res, 400, 'スタッフ未紐付けのアカウントです');
+  const upd = { updated_at: new Date().toISOString() };
+  for (const k of ['include_shifts', 'enabled']) {
+    if (typeof body[k] === 'boolean') upd[k] = body[k];
+  }
+  // フィードから除外するカレンダー（配列ごと置き換え。行がない = 送信する）
+  if (Array.isArray(body.excluded_calendar_ids)) {
+    const ids = body.excluded_calendar_ids;
+    if (ids.length > 200) return bad(res, 400, '選択が多すぎます');
+    for (const x of ids) {
+      if (typeof x !== 'string' || !UUIDISH.test(x)) return bad(res, 400, 'calendar_id が不正です');
+    }
+    await sb(`ical_feed_excludes?staff_id=eq.${encodeURIComponent(acc.staff_id)}`, { method: 'DELETE' });
+    if (ids.length) {
+      await sb('ical_feed_excludes', { method: 'POST',
+        body: JSON.stringify(ids.map(cid => ({ staff_id: acc.staff_id, calendar_id: cid }))) });
+    }
+  }
+  const rows = await sb(`ical_feed_settings?staff_id=eq.${encodeURIComponent(acc.staff_id)}`, {
+    method: 'PATCH', body: JSON.stringify(upd),
+  });
+  return res.status(200).json({ ok: true, settings: rows[0] || null });
+}
+
+// URL再発行: token を差し替え＝旧URLは即404
+async function icalTokenRotate(res, payload) {
+  if (!(await assertCalendarAccess(res, payload))) return;
+  const acc = await resolveAccount(payload.accountId);
+  if (!acc || !acc.staff_id) return bad(res, 400, 'スタッフ未紐付けのアカウントです');
+  const rows = await sb(`ical_feed_settings?staff_id=eq.${encodeURIComponent(acc.staff_id)}`, {
+    method: 'PATCH', body: JSON.stringify({ token: newFeedToken(), updated_at: new Date().toISOString() }),
+  });
+  return res.status(200).json({ ok: true, settings: rows[0] || null });
+}
+
 // leader は自部門の staff にしか書き込めない
 async function assertLeaderDept(payload, targetDeptId) {
   if (payload.role !== 'leader') return true;
@@ -710,6 +1786,28 @@ export default async function handler(req, res) {
     if (action === 'settings') {
       return await settingsGateway(res, payload, body);
     }
+    // カレンダー機能（段階公開の判定は各関数内で実施）
+    if (action === 'calendar-access') return await calendarAccess(res, payload);
+    if (action === 'calendars-list') return await calendarsList(res, payload);
+    if (action === 'calendar-save') return await calendarSave(res, payload, body);
+    if (action === 'calendar-delete') return await calendarDelete(res, payload, body);
+    if (action === 'calendar-trash-list') return await calendarTrashList(res, payload);
+    if (action === 'calendar-admin-list') return await calendarAdminList(res, payload);
+    if (action === 'calendar-admin-events') return await calendarAdminEvents(res, payload, body);
+    if (action === 'calendar-restore') return await calendarRestore(res, payload, body);
+    if (action === 'calendar-members-list') return await calendarMembersList(res, payload, body);
+    if (action === 'calendar-pref-save') return await calendarPrefSave(res, payload, body);
+    if (action === 'staff-directory') return await staffDirectory(res, payload);
+    if (action === 'free-slot-search') return await freeSlotSearch(res, payload, body);
+    if (action === 'events-list') return await eventsList(res, payload, body);
+    if (action === 'events-save') return await eventsSave(res, payload, body);
+    if (action === 'events-delete') return await eventsDelete(res, payload, body);
+    if (action === 'ical-settings-get') return await icalSettingsGet(res, payload);
+    if (action === 'ical-settings-save') return await icalSettingsSave(res, payload, body);
+    if (action === 'ical-token-rotate') return await icalTokenRotate(res, payload);
+    if (action === 'ext-cal-list') return await extCalList(res, payload);
+    if (action === 'ext-cal-save') return await extCalSave(res, payload, body);
+    if (action === 'ext-cal-delete') return await extCalDelete(res, payload, body);
 
     if (!table || !POLICY[table]) return bad(res, 400, '許可されていないテーブルです');
     const p = POLICY[table];
@@ -764,6 +1862,16 @@ export default async function handler(req, res) {
           const target = await sb(`staff?id=eq.${encodeURIComponent(id)}&select=dept_id`);
           const deptId = target && target[0] ? target[0].dept_id : null;
           if (deptId == null || !(await assertLeaderDept(payload, deptId))) return bad(res, 403, '自部門以外は操作できません');
+        }
+        // 退職者対応: スタッフ削除に連動してICS購読フィードを失効（行ごと削除＝購読URLは即404）。
+        // 先にフィードを消す: 万一スタッフ削除が失敗してもフィードは再発行すればよいだけで害がない。
+        if (table === 'staff') {
+          try { await sb(`ical_feed_settings?staff_id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }); }
+          catch (e) { console.error('ical feed cascade delete:', e); }
+          try { await sb(`ical_feed_excludes?staff_id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }); }
+          catch (e) { console.error('ical excludes cascade delete:', e); }
+          try { await sb(`event_participants?staff_id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }); }
+          catch (e) { console.error('participants cascade delete:', e); }
         }
         await sb(`${table}?${p.idCol}=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
         return res.status(200).json({ ok: true });
