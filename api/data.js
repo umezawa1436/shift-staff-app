@@ -97,11 +97,32 @@ async function sbAll(path, order) {
 }
 function bad(res, status, message) { return res.status(status).json({ error: message }); }
 
+// ===== 軽量キャッシュ（ウォームなサーバレスインスタンス内のみ・短TTL）=====
+// 毎リクエストで繰り返される小さな参照（公開レベル・アカウント・ロール・名簿）の
+// DB往復を削る。TTLが短いので、権限や設定の変更も最大30〜60秒で反映される。
+const _cache = new Map();
+function cacheGet(key) {
+  const e = _cache.get(key);
+  if (e && e.exp > Date.now()) return e.v;
+  if (e) _cache.delete(key);
+  return undefined;
+}
+function cacheSet(key, v, ttlMs) {
+  if (_cache.size > 500) _cache.clear(); // 念のための上限
+  _cache.set(key, { v, exp: Date.now() + ttlMs });
+  return v;
+}
+function cacheDel(prefix) {
+  for (const k of _cache.keys()) if (k.startsWith(prefix)) _cache.delete(k);
+}
+
 // アカウントID → role / staff_id / dept_id を解決（クライアントの自己申告は信用しない）
 async function resolveAccount(accountId) {
   if (!accountId) return null;
+  const hit = cacheGet(`acc:${accountId}`);
+  if (hit !== undefined) return hit;
   const rows = await sb(`accounts?id=eq.${encodeURIComponent(accountId)}&select=id,role,staff_id,dept_id,name`);
-  return (rows && rows[0]) || null;
+  return cacheSet(`acc:${accountId}`, (rows && rows[0]) || null, 30000);
 }
 
 const intOk = (v, min, max) => Number.isInteger(v) && v >= min && v <= max;
@@ -615,6 +636,7 @@ async function settingsGateway(res, payload, body) {
   if (method !== 'GET' && payload.role !== 'leader' && payload.role !== 'master') {
     return bad(res, 403, '権限がありません');
   }
+  if (method !== 'GET' && table === 'app_settings') cacheDel('rel'); // 公開レベル変更を即時反映
   // staff ロールの読み取りで ownCol があるテーブルは本人分に強制
   if (method === 'GET' && conf.ownCol && payload.role === 'staff') {
     const acc = await resolveAccount(payload.accountId);
@@ -671,9 +693,11 @@ async function settingsGateway(res, payload, body) {
 //   表示/非表示は calendar_prefs で各自が制御（データは消えない）。
 // 段階公開: app_settings.calendar_release  0=masterのみ / 1=leaderまで / 2=全員（行なし=0）
 async function calendarReleaseLevel() {
+  const hit = cacheGet('rel');
+  if (hit !== undefined) return hit;
   try {
     const rows = await sb(`app_settings?key=eq.calendar_release&select=value`);
-    return rows && rows[0] ? (parseFloat(rows[0].value) || 0) : 0;
+    return cacheSet('rel', rows && rows[0] ? (parseFloat(rows[0].value) || 0) : 0, 15000);
   } catch { return 0; }
 }
 // 実効ティア判定。
@@ -686,8 +710,11 @@ async function calendarEffectiveTier(payload) {
   try {
     const acc = await resolveAccount(payload.accountId);
     if (acc && acc.staff_id) {
-      const linked = await sb(`accounts?staff_id=eq.${encodeURIComponent(acc.staff_id)}&select=role`);
-      const roles = (linked || []).map(x => x.role);
+      let roles = cacheGet(`roles:${acc.staff_id}`);
+      if (roles === undefined) {
+        const linked = await sb(`accounts?staff_id=eq.${encodeURIComponent(acc.staff_id)}&select=role`);
+        roles = cacheSet(`roles:${acc.staff_id}`, (linked || []).map(x => x.role), 30000);
+      }
       if (roles.includes('master')) return 'master';
       if (roles.includes('leader')) tier = 'leader';
     }
@@ -723,7 +750,7 @@ async function calendarAccess(res, payload) {
 }
 
 const CAL_COLORS = ['blue', 'green', 'red', 'orange', 'purple', 'teal', 'pink', 'gray'];
-const CAL_VISIBILITIES = ['private', 'members', 'all'];
+const CAL_VISIBILITIES = ['private', 'members', 'dept', 'all'];
 // 名称注意: TIME_RE は休憩バリデーション用に既存。イベント用は別名にする
 const EVENT_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const EVENT_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -731,7 +758,14 @@ const EVENT_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // 自分から見えるカレンダー一覧を返す（所有 / 参加 / 全体公開）。
 // 個人用「マイカレンダー」が無ければ自動作成（全員が最初から1つ持てる）。
 async function fetchVisibleCalendars(acc, tier) {
-  let all = await sbAll('calendars?deleted_at=is.null&select=*', 'created_at,id');
+  // 3つの読み込みは互いに独立 → 並列化
+  let [all, mem, prefs] = await Promise.all([
+    sbAll('calendars?deleted_at=is.null&select=*', 'created_at,id'),
+    acc.staff_id
+      ? sb(`calendar_members?staff_id=eq.${encodeURIComponent(acc.staff_id)}&select=calendar_id`)
+      : Promise.resolve([]),
+    sb(`calendar_prefs?account_id=eq.${encodeURIComponent(acc.id)}&select=calendar_id,hidden`),
+  ]);
   if (!all.some(c => c.visibility === 'private' && c.owner_account_id === acc.id)) {
     const created = await sb('calendars', { method: 'POST', body: JSON.stringify([{
       name: 'マイカレンダー', color: 'blue', visibility: 'private',
@@ -739,26 +773,23 @@ async function fetchVisibleCalendars(acc, tier) {
     }]) });
     all = all.concat(created || []);
   }
-  let memSet = new Set();
-  if (acc.staff_id) {
-    const mem = await sb(`calendar_members?staff_id=eq.${encodeURIComponent(acc.staff_id)}&select=calendar_id`);
-    memSet = new Set((mem || []).map(m => m.calendar_id));
-  }
+  const memSet = new Set((mem || []).map(m => m.calendar_id));
   const visible = all.filter(c =>
     c.visibility === 'all' ||
     c.owner_account_id === acc.id ||
-    (c.visibility === 'members' && memSet.has(c.id))
+    (c.visibility === 'members' && memSet.has(c.id)) ||
+    (c.visibility === 'dept' && (c.dept_id === acc.dept_id || tier === 'master'))
   );
-  const prefs = await sb(`calendar_prefs?account_id=eq.${encodeURIComponent(acc.id)}&select=calendar_id,hidden`);
   const hiddenSet = new Set((prefs || []).filter(p => p.hidden).map(p => p.calendar_id));
   return visible.map(c => ({
-    id: c.id, name: c.name, color: c.color, visibility: c.visibility,
+    id: c.id, name: c.name, color: c.color, visibility: c.visibility, dept_id: c.dept_id,
     owner_account_id: c.owner_account_id, owner_name: c.owner_name,
     is_owner: c.owner_account_id === acc.id,
     is_member: memSet.has(c.id),
     hidden: hiddenSet.has(c.id),
     can_post: c.visibility === 'all' ? true
       : c.visibility === 'members' ? (memSet.has(c.id) || c.owner_account_id === acc.id)
+      : c.visibility === 'dept' ? (c.dept_id === acc.dept_id || c.owner_account_id === acc.id)
       : c.owner_account_id === acc.id,
     can_manage: c.owner_account_id === acc.id || tier === 'master',
   }));
@@ -785,7 +816,11 @@ async function calendarSave(res, payload, body) {
   const name = String(cal.name || '').trim().slice(0, 20);
   if (!name) return bad(res, 400, 'カレンダー名を入力してください');
   if (!CAL_VISIBILITIES.includes(cal.visibility)) return bad(res, 400, '公開種別が不正です');
-  if (cal.visibility === 'all' && tier === 'staff') return bad(res, 403, '全体公開カレンダーはリーダー以上のみ作成できます');
+  if ((cal.visibility === 'all' || cal.visibility === 'dept') && tier === 'staff') {
+    return bad(res, 403, '全体公開・部署カレンダーはリーダー以上のみ作成できます');
+  }
+  const deptId = cal.visibility === 'dept' ? cal.dept_id : null;
+  if (cal.visibility === 'dept' && !intOk(deptId, 0, 3)) return bad(res, 400, '部署を選択してください');
   const color = CAL_COLORS.includes(cal.color) ? cal.color : 'blue';
   const memberIds = (cal.visibility === 'members' && Array.isArray(cal.member_staff_ids))
     ? (validStaffIds(cal.member_staff_ids, 200) || []) : null;
@@ -797,7 +832,7 @@ async function calendarSave(res, payload, body) {
     if (cur.owner_account_id !== acc.id && tier !== 'master') return bad(res, 403, 'このカレンダーを編集する権限がありません');
     await sb(`calendars?id=eq.${encodeURIComponent(cal.id)}`, {
       method: 'PATCH',
-      body: JSON.stringify({ name, color, visibility: cal.visibility, updated_at: new Date().toISOString() }),
+      body: JSON.stringify({ name, color, visibility: cal.visibility, dept_id: deptId, updated_at: new Date().toISOString() }),
     });
     if (memberIds !== null) {
       await sb(`calendar_members?calendar_id=eq.${encodeURIComponent(cal.id)}`, { method: 'DELETE' });
@@ -810,7 +845,7 @@ async function calendarSave(res, payload, body) {
   }
 
   const rows = await sb('calendars', { method: 'POST', body: JSON.stringify([{
-    name, color, visibility: cal.visibility,
+    name, color, visibility: cal.visibility, dept_id: deptId,
     owner_account_id: acc.id, owner_staff_id: acc.staff_id || null, owner_name: acc.name || null,
   }]) });
   const newId = rows && rows[0] ? rows[0].id : null;
@@ -918,11 +953,18 @@ async function calendarMembersList(res, payload, body) {
   return res.status(200).json({ members });
 }
 
+// スタッフ名簿（60秒キャッシュ。名簿は小さく変更頻度も低い）
+async function staffDirRows() {
+  const hit = cacheGet('staffdir');
+  if (hit !== undefined) return hit;
+  const rows = await sbAll('staff?select=id,name,dept_id', 'dept_id,staff_code');
+  return cacheSet('staffdir', rows, 60000);
+}
+
 // メンバー選択用の最小名簿（id・名前・部門のみ。ログイン画面が既に全氏名を公開している範囲を超えない）
 async function staffDirectory(res, payload) {
   if (!(await assertCalendarAccess(res, payload))) return;
-  const rows = await sbAll('staff?select=id,name,dept_id', 'dept_id,staff_code');
-  return res.status(200).json({ staff: rows });
+  return res.status(200).json({ staff: await staffDirRows() });
 }
 
 // ===== 管理画面用: 全カレンダー一覧（管理者のみ）=====
@@ -932,7 +974,7 @@ async function calendarAdminList(res, payload) {
   if (!(await assertCalendarAccess(res, payload))) return;
   const tier = await calendarEffectiveTier(payload);
   if (tier !== 'master') return bad(res, 403, '管理者のみ閲覧できます');
-  const cals = await sbAll('calendars?deleted_at=is.null&select=id,name,color,visibility,owner_account_id,owner_name,created_at', 'created_at,id');
+  const cals = await sbAll('calendars?deleted_at=is.null&select=id,name,color,visibility,dept_id,owner_account_id,owner_name,created_at', 'created_at,id');
   const mems = await sbAll('calendar_members?select=calendar_id', 'calendar_id,staff_id');
   const evs = await sbAll('events?select=calendar_id', 'id');
   const memCount = {};
@@ -940,7 +982,7 @@ async function calendarAdminList(res, payload) {
   const evCount = {};
   (evs || []).forEach(e => { if (e.calendar_id) evCount[e.calendar_id] = (evCount[e.calendar_id] || 0) + 1; });
   const calendars = cals.map(c => ({
-    id: c.id, name: c.name, color: c.color, visibility: c.visibility,
+    id: c.id, name: c.name, color: c.color, visibility: c.visibility, dept_id: c.dept_id,
     owner_account_id: c.owner_account_id, owner_name: c.owner_name, created_at: c.created_at,
     member_count: memCount[c.id] || 0, event_count: evCount[c.id] || 0,
   }));
@@ -956,7 +998,7 @@ async function calendarAdminEvents(res, payload, body) {
   const year = body.year, month = body.month;
   if (!intOk(year, 2000, 2100) || !intOk(month, 1, 12)) return bad(res, 400, 'year/month が不正です');
   const cals = await sbAll(
-    'calendars?deleted_at=is.null&visibility=in.("all","members")&select=id,name,color,visibility,owner_name',
+    'calendars?deleted_at=is.null&visibility=in.("all","members","dept")&select=id,name,color,visibility,dept_id,owner_name',
     'created_at,id');
   const mm = String(month).padStart(2, '0');
   const first = `${year}-${mm}-01`;
@@ -1020,10 +1062,8 @@ async function attachParticipants(rows) {
   if (!ids.length) return;
   const eps = await sbInChunks('event_participants?event_id=in.(__IDS__)&select=event_id,staff_id&limit=1000', ids);
   if (!eps.length) return;
-  const staffIds = [...new Set(eps.map(x => x.staff_id))];
-  const staffRows = await sbInChunks('staff?id=in.(__IDS__)&select=id,name&limit=1000', staffIds);
   const nameMap = {};
-  (staffRows || []).forEach(st => { nameMap[st.id] = st.name; });
+  (await staffDirRows()).forEach(st => { nameMap[st.id] = st.name; });
   const byEvent = {};
   eps.forEach(x => { (byEvent[x.event_id] = byEvent[x.event_id] || []).push({ id: x.staff_id, name: nameMap[x.staff_id] || '' }); });
   rows.forEach(r => { if (r && byEvent[r.id]) r.participants = byEvent[r.id]; });
@@ -1076,9 +1116,12 @@ async function freeSlotSearch(res, payload, body) {
   // --- ① 確定シフト ---
   const months = [...new Set(days.map(d => d.slice(0, 7)))].map(ym => ({ y: +ym.slice(0, 4), m: +ym.slice(5, 7) }));
   const monthOr = months.map(mm => `and(year.eq.${mm.y},month.eq.${mm.m})`).join(',');
-  const [types, shifts] = await Promise.all([
-    sb('shift_types?select=id,start_time,end_time,is_off'),
+  const typesCached = cacheGet('shift_types');
+  const [types, shifts, rangeEventsPre] = await Promise.all([
+    typesCached !== undefined ? Promise.resolve(typesCached)
+      : sb('shift_types?select=id,start_time,end_time,is_off').then(t => cacheSet('shift_types', t, 60000)),
     sbAll(`shifts?staff_id=in.(${sidIn})&is_confirmed=eq.true&or=(${monthOr})&select=staff_id,year,month,day,shift_type_id`, 'year,month,day,staff_id'),
+    sbAll(`events?start_date=lte.${endDate}&end_date=gte.${startDate}&select=id,owner_staff_id,start_date,end_date,start_time,end_time`, 'start_date,id'),
   ]);
   const typeMap = {};
   (types || []).forEach(t => { typeMap[t.id] = t; });
@@ -1106,10 +1149,8 @@ async function freeSlotSearch(res, payload, body) {
     if (from < to) a.fill(1, from, to);
   }
 
-  // --- ② アプリ内の予定 ---
-  const rangeEvents = await sbAll(
-    `events?start_date=lte.${endDate}&end_date=gte.${startDate}&select=id,owner_staff_id,start_date,end_date,start_time,end_time`,
-    'start_date,id');
+  // --- ② アプリ内の予定（①と並列で取得済み）---
+  const rangeEvents = rangeEventsPre;
   const evIds = (rangeEvents || []).map(e => e.id);
   const eps = evIds.length
     ? await sbInChunks(`event_participants?event_id=in.(__IDS__)&staff_id=in.(${sidIn})&select=event_id,staff_id&limit=1000`, evIds)
@@ -1199,18 +1240,26 @@ async function eventsList(res, payload, body) {
   const first = `${year}-${mm}-01`;
   const last = `${year}-${mm}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`;
   const ids = calendars.map(c => c.id);
-  const rows = await sbAll(
-    `events?start_date=lte.${last}&end_date=gte.${first}&calendar_id=in.(${inFilter(ids)})&select=*`,
-    'start_date,id');
+  // 予定本体・参加者・外部カレンダーの読み込みを並列化
+  const [rows, extPack] = await Promise.all([
+    sbAll(`events?start_date=lte.${last}&end_date=gte.${first}&calendar_id=in.(${inFilter(ids)})&select=*`,
+      'start_date,id'),
+    (async () => {
+      const linkedIds = await extLinkedAccountIds(acc);
+      const [exts, prefs2] = await Promise.all([
+        sb(`external_calendars?account_id=in.(${inFilter(linkedIds)})&select=*`),
+        sb(`calendar_prefs?account_id=eq.${encodeURIComponent(acc.id)}&hidden=eq.true&select=calendar_id`),
+      ]);
+      return { exts: exts || [], hidden2: new Set((prefs2 || []).map(x => x.calendar_id)) };
+    })().catch(e => { console.error('external prep:', e); return { exts: [], hidden2: new Set() }; }),
+  ]);
   await attachParticipants(rows);
 
   // 外部カレンダー（本人のみ・読み取り専用）をカレンダー一覧と予定に合流させる
   try {
-    const linkedIds = await extLinkedAccountIds(acc);
-    const exts = await sb(`external_calendars?account_id=in.(${inFilter(linkedIds)})&select=*`);
+    const exts = extPack.exts;
     if (exts && exts.length) {
-      const prefs2 = await sb(`calendar_prefs?account_id=eq.${encodeURIComponent(acc.id)}&hidden=eq.true&select=calendar_id`);
-      const hidden2 = new Set((prefs2 || []).map(x => x.calendar_id));
+      const hidden2 = extPack.hidden2;
       const refreshed = await Promise.all(exts.map(c => extRefresh(c)));
       for (const c of refreshed) {
         calendars.push({
@@ -1260,11 +1309,12 @@ async function eventsSave(res, payload, body) {
   }
 
   // 投稿先カレンダーの権限チェック
-  const cal = (await sb(`calendars?id=eq.${encodeURIComponent(ev.calendar_id)}&select=id,owner_account_id,visibility,color,deleted_at`))[0];
+  const cal = (await sb(`calendars?id=eq.${encodeURIComponent(ev.calendar_id)}&select=id,owner_account_id,visibility,dept_id,color,deleted_at`))[0];
   if (!cal || cal.deleted_at) return bad(res, 404, 'カレンダーが見つかりません');
   let canPost = false;
   if (cal.visibility === 'all') canPost = true;
   else if (cal.owner_account_id === acc.id) canPost = true;
+  else if (cal.visibility === 'dept') canPost = (cal.dept_id === acc.dept_id);
   else if (cal.visibility === 'members' && acc.staff_id) {
     const m = await sb(`calendar_members?calendar_id=eq.${encodeURIComponent(cal.id)}&staff_id=eq.${encodeURIComponent(acc.staff_id)}&select=staff_id`);
     canPost = (m && m.length > 0);
@@ -1566,7 +1616,7 @@ function extExpand(cache, first, last) {
 
 async function extFetchAndDigest(url) {
   const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), 8000);
+  const t = setTimeout(() => ctl.abort(), 5000);
   try {
     const resp = await fetch(url, { signal: ctl.signal, redirect: 'follow' });
     if (!resp.ok) throw new Error(`取得失敗（HTTP ${resp.status}）`);
@@ -1600,10 +1650,12 @@ async function extRefresh(cal) {
 // 取り込みカレンダーは「本人単位」で共有する＝スタッフ画面で登録したものが管理画面にも出る
 async function extLinkedAccountIds(acc) {
   if (!acc.staff_id) return [acc.id];
+  const hit = cacheGet(`linked:${acc.staff_id}`);
+  if (hit !== undefined) return hit;
   try {
     const linked = await sb(`accounts?staff_id=eq.${encodeURIComponent(acc.staff_id)}&select=id`);
     const ids = (linked || []).map(x => x.id);
-    return ids.includes(acc.id) ? ids : ids.concat([acc.id]);
+    return cacheSet(`linked:${acc.staff_id}`, ids.includes(acc.id) ? ids : ids.concat([acc.id]), 30000);
   } catch { return [acc.id]; }
 }
 
@@ -1824,6 +1876,9 @@ export default async function handler(req, res) {
 
     if (!allowed(table, action, payload.role)) return bad(res, 403, '権限がありません');
 
+    if (table === 'staff' && (action === 'insert' || action === 'update' || action === 'delete')) {
+      cacheDel('staffdir'); // 名簿キャッシュを無効化（追加・改名・削除を即時反映）
+    }
     if (action === 'insert') {
       let values = body.values;
       if (!values || typeof values !== 'object' || Array.isArray(values)) return bad(res, 400, 'values が不正です');
