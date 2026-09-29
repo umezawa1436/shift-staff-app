@@ -840,7 +840,17 @@
       <select class="form-input" id="calAdminVis" onchange="calAdminVisChanged()">
         <option value="all">🌐 全体（全スタッフに表示）</option>
         <option value="members">👥 メンバー限定（参加者のみ表示）</option>
+        <option value="dept">🏢 部署（部署の全員に表示）</option>
         <option value="private">🔒 個人（作成者のみ表示）</option>
+      </select>
+    </div>
+    <div class="form-group" id="calAdminDeptWrap" style="display:none">
+      <label class="form-label">対象部署</label>
+      <select class="form-input" id="calAdminDept">
+        <option value="0">医療事務</option>
+        <option value="1">看護</option>
+        <option value="2">リハビリ</option>
+        <option value="3">放射線</option>
       </select>
     </div>
     <div class="form-group">
@@ -1050,7 +1060,7 @@
   </div>
 </div>
 
-<script src="admin.js?v=58"></script>
+<script src="admin.js?v=60"></script>
 <script src="admin-generate.js?v=13"></script>
 </body>
 </html>

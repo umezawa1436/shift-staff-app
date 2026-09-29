@@ -4767,8 +4767,8 @@ window.setCalendarRelease = async function(v) {
 // calendar-trash-list / calendar-restore / calendar-members-list / staff-directory を利用。
 // 管理者トークンは role=master をそのまま持つため、公開範囲レベルに関係なく操作できる。
 const CAL_ADMIN_COLORS = { blue:'#3b82f6', green:'#10b981', red:'#ef4444', orange:'#f97316', purple:'#8b5cf6', teal:'#14b8a6', pink:'#ec4899', gray:'#6b7280' };
-const CAL_ADMIN_VIS_ICONS = { private:'🔒', members:'👥', all:'🌐', external:'📥' };
-const CAL_ADMIN_VIS_LABELS = { private:'個人', members:'メンバー限定', all:'全体公開', external:'外部取り込み（自分のみ）' };
+const CAL_ADMIN_VIS_ICONS = { private:'🔒', members:'👥', dept:'🏢', all:'🌐', external:'📥' };
+const CAL_ADMIN_VIS_LABELS = { private:'個人', members:'メンバー限定', dept:'部署内', all:'全体公開', external:'外部取り込み（自分のみ）' };
 let calAdminCache = [];        // calendar-admin-list の結果
 let calAdminEditing = null;    // 編集中カレンダー（null=新規作成）
 let calAdminColor = 'blue';
@@ -4790,7 +4790,9 @@ async function loadCalAdminList() {
 
 function calAdminRow(c, canEdit) {
   const hex = CAL_ADMIN_COLORS[c.color] || CAL_ADMIN_COLORS.blue;
-  const sub = `${CAL_ADMIN_VIS_ICONS[c.visibility] || ''} ${CAL_ADMIN_VIS_LABELS[c.visibility] || c.visibility}` +
+  const visLabel = c.visibility === 'dept'
+    ? `部署内（${DEPT_NAMES[c.dept_id] ?? ''}）` : (CAL_ADMIN_VIS_LABELS[c.visibility] || c.visibility);
+  const sub = `${CAL_ADMIN_VIS_ICONS[c.visibility] || ''} ${visLabel}` +
     (c.owner_name ? ` ・ 作成: ${escapeHtml(c.owner_name)}` : '') +
     (c.visibility === 'members' ? ` ・ メンバー ${c.member_count}人` : '') +
     ` ・ 予定 ${c.event_count}件`;
@@ -4837,6 +4839,7 @@ window.selectCalAdminColor = function(key) { calAdminColor = key; renderCalAdmin
 window.calAdminVisChanged = function() {
   const vis = document.getElementById('calAdminVis').value;
   document.getElementById('calAdminMemberWrap').style.display = vis === 'members' ? '' : 'none';
+  document.getElementById('calAdminDeptWrap').style.display = vis === 'dept' ? '' : 'none';
   if (vis === 'members') loadCalAdminMembers();
 };
 
@@ -4877,6 +4880,8 @@ window.openCalAdminEditor = function(calendarId) {
   document.getElementById('calAdminModalTitle').textContent = calAdminEditing ? 'カレンダーを編集' : 'カレンダーを作成';
   document.getElementById('calAdminName').value = calAdminEditing ? calAdminEditing.name : '';
   document.getElementById('calAdminVis').value = calAdminEditing ? calAdminEditing.visibility : 'all';
+  document.getElementById('calAdminDept').value =
+    String(calAdminEditing && calAdminEditing.dept_id != null ? calAdminEditing.dept_id : 0);
   calAdminColor = calAdminEditing && calAdminEditing.color ? calAdminEditing.color : 'blue';
   renderCalAdminColors();
   calAdminVisChanged();
@@ -4888,6 +4893,7 @@ window.saveCalAdmin = async function() {
   if (!name) { showToast('カレンダー名を入力してください', 'error'); return; }
   const visibility = document.getElementById('calAdminVis').value;
   const calendar = { name, visibility, color: calAdminColor };
+  if (visibility === 'dept') calendar.dept_id = parseInt(document.getElementById('calAdminDept').value, 10);
   if (calAdminEditing) calendar.id = calAdminEditing.id;
   if (visibility === 'members') {
     calendar.member_staff_ids = [...document.querySelectorAll('.calAdminMem:checked')].map(el => el.value);
@@ -5217,9 +5223,8 @@ async function loadSettings() {
     if (!card) return;
     if (adminUser.role !== 'master') { card.style.display = 'none'; return; }
     card.style.display = '';
-    await loadCalAdminList();
-    await loadAdminExtList();
-    await loadCalAdminView();
+    // 3つの読み込みは独立 → 並列化（各関数内で個別にエラー処理済み）
+    await Promise.all([loadCalAdminList(), loadAdminExtList(), loadCalAdminView()]);
   });
 
   // 必要人数設定（最重要：最初に実行）
