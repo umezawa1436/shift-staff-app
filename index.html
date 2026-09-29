@@ -293,14 +293,16 @@
     .shift-希望休 .day-shift { color: #9a3412; }
 
     /* ===== BOTTOM SUBMIT BAR ===== */
-    .bottom-nav { position: sticky; bottom: 0; background: white; border-top: 1px solid var(--border); display: flex; z-index: 100; padding-bottom: env(safe-area-inset-bottom); }
+    /* タブバーは全タブ共通で画面下に固定（タブごとに位置がずれないように）。本文はその高さ分だけ下に余白を取る */
+    .bottom-nav { position: fixed; left: 0; right: 0; bottom: 0; background: white; border-top: 1px solid var(--border); display: flex; z-index: 100; padding-bottom: env(safe-area-inset-bottom); }
+    #appScreen { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
     .nav-tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 10px 8px; border: none; background: white; color: var(--text-muted); font-size: 11px; font-family: inherit; cursor: pointer; transition: all 0.15s; border-top: 2px solid transparent; }
     .nav-tab.active { color: var(--primary); border-top-color: var(--primary); font-weight: 600; }
     /* 3タブ化の狭幅対策（仕様v3）: 320px幅でも折り返しを構造的に起こさない */
     .nav-tab { min-width: 0; white-space: nowrap; overflow: hidden; }
     .nav-tab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 
-    .submit-bar { background: white; padding: 16px 20px; padding-bottom: calc(16px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); box-shadow: 0 -4px 20px rgba(0,0,0,0.08); }
+    .submit-bar { background: white; padding: 16px 20px; border-top: 1px solid var(--border); box-shadow: 0 -4px 20px rgba(0,0,0,0.08); }
     .submit-info { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
     .submit-count { font-size: 13px; color: var(--text-muted); }
     .submit-count span { font-weight: 700; color: var(--primary); font-size: 16px; }
@@ -538,22 +540,15 @@
     <div class="kingyo-bubble" id="kingyoBubble"><div class="kb-label">今日の一言</div><div id="kingyoQuoteText"></div></div>
   </div>
 
+  <!-- 月の切り替えはヘッダーの1か所に統一（全タブ共通） -->
   <div id="confirmedWrap" style="display:none;padding:16px;flex:1;overflow-y:auto">
-    <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center">
-      <button class="month-btn" id="confPrevMonth"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg></button>
-      <div style="font-size:18px;font-weight:700" id="confMonthTitle"></div>
-      <button class="month-btn" id="confNextMonth"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg></button>
-    </div>
     <div id="confirmedGrid"></div>
   </div>
 
   <!-- カレンダータブ（Phase1: シフト×予定の統合表示。段階公開 calendar_release で制御） -->
   <div id="calTabWrap" style="display:none;padding:16px;flex:1;overflow-y:auto">
-    <div style="display:flex;gap:12px;margin-bottom:12px;align-items:center">
-      <button class="month-btn" id="calTabPrev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg></button>
-      <div style="font-size:18px;font-weight:700" id="calTabTitle"></div>
-      <button class="month-btn" id="calTabNext"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg></button>
-      <button class="month-btn" id="calMgrBtn" onclick="openCalMgr()" title="カレンダー管理" style="margin-left:auto">📅</button>
+    <div style="display:flex;gap:12px;margin-bottom:12px;align-items:center;justify-content:flex-end">
+      <button class="month-btn" id="calMgrBtn" onclick="openCalMgr()" title="カレンダー管理">📅</button>
     </div>
     <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px">
       <div style="text-align:center;font-size:11px;font-weight:600;color:#ef4444;padding:4px 0">日</div>
@@ -703,8 +698,18 @@
       <select id="calEdVis" onchange="calEdVisChanged()" style="padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;background:white">
         <option value="private">🔒 自分のみ</option>
         <option value="members">👥 参加者のみ（メンバーを選ぶ）</option>
+        <option value="dept">🏥 部署（同じ部署の全員に表示）</option>
         <option value="all">🌐 全体（全員に表示）</option>
       </select>
+      <div id="calEdDeptWrap" style="display:none">
+        <div style="font-size:13px;font-weight:700;margin-bottom:6px">対象の部署</div>
+        <select id="calEdDept" style="width:100%;padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;background:white">
+          <option value="0">医療事務</option>
+          <option value="1">看護</option>
+          <option value="2">リハビリ</option>
+          <option value="3">放射線</option>
+        </select>
+      </div>
       <div id="calEdColors" style="display:flex;gap:10px;flex-wrap:wrap"></div>
       <div id="calEdMembersWrap" style="display:none">
         <div style="font-size:13px;font-weight:700;margin-bottom:6px">参加メンバー</div>
@@ -1815,6 +1820,8 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
       return;
     }
   }
+  // 提出済みの月は上書きになるため確認する
+  if (hasSubmittedThisMonth && !confirm(`再提出しますか？\n（${currentYear}年${currentMonth}月の提出内容を上書きします）`)) return;
 
   showLoading();
   try {
@@ -1845,21 +1852,36 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
   hideLoading();
 });
 
-document.getElementById('prevMonthBtn').addEventListener('click', async () => {
-  currentMonth--;
+// ===== 月の切り替え（ヘッダーの1か所に統一・全タブ共通）=====
+// 表示中のタブだけ読み込み直す。希望提出タブ以外で月を動かした場合は、
+// 希望提出タブに戻った時点で読み込む（reqMonthStale）。
+let reqMonthStale = false;
+async function reloadRequestMonth() {
+  await Promise.all([loadRequests(), loadClinicSettings(), loadReqLimitsForStaff(), loadDeadlineForStaff()]);
+  renderDeadlineInfo();
+  renderCalendar();
+  reqMonthStale = false;
+}
+async function shiftMonth(delta) {
+  currentMonth += delta;
   if (currentMonth < 1) { currentMonth = 12; currentYear--; }
-  await Promise.all([loadRequests(), loadClinicSettings(), loadReqLimitsForStaff(), loadDeadlineForStaff()]);
-  renderDeadlineInfo();
-  renderCalendar();
-});
-
-document.getElementById('nextMonthBtn').addEventListener('click', async () => {
-  currentMonth++;
   if (currentMonth > 12) { currentMonth = 1; currentYear++; }
-  await Promise.all([loadRequests(), loadClinicSettings(), loadReqLimitsForStaff(), loadDeadlineForStaff()]);
-  renderDeadlineInfo();
-  renderCalendar();
-});
+  document.getElementById('monthTitle').textContent = `${currentYear}年${currentMonth}月`;
+  if (currentTab === 'request') {
+    await reloadRequestMonth();
+    return;
+  }
+  reqMonthStale = true;
+  if (currentTab === 'confirmed') {
+    confYear = currentYear; confMonth = currentMonth;
+    loadConfirmedShifts();
+  } else if (currentTab === 'calendar') {
+    calTabYear = currentYear; calTabMonth = currentMonth;
+    loadCalendarTab();
+  }
+}
+document.getElementById('prevMonthBtn').addEventListener('click', () => shiftMonth(-1));
+document.getElementById('nextMonthBtn').addEventListener('click', () => shiftMonth(1));
 
 document.getElementById('logoutBtn').addEventListener('click', () => {
   currentUser = null;
@@ -2315,6 +2337,10 @@ function switchTab(tab) {
   if (confWrap) confWrap.style.display = tab === 'confirmed' ? 'block' : 'none';
   if (calTabWrap) calTabWrap.style.display = tab === 'calendar' ? 'block' : 'none';
 
+  if (tab === 'request') {
+    document.getElementById('monthTitle').textContent = `${currentYear}年${currentMonth}月`;
+    if (reqMonthStale) reloadRequestMonth();
+  }
   if (tab === 'confirmed') {
     confYear = currentYear;
     confMonth = currentMonth;
@@ -2346,12 +2372,17 @@ let staffDirCache = null;   // メンバー選択用の名簿キャッシュ
 let calTabShiftMap = {};    // day -> shift_type_id（自分の確定シフト）
 
 const CAL_EVENT_COLORS = { blue:'#3b82f6', green:'#10b981', red:'#ef4444', orange:'#f97316', purple:'#8b5cf6', teal:'#14b8a6', pink:'#ec4899', gray:'#6b7280' };
-const CAL_VIS_ICONS = { private:'🔒', members:'👥', all:'🌐', external:'📥' };
-const CAL_VIS_LABELS = { private:'自分のみ', members:'参加者のみ', all:'全体', external:'外部取り込み（自分のみ・読み取り専用）' };
+const CAL_VIS_ICONS = { private:'🔒', members:'👥', dept:'🏥', all:'🌐', external:'📥' };
+const CAL_VIS_LABELS = { private:'自分のみ', members:'参加者のみ', dept:'部署内', all:'全体', external:'外部取り込み（自分のみ・読み取り専用）' };
+// 公開範囲の表示名（部署カレンダーは部署名を添える）
+function calVisLabel(c) {
+  if (c.visibility === 'dept') return `部署内（${DEPT_NAMES[c.dept_id] ?? ''}）`;
+  return CAL_VIS_LABELS[c.visibility] || '';
+}
 
 async function loadCalendarTab() {
   if (!currentUser?.id) return;
-  document.getElementById('calTabTitle').textContent = `${calTabYear}年${calTabMonth}月`;
+  document.getElementById('monthTitle').textContent = `${calTabYear}年${calTabMonth}月`;
   const grid = document.getElementById('calTabGrid');
   grid.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:20px">読み込み中...</div>';
   try {
@@ -3043,7 +3074,7 @@ function renderCalMgr() {
   }
   body.innerHTML = calTabCalendars.map(c => {
     const hex = CAL_EVENT_COLORS[c.color] || CAL_EVENT_COLORS.blue;
-    const sub = `${CAL_VIS_ICONS[c.visibility] || ''} ${CAL_VIS_LABELS[c.visibility] || ''}${c.owner_name ? ' ・ 作成: ' + escapeHtml(c.owner_name) : ''}`;
+    const sub = `${CAL_VIS_ICONS[c.visibility] || ''} ${calVisLabel(c)}${c.owner_name ? ' ・ 作成: ' + escapeHtml(c.owner_name) : ''}`;
     return `<div style="display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid var(--border)">
       <input type="checkbox" ${c.hidden ? '' : 'checked'} onchange="toggleCalPref('${c.id}', !this.checked)" style="width:20px;height:20px;flex-shrink:0">
       <div style="width:12px;height:12px;border-radius:50%;background:${hex};flex-shrink:0"></div>
@@ -3083,6 +3114,7 @@ window.selectCalEdColor = function(key) { calEdColor = key; renderCalEdColors();
 window.calEdVisChanged = function() {
   const vis = document.getElementById('calEdVis').value;
   document.getElementById('calEdMembersWrap').style.display = vis === 'members' ? '' : 'none';
+  document.getElementById('calEdDeptWrap').style.display = vis === 'dept' ? '' : 'none';
   if (vis === 'members') loadCalEdMembers();
 };
 
@@ -3123,10 +3155,16 @@ window.openCalEditor = function(calendarId) {
   document.getElementById('calEdTitle').textContent = calEdEditing ? 'カレンダーを編集' : '新しいカレンダー';
   document.getElementById('calEdName').value = calEdEditing ? calEdEditing.name : '';
   const visSel = document.getElementById('calEdVis');
-  // 全体公開の作成はリーダー以上のみ（サーバ側でも強制）
-  const allOpt = visSel.querySelector('option[value="all"]');
-  if (allOpt) allOpt.disabled = (CAL_MY_TIER === 'staff' && !(calEdEditing && calEdEditing.visibility === 'all'));
+  // 全体公開・部署カレンダーの作成はリーダー以上のみ（サーバ側でも強制）
+  ['all', 'dept'].forEach(v => {
+    const opt = visSel.querySelector(`option[value="${v}"]`);
+    if (opt) opt.disabled = (CAL_MY_TIER === 'staff' && !(calEdEditing && calEdEditing.visibility === v));
+  });
   visSel.value = calEdEditing ? calEdEditing.visibility : 'private';
+  // 部署の初期値: 編集中はそのカレンダーの部署、新規は自分の部署
+  const deptInit = (calEdEditing && calEdEditing.dept_id != null) ? calEdEditing.dept_id
+    : (currentUser && currentUser.deptId != null ? currentUser.deptId : 0);
+  document.getElementById('calEdDept').value = String(deptInit);
   calEdColor = calEdEditing && calEdEditing.color ? calEdEditing.color : 'blue';
   renderCalEdColors();
   // 削除は管理者（master）のみ（サーバ側でも強制）
@@ -3148,6 +3186,9 @@ window.saveCalEd = async function() {
   if (calEdEditing) calendar.id = calEdEditing.id;
   if (visibility === 'members') {
     calendar.member_staff_ids = [...document.querySelectorAll('.calEdMem:checked')].map(el => el.value);
+  }
+  if (visibility === 'dept') {
+    calendar.dept_id = parseInt(document.getElementById('calEdDept').value, 10);
   }
   showLoading();
   try {
@@ -3194,17 +3235,9 @@ window.icsRotate = async function() {
   hideLoading();
 };
 
-document.getElementById('calTabPrev')?.addEventListener('click', () => {
-  calTabMonth--; if (calTabMonth < 1) { calTabMonth = 12; calTabYear--; }
-  loadCalendarTab();
-});
-document.getElementById('calTabNext')?.addEventListener('click', () => {
-  calTabMonth++; if (calTabMonth > 12) { calTabMonth = 1; calTabYear++; }
-  loadCalendarTab();
-});
-
+// 月タイトルはヘッダー（monthTitle）の1か所に統一
 function updateConfMonthTitle() {
-  document.getElementById('confMonthTitle').textContent = `${confYear}年${confMonth}月`;
+  document.getElementById('monthTitle').textContent = `${confYear}年${confMonth}月`;
 }
 
 async function loadConfirmedShifts() {
@@ -3365,17 +3398,6 @@ async function loadConfirmedShifts() {
     grid.innerHTML = '<div style="text-align:center;color:var(--danger);padding:20px">読み込みエラーが発生しました</div>';
   }
 }
-
-document.getElementById('confPrevMonth')?.addEventListener('click', () => {
-  confMonth--; if(confMonth<1){confMonth=12;confYear--;}
-  updateConfMonthTitle();
-  loadConfirmedShifts();
-});
-document.getElementById('confNextMonth')?.addEventListener('click', () => {
-  confMonth++; if(confMonth>12){confMonth=1;confYear++;}
-  updateConfMonthTitle();
-  loadConfirmedShifts();
-});
 
 window.addEventListener('load', async () => {
   // スタッフ一覧をDBから取得（ログイン画面のドロップダウン用）
