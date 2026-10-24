@@ -895,12 +895,21 @@ let staffEmpTypeCache = null;    // emp_type（初回のみ取得してキャッ
 // ★ 所定算出の定数（DB app_settings で一元管理。admin側と同一ソース。未設定時は従来値）
 let APP_SHORT_RATIO = 0.75;
 let APP_DEFAULT_PLAN_HOURS = 171.4;
+// 年ごとの所定の基準値（app_settings: planned_hours_year_YYYY）。admin.js の defaultPlanHoursFor と同一ルール
+let APP_YEAR_PLAN_HOURS = {};
+function defaultPlanHoursFor(year) {
+  const v = APP_YEAR_PLAN_HOURS[year];
+  return (v != null && !isNaN(v)) ? v : APP_DEFAULT_PLAN_HOURS;
+}
 async function loadAppSettings() {
   try {
     const rows = await supabaseRequest('app_settings?select=key,value');
+    APP_YEAR_PLAN_HOURS = {};
     (rows || []).forEach(r => {
       if (r.key === 'short_ratio' && r.value != null) APP_SHORT_RATIO = parseFloat(r.value);
       if (r.key === 'default_planned_hours' && r.value != null) APP_DEFAULT_PLAN_HOURS = parseFloat(r.value);
+      const ym = /^planned_hours_year_(\d{4})$/.exec(r.key || '');
+      if (ym && r.value != null && !isNaN(parseFloat(r.value))) APP_YEAR_PLAN_HOURS[parseInt(ym[1], 10)] = parseFloat(r.value);
       if (r.key === 'calendar_release' && r.value != null) CALENDAR_RELEASE = parseFloat(r.value) || 0;
     });
   } catch(e) {
@@ -956,13 +965,21 @@ async function loadPlannedHours() {
       staffEmpTypeCache != null ? Promise.resolve(null) : dataApi({ action:'list', table:'staff', view:'me' }).then(r => r.rows || [])
     ]);
     if (staffRow) staffEmpTypeCache = staffRow[0]?.emp_type || 'full';
-    const baseHours = (monthlyHoursData && monthlyHoursData.length) ? parseFloat(monthlyHoursData[0].hours) : APP_DEFAULT_PLAN_HOURS;
+    // 月の所定が未設定なら「その年の基準値 → 全体既定」
+    const baseHours = (monthlyHoursData && monthlyHoursData.length) ? parseFloat(monthlyHoursData[0].hours) : defaultPlanHoursFor(currentYear);
     const individual = (staffSettingData && staffSettingData.length) ? staffSettingData[0].planned_hours : null;
-    staffPlannedHours = (individual != null)
-      ? parseFloat(individual)
-      : (staffEmpTypeCache === 'full' ? baseHours
-         : staffEmpTypeCache === 'short' ? Math.round(baseHours * APP_SHORT_RATIO * 10) / 10
-         : 0);
+    // 雇用形態ごとの既定は admin.js の empTypeBaseHours と同一
+    //   常勤/フルパート=基準、時短=基準×係数、パート=80、アルバイト=0、不明=基準
+    const empBase = (t) => {
+      switch (t) {
+        case 'full': case 'fullpart': return baseHours;
+        case 'short':  return Math.round(baseHours * APP_SHORT_RATIO * 10) / 10;
+        case 'part':   return 80;
+        case 'arbeit': return 0;
+        default:       return baseHours;
+      }
+    };
+    staffPlannedHours = (individual != null) ? parseFloat(individual) : empBase(staffEmpTypeCache);
   } catch(e) {
     console.error('所定時間の取得エラー:', e);
     staffPlannedHours = 0;
