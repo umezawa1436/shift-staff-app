@@ -7,6 +7,15 @@ let adminUser = null;
 //   admin.js / admin-generate.js / index.html(スタッフ画面) が各自このテーブルを読むことで二重管理を解消。
 let APP_SHORT_RATIO = 0.75;
 let APP_DEFAULT_PLAN_HOURS = 171.4;
+// 年ごとの所定労働時間の基準値（app_settings の key = planned_hours_year_YYYY）。
+//   月の所定（monthly_hours）が未設定の月は「その年の基準値 → 全体既定 default_planned_hours」の順で使う。
+//   admin.js / admin-generate.js / index.html で同じ順序にすること。
+let APP_YEAR_PLAN_HOURS = {}; // { 2027: 168, ... }
+const YEAR_PLAN_KEY_RE = /^planned_hours_year_(\d{4})$/;
+function defaultPlanHoursFor(year) {
+  const v = APP_YEAR_PLAN_HOURS[year];
+  return (v != null && !isNaN(v)) ? v : APP_DEFAULT_PLAN_HOURS;
+}
 
 // 雇用形態ごとのデフォルト所定労働時間（個別設定 planned_hours が無いときの基準値）。
 //   base = その月の全体デフォルト所定（shiftGridPlanHours / basePlanHours）。
@@ -26,9 +35,12 @@ function empTypeBaseHours(empType, base) {
 async function loadAppSettings() {
   try {
     const rows = await sb('app_settings?select=key,value');
+    APP_YEAR_PLAN_HOURS = {};
     (rows || []).forEach(r => {
       if (r.key === 'short_ratio' && r.value != null) APP_SHORT_RATIO = parseFloat(r.value);
       if (r.key === 'default_planned_hours' && r.value != null) APP_DEFAULT_PLAN_HOURS = parseFloat(r.value);
+      const ym = YEAR_PLAN_KEY_RE.exec(r.key || '');
+      if (ym && r.value != null && !isNaN(parseFloat(r.value))) APP_YEAR_PLAN_HOURS[parseInt(ym[1], 10)] = parseFloat(r.value);
     });
   } catch(e) {
     console.warn('app_settings 読み込みスキップ（デフォルト値を使用）:', e);
@@ -938,7 +950,7 @@ async function loadShiftGrid() {
     });
 
     // 所定時間
-    shiftGridPlanHours = monthlyHoursData.length > 0 ? monthlyHoursData[0].hours : APP_DEFAULT_PLAN_HOURS;
+    shiftGridPlanHours = monthlyHoursData.length > 0 ? monthlyHoursData[0].hours : defaultPlanHoursFor(shiftYear);
 
     // スタッフ個別設定
     shiftGridStaffSettings = {};
@@ -5230,20 +5242,8 @@ async function loadSettings() {
   // 必要人数設定（最重要：最初に実行）
   await safe('loadRequirementsGrid', loadRequirementsGrid);
 
-  // 月の所定時間
-  await safe('monthlyHours', async () => {
-    const hours = await sb(`monthly_hours?year=eq.${currentYear}&dept_id=is.null&order=month&select=month,hours`);
-    const hoursMap = {};
-    hours.forEach(h => { hoursMap[h.month] = h.hours; });
-    let html = '<table class="req-table"><thead><tr>';
-    for (let m = 1; m <= 12; m++) html += `<th>${m}月</th>`;
-    html += '</tr></thead><tbody><tr>';
-    for (let m = 1; m <= 12; m++) {
-      html += `<td><input type="number" class="req-input" id="hours-${m}" value="${hoursMap[m] || ''}" step="0.1" min="0" max="250"></td>`;
-    }
-    html += '</tr></tbody></table>';
-    document.getElementById('monthlyHoursGrid').innerHTML = html;
-  });
+  // 所定労働時間（年の基準値＋月ごと）
+  await safe('monthlyHours', renderPlanHoursCard);
 
   // 祝日・木曜
   await safe('specialDays', async () => {
@@ -5312,7 +5312,7 @@ document.getElementById('clearStaffHoursBtn')?.addEventListener('click', async (
   const deptLabel = DEPT_NAMES[currentDept] || `部署${currentDept}`;
   const monthInput = prompt(
     `${deptLabel} の個別所定時間をクリアする月を入力してください。\n` +
-    `（例: 6 と入力すると ${currentYear}年6月分を削除）\n\n` +
+    `（例: 6 と入力すると ${hoursYear}年6月分を削除）\n\n` +
     `※ 個別設定を削除すると、そのスタッフは基準値（月間所定労働時間）に統一されます。`,
     String(shiftMonth)
   );
@@ -5328,22 +5328,22 @@ document.getElementById('clearStaffHoursBtn')?.addEventListener('click', async (
   try {
     const deptStaff = allStaff.filter(s => s.dept_id === currentDept);
     const ids = deptStaff.map(s => `"${s.id}"`).join(',');
-    const existing = await sb(`staff_settings?staff_id=in.(${ids})&year=eq.${currentYear}&month=eq.${targetMonth}&select=staff_id,planned_hours`);
+    const existing = await sb(`staff_settings?staff_id=in.(${ids})&year=eq.${hoursYear}&month=eq.${targetMonth}&select=staff_id,planned_hours`);
     hideLoading();
 
     if (!existing || existing.length === 0) {
-      showToast(`${currentYear}年${targetMonth}月には個別設定がありません`, 'info');
+      showToast(`${hoursYear}年${targetMonth}月には個別設定がありません`, 'info');
       return;
     }
 
     if (!confirm(
-      `${deptLabel} ${currentYear}年${targetMonth}月の個別所定時間 ${existing.length} 件を削除します。\n\n` +
+      `${deptLabel} ${hoursYear}年${targetMonth}月の個別所定時間 ${existing.length} 件を削除します。\n\n` +
       `削除後、これらのスタッフは基準値に統一されます。\n` +
       `この操作は取り消せません。続けますか？`
     )) return;
 
     showLoading();
-    await sb(`staff_settings?staff_id=in.(${ids})&year=eq.${currentYear}&month=eq.${targetMonth}`, { method:'DELETE' });
+    await sb(`staff_settings?staff_id=in.(${ids})&year=eq.${hoursYear}&month=eq.${targetMonth}`, { method:'DELETE' });
     // シフトキャッシュを無効化 → シフトタブで最新表示
     if (typeof invalidateShiftCache === 'function') invalidateShiftCache();
     showToast(`個別所定時間 ${existing.length} 件を削除しました ✓ シフト表でリロードしてください`, 'success');
@@ -5354,27 +5354,104 @@ document.getElementById('clearStaffHoursBtn')?.addEventListener('click', async (
   hideLoading();
 });
 
+// ===== 所定労働時間（年の基準値＋月ごと）=====
+// 表示・保存の対象年。初期値は今年。◀▶で翌年以降も設定できる。
+let hoursYear = new Date().getFullYear();
+// 読み込み時点の月別値（空欄にした月だけを削除対象にするため）
+let hoursLoadedMap = {};
+
+async function renderPlanHoursCard() {
+  document.getElementById('hoursYearTitle').textContent = `${hoursYear}年`;
+  const yearVal = APP_YEAR_PLAN_HOURS[hoursYear];
+  const yInput = document.getElementById('yearPlanHours');
+  yInput.value = (yearVal != null) ? yearVal : '';
+  yInput.placeholder = String(APP_DEFAULT_PLAN_HOURS);
+  document.getElementById('yearPlanHoursHint').textContent =
+    `空欄なら全体の既定値 ${APP_DEFAULT_PLAN_HOURS}H を使います`;
+
+  const hours = await sb(`monthly_hours?year=eq.${hoursYear}&dept_id=is.null&order=month&select=month,hours`);
+  hoursLoadedMap = {};
+  hours.forEach(h => { hoursLoadedMap[h.month] = h.hours; });
+  // 空欄の月には「実際に使われる値（年の基準値 or 全体既定）」を薄字で表示
+  const fallback = defaultPlanHoursFor(hoursYear);
+  let html = '<table class="req-table"><thead><tr>';
+  for (let m = 1; m <= 12; m++) html += `<th>${m}月</th>`;
+  html += '</tr></thead><tbody><tr>';
+  for (let m = 1; m <= 12; m++) {
+    const v = hoursLoadedMap[m];
+    html += `<td><input type="number" class="req-input" id="hours-${m}" value="${v != null ? v : ''}" placeholder="${fallback}" step="0.1" min="0" max="250" style="width:64px"></td>`;
+  }
+  html += '</tr></tbody></table>';
+  document.getElementById('monthlyHoursGrid').innerHTML = html;
+}
+
+document.getElementById('hoursYearPrev')?.addEventListener('click', async () => {
+  hoursYear--;
+  try { await renderPlanHoursCard(); } catch(e) { console.error(e); showToast('読み込みエラー','error'); }
+});
+document.getElementById('hoursYearNext')?.addEventListener('click', async () => {
+  hoursYear++;
+  try { await renderPlanHoursCard(); } catch(e) { console.error(e); showToast('読み込みエラー','error'); }
+});
+// 年の基準値を入力したら、空欄の月の薄字表示をその場で更新
+document.getElementById('yearPlanHours')?.addEventListener('input', () => {
+  const v = parseFloat(document.getElementById('yearPlanHours').value);
+  const fb = isNaN(v) ? APP_DEFAULT_PLAN_HOURS : v;
+  for (let m = 1; m <= 12; m++) {
+    const el = document.getElementById(`hours-${m}`);
+    if (el) el.placeholder = String(fb);
+  }
+});
+
 document.getElementById('saveHoursBtn').addEventListener('click', async () => {
+  // 入力チェック（0〜250H）。不正があれば何も保存しない
+  const yRaw = document.getElementById('yearPlanHours').value.trim();
+  const yVal = yRaw === '' ? null : parseFloat(yRaw);
+  if (yVal != null && (isNaN(yVal) || yVal < 0 || yVal > 250)) {
+    showToast('年の基準値は0〜250の数字で入力してください', 'error'); return;
+  }
+  const monthVals = {};
+  for (let m = 1; m <= 12; m++) {
+    const raw = (document.getElementById(`hours-${m}`)?.value || '').trim();
+    if (raw === '') { monthVals[m] = null; continue; }
+    const v = parseFloat(raw);
+    if (isNaN(v) || v < 0 || v > 250) { showToast(`${m}月の値は0〜250の数字で入力してください`, 'error'); return; }
+    monthVals[m] = v;
+  }
+  const clearedMonths = Object.keys(monthVals).filter(m => monthVals[m] == null && hoursLoadedMap[m] != null);
+  if (clearedMonths.length && !confirm(
+    `${hoursYear}年 ${clearedMonths.map(m => m + '月').join('・')} の所定労働時間を削除し、年の基準値に戻します。\nよろしいですか？`
+  )) return;
+
   showLoading();
   try {
+    // ① 年の基準値（app_settings: planned_hours_year_YYYY）
+    const key = `planned_hours_year_${hoursYear}`;
+    await sb(`app_settings?key=eq.${key}`, { method:'DELETE' });
+    if (yVal != null) {
+      await sb('app_settings', { method:'POST', body:JSON.stringify([{ key, value: yVal }]) });
+      APP_YEAR_PLAN_HOURS[hoursYear] = yVal;
+    } else {
+      delete APP_YEAR_PLAN_HOURS[hoursYear];
+    }
+    // ② 月ごと（入力あり=上書き / 空欄にした月=削除して年の基準値へ）
     const savedMonths = [];
     for (let m = 1; m <= 12; m++) {
-      const val = parseFloat(document.getElementById(`hours-${m}`)?.value);
-      if (!isNaN(val)) {
-        await sb(`monthly_hours?year=eq.${currentYear}&month=eq.${m}&dept_id=is.null`, { method:'DELETE' });
-        await sb('monthly_hours', { method:'POST', body:JSON.stringify([{year:currentYear,month:m,hours:val,dept_id:null}]) });
+      const val = monthVals[m];
+      if (val != null) {
+        await sb(`monthly_hours?year=eq.${hoursYear}&month=eq.${m}&dept_id=is.null`, { method:'DELETE' });
+        await sb('monthly_hours', { method:'POST', body:JSON.stringify([{year:hoursYear,month:m,hours:val,dept_id:null}]) });
         savedMonths.push(`${m}月=${val}H`);
+      } else if (hoursLoadedMap[m] != null) {
+        await sb(`monthly_hours?year=eq.${hoursYear}&month=eq.${m}&dept_id=is.null`, { method:'DELETE' });
       }
     }
-    // ★ 診断：実際に保存した内容をログ出力
-    console.log(`[saveHours] 保存した内容 (year=${currentYear}):`, savedMonths);
-    // 検証クエリ：保存直後に DB から読み直して確認
-    const verify = await sb(`monthly_hours?year=eq.${currentYear}&dept_id=is.null&order=month&select=month,hours`);
-    console.log(`[saveHours] 保存後の DB の状態:`, verify);
+    console.log(`[saveHours] ${hoursYear}年 基準値=${yVal ?? '(全体既定)'} 月別:`, savedMonths, '削除:', clearedMonths);
 
     // ★ シフトキャッシュを無効化 → 次にシフトタブへ移動した時に DB から最新データを読み込む
     if (typeof invalidateShiftCache === 'function') invalidateShiftCache();
-    showToast(`所定労働時間を保存しました ✓ (${savedMonths.length}ヶ月分・${currentYear}年)\nシフト表でリロードを押してください`,'success');
+    await renderPlanHoursCard();
+    showToast(`${hoursYear}年の所定労働時間を保存しました ✓\nシフト表でリロードを押してください`,'success');
   } catch(e) { console.error(e); showToast('保存エラー','error'); }
   hideLoading();
 });
