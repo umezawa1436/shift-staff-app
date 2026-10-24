@@ -168,7 +168,8 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     const openThursdays = new Set(); // 診療木曜
     thursdayData2.forEach(t => { if (t.is_open) openThursdays.add(t.day); });
 
-    const basePlanHours = monthlyHoursData.length > 0 ? monthlyHoursData[0].hours : APP_DEFAULT_PLAN_HOURS;
+    // 月の所定が未設定なら「その年の基準値 → 全体既定」（admin.js の defaultPlanHoursFor と同一）
+    const basePlanHours = monthlyHoursData.length > 0 ? monthlyHoursData[0].hours : defaultPlanHoursFor(genYear);
 
     // スタッフごとの所定時間・夜勤上限を計算
     const staffSettingsMap = {};
