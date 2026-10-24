@@ -619,9 +619,25 @@
             </div>
           </div>
           <div class="card">
-            <div class="card-title">月間所定労働時間</div>
+            <div class="card-title">所定労働時間（年・月）</div>
+            <!-- 対象年の切り替え -->
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+              <button class="btn-nav" id="hoursYearPrev">◀</button>
+              <div style="font-size:16px;font-weight:700;min-width:80px;text-align:center" id="hoursYearTitle"></div>
+              <button class="btn-nav" id="hoursYearNext">▶</button>
+            </div>
+            <!-- 年の基準値 -->
+            <div style="background:var(--bg);border-radius:10px;padding:12px;margin-bottom:12px">
+              <div style="font-size:13px;font-weight:700;margin-bottom:6px">年の基準値（1か月あたり）</div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <input type="number" class="number-input" id="yearPlanHours" step="0.1" min="0" max="250" style="width:90px">
+                <span style="font-size:13px;color:var(--text-muted)">H</span>
+                <span style="font-size:12px;color:var(--text-muted)" id="yearPlanHoursHint"></span>
+              </div>
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">月ごとの所定労働時間（空欄の月は年の基準値を使います）</div>
             <div id="monthlyHoursGrid"></div>
-            <button class="btn btn-primary" style="margin-top:16px" id="saveHoursBtn">保存</button>
+            <button class="btn btn-primary" style="margin-top:16px" id="saveHoursBtn">この年を保存</button>
             <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
               <div style="font-size:13px;color:var(--text-muted);margin-bottom:8px">個別所定時間のリセット：特定スタッフに個別設定された所定時間を削除し、上記の基準値に統一します。基準値を変更しても反映されない場合に使用してください。</div>
               <button class="btn btn-outline" id="clearStaffHoursBtn" style="border:1.5px solid #f59e0b;color:#92400e">⚠️ この部署・指定月の個別所定時間をクリア</button>
@@ -1060,7 +1076,7 @@
   </div>
 </div>
 
-<script src="admin.js?v=60"></script>
-<script src="admin-generate.js?v=13"></script>
+<script src="admin.js?v=61"></script>
+<script src="admin-generate.js?v=14"></script>
 </body>
 </html>
