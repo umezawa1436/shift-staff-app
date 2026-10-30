@@ -57,6 +57,22 @@ export default async function handler(req, res) {
   if (!payload) {
     return res.status(401).json({ error: 'セッションが無効です。再ログインしてください。' });
   }
+  // 権限はトークンではなく DB の現在値で判定（降格・削除を即時反映）
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return res.status(500).json({ error: 'サーバー設定エラー' });
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/accounts?id=eq.${encodeURIComponent(payload.accountId)}&select=role`, {
+      headers: { 'apikey': SERVICE_ROLE_KEY, 'Authorization': `Bearer ${SERVICE_ROLE_KEY}` },
+    });
+    if (!r.ok) throw new Error(`Supabase ${r.status}`);
+    const rows = await r.json();
+    if (!rows || !rows[0]) return res.status(401).json({ error: 'セッションが無効です。再ログインしてください。' });
+    payload.role = rows[0].role;
+  } catch (e) {
+    console.error('account resolve:', e);
+    return res.status(500).json({ error: 'サーバーエラー' });
+  }
   if (payload.role !== 'master' && payload.role !== 'leader') {
     return res.status(403).json({ error: '権限がありません' });
   }

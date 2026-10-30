@@ -1802,6 +1802,18 @@ export default async function handler(req, res) {
   const payload = verifyToken(extractBearer(req));
   if (!payload) return bad(res, 401, 'セッションが無効です');
 
+  // 権限はトークン内の値ではなく DB の現在値で判定する（30秒キャッシュ）。
+  //   トークンは30日有効なので、旧実装では降格・削除したアカウントも最大30日間は元の権限で操作できた。
+  //   アカウントが削除されていれば 401（再ログインを促す）。
+  try {
+    const accNow = await resolveAccount(payload.accountId);
+    if (!accNow) return bad(res, 401, 'セッションが無効です。再ログインしてください');
+    payload.role = accNow.role;
+  } catch (e) {
+    console.error('account resolve:', e);
+    return bad(res, 500, '内部エラー');
+  }
+
   const body = req.body || {};
   const { action, table } = body;
   if (!action) return bad(res, 400, 'action が必要です');

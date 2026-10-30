@@ -103,6 +103,16 @@ export default async function handler(req, res) {
   const token = extractBearer(req);
   const payload = verifyToken(token);
   if (!payload) return bad(res, 401, 'セッションが無効です');
+  // 権限はトークンではなく DB の現在値で判定（降格・削除を即時反映）
+  try {
+    const accNow = (await sb(`accounts?id=eq.${encodeURIComponent(payload.accountId)}&select=role,dept_id`))[0];
+    if (!accNow) return bad(res, 401, 'セッションが無効です。再ログインしてください');
+    payload.role = accNow.role;
+    payload.deptId = accNow.dept_id;
+  } catch (e) {
+    console.error('account resolve:', e);
+    return bad(res, 500, '内部エラー');
+  }
   const isMaster = payload.role === 'master';
   const isLeader = payload.role === 'leader';
   if (!isMaster && !isLeader) return bad(res, 403, '権限がありません');
@@ -128,6 +138,8 @@ export default async function handler(req, res) {
       return await unlockAccount(req, res, body);
     }
     if (action === 'create-for-new-staff') {
+      // leader は自部門のスタッフ分だけ作成可能
+      if (isLeader && parseInt(body.deptId) !== payload.deptId) return bad(res, 403, '自部門のスタッフのみ作成できます');
       return await createForNewStaff(req, res, body);
     }
     return bad(res, 400, '不明なアクション');
