@@ -2094,6 +2094,100 @@ function executeBulkFill() {
   showToast(`${targets.length}セルを「${shiftId}」で埋めました ✓ まだ未保存です`, 'success');
 }
 
+// ===== 希望の一括反映 =====
+// スタッフが提出した希望（shift_requests）を、表示中の部門×月のシフト表へまとめて反映する。
+// 設計: 一括埋めと同じく shiftData をメモリ上で書き換えるだけ（DB保存は既存の保存/確定に委譲）。
+//   ・押した時点の最新の希望を取り直してから反映（希望の後出し・取り消しにも追随）
+//   ・空欄セル → 反映 / 別のシフトが入っているセル → 上書きするか確認
+//   ・対象外: ロック中のセル / 休診日への勤務希望 / 登録されていないシフト名 / 確定済みの月
+//   ・反映したセル（と、すでに希望どおりのセル）はロックする＝自動生成・一括埋めで上書きされない
+//   ・saveUndoState() を呼ぶので「戻る」で取り消せる（ロックも一緒に戻る）
+async function applyRequestsToGrid() {
+  if (!checkConfirmLock()) return;
+  const deptStaff = allStaff.filter(s => s.dept_id === currentDept);
+  if (!deptStaff.length) { showToast('この部署のスタッフがいません', 'error'); return; }
+  const staffIds = new Set(deptStaff.map(s => s.id));
+  const daysInMonth = new Date(shiftYear, shiftMonth, 0).getDate();
+
+  // ① 最新の希望を取得（希望の表示も最新化される）
+  showLoading();
+  let reqMap = {};
+  try {
+    const rows = (await adminApi('/api/data', { action:'list', table:'shift_requests', view:'admin-month', params:{ year:shiftYear, month:shiftMonth } })).rows || [];
+    rows.forEach(r => { if (staffIds.has(r.staff_id)) reqMap[`${r.staff_id}|${r.day}`] = r.request_type; });
+    window._shiftReqMap = reqMap;
+  } catch (e) {
+    console.error(e);
+    hideLoading();
+    showToast('希望の取得に失敗しました', 'error');
+    return;
+  }
+  hideLoading();
+
+  // ② 振り分け
+  const validIds = new Set((shiftTypesAll || []).map(t => t.id).concat(OFF_SHIFTS));
+  const toEmpty = [], toOverwrite = [], alreadyKeys = [];
+  let lockedSkip = 0, closedSkip = 0, invalidSkip = 0, already = 0;
+  Object.keys(reqMap).forEach(key => {
+    const req = reqMap[key];
+    if (!req) return;
+    const d = parseInt(key.split('|')[1], 10);
+    if (!(d >= 1 && d <= daysInMonth)) return;
+    if (!validIds.has(req)) { invalidSkip++; return; }
+    if (lockedCells[key]) { lockedSkip++; return; }
+    if (!OFF_SHIFTS.includes(req) && bulkFillIsClosedDay(d)) { closedSkip++; return; }
+    const cur = shiftData[key];
+    if (cur === req) { already++; alreadyKeys.push(key); return; }
+    if (!cur) toEmpty.push(key); else toOverwrite.push(key);
+  });
+
+  if (!toEmpty.length && !toOverwrite.length) {
+    // 反映済みでも未ロックのものがあればロックだけ行う
+    const unlocked = alreadyKeys.filter(k => !lockedCells[k]);
+    if (unlocked.length && window.confirm(`すべての希望はすでに反映されています。\n希望どおりの ${unlocked.length} セルをロックしますか？`)) {
+      saveUndoState();
+      unlocked.forEach(k => { lockedCells[k] = true; });
+      rerenderShiftGridFromMemory();
+      showToast(`${unlocked.length}セルをロックしました 🔒 まだ未保存です`, 'success');
+      return;
+    }
+    showToast(already ? 'すべての希望がすでに反映されています' : '反映する希望がありません', already ? 'success' : 'error');
+    rerenderShiftGridFromMemory();
+    return;
+  }
+
+  // ③ 確認
+  const skipLines = [];
+  if (lockedSkip) skipLines.push(`ロック中のセル: ${lockedSkip}件`);
+  if (closedSkip) skipLines.push(`休診日への勤務希望: ${closedSkip}件`);
+  if (invalidSkip) skipLines.push(`登録されていないシフト名: ${invalidSkip}件`);
+  const head = `${DEPT_NAMES[currentDept] || ''} ${shiftYear}年${shiftMonth}月\n提出された希望をシフト表に反映します。\n\n` +
+    `空欄に反映: ${toEmpty.length}件\n` +
+    (toOverwrite.length ? `すでに別のシフトが入っている: ${toOverwrite.length}件（次の確認で上書きするか選べます）\n` : '') +
+    (already ? `反映済み: ${already}件\n` : '') +
+    (skipLines.length ? `\n対象外\n・${skipLines.join('\n・')}\n` : '') +
+    `\n反映したセルと希望どおりのセルはロック🔒します（自動生成・一括埋めで上書きされません）。\n` +
+    `\nよろしいですか？（保存前なら「戻る」で取り消せます）`;
+  if (!window.confirm(head)) { rerenderShiftGridFromMemory(); return; }
+  let overwrite = false;
+  if (toOverwrite.length) {
+    overwrite = window.confirm(
+      `すでに別のシフトが入っている ${toOverwrite.length} 件も、希望で上書きしますか？\n\n` +
+      `［OK］上書きする\n［キャンセル］空欄だけ反映する`
+    );
+  }
+  const targets = overwrite ? toEmpty.concat(toOverwrite) : toEmpty;
+  if (!targets.length) { rerenderShiftGridFromMemory(); showToast('反映する対象がありません'); return; }
+
+  // ④ 反映＋ロック（反映したセルと、すでに希望どおりのセル）
+  saveUndoState();
+  targets.forEach(key => { shiftData[key] = reqMap[key]; lockedCells[key] = true; });
+  alreadyKeys.forEach(key => { lockedCells[key] = true; });
+  rerenderShiftGridFromMemory();
+  const lockCount = targets.length + alreadyKeys.length;
+  showToast(`希望を${targets.length}件反映し、${lockCount}セルをロックしました 🔒 まだ未保存です`, 'success');
+}
+
 function refreshSummaryRows() {
   const deptStaff = allStaff.filter(s => s.dept_id === currentDept);
   const daysInMonth = new Date(shiftYear, shiftMonth, 0).getDate();
