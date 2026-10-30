@@ -87,7 +87,7 @@ async function fetchInviteAndStaff(token) {
   const invitation = invitations[0];
   if (new Date(invitation.expires_at) < new Date()) return { err: '招待リンクは期限切れです' };
   if (invitation.used_at) return { err: 'この招待リンクは既に使用されています' };
-  const staffs = await sb(`staff?id=eq.${invitation.staff_id}&select=id,name,dept_id,staff_code`);
+  const staffs = await sb(`staff?id=eq.${encodeURIComponent(invitation.staff_id)}&select=id,name,dept_id,staff_code`);
   if (!staffs || staffs.length === 0) return { err: 'スタッフ情報が見つかりません' };
   return { invitation, staff: staffs[0] };
 }
@@ -111,14 +111,17 @@ async function createFromInvite(req, res, body) {
   const { invitation, staff } = r;
   const hash = hashPassword(password);
 
-  // このスタッフの既存アカウントを探す (同部門・同名・role=staff)
-  const sameStaffAccounts = await sb(`accounts?name=eq.${encodeURIComponent(staff.name)}&dept_id=eq.${staff.dept_id}&role=eq.staff&select=id`);
+  // このスタッフ本人の既存アカウントを探す（staff_id で照合）。
+  //   旧実装は「同部門・同名」で照合していたため、同じ部門に同姓のスタッフがいると
+  //   新しく招待した人が既存の別人のアカウントのパスワードを上書きできてしまった（乗っ取り）。
+  const sameStaffAccounts = await sb(`accounts?staff_id=eq.${encodeURIComponent(staff.id)}&role=eq.staff&select=id`);
 
   if (sameStaffAccounts && sameStaffAccounts.length > 0) {
     const accountId = sameStaffAccounts[0].id;
-    await sb(`accounts?id=eq.${accountId}`, {
+    // 本人のアカウントのみ更新。ロックも解除して新パスワードでログインできるようにする
+    await sb(`accounts?id=eq.${encodeURIComponent(accountId)}`, {
       method: 'PATCH',
-      body: JSON.stringify({ password_hash: hash, staff_id: staff.id, staff_code: staff.staff_code }),
+      body: JSON.stringify({ password_hash: hash, staff_code: staff.staff_code, failed_attempts: 0, locked_at: null }),
     });
   } else {
     await sb('accounts', {
@@ -129,7 +132,7 @@ async function createFromInvite(req, res, body) {
       }]),
     });
   }
-  await sb(`invitations?id=eq.${invitation.id}`, {
+  await sb(`invitations?id=eq.${encodeURIComponent(invitation.id)}`, {
     method: 'PATCH',
     body: JSON.stringify({ used_at: new Date().toISOString() }),
   });
