@@ -68,6 +68,15 @@ export default async function handler(req, res) {
   if (!envOk()) return bad(res, 500, 'サーバー設定エラー');
   const payload = verifyToken(extractBearer(req));
   if (!payload) return bad(res, 401, 'セッションが無効です');
+  // 権限はトークンではなく DB の現在値で判定（降格・削除を即時反映）
+  try {
+    const accNow = (await sb(`accounts?id=eq.${encodeURIComponent(payload.accountId)}&select=role`))[0];
+    if (!accNow) return bad(res, 401, 'セッションが無効です。再ログインしてください');
+    payload.role = accNow.role;
+  } catch (e) {
+    console.error('account resolve:', e);
+    return bad(res, 500, '内部エラー');
+  }
 
   const role = payload.role;
   const isAdmin = role === 'master' || role === 'leader';
