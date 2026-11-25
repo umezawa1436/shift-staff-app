@@ -6707,9 +6707,20 @@ async function loadExportPage() {
 }
 
 // ===== 印刷 =====
+// iPhone/iPad のホーム画面アプリ（スタンドアロンPWA）では iOS の制約で window.print() が無視される。
+// その場合はシフト表をPDFにして共有シート（プリント／ファイルに保存／AirDrop）から印刷できるようにする。
+function isIOSStandalone() {
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS はMac表記
+  const standalone = window.navigator.standalone === true ||
+                     (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  return ios && standalone;
+}
+
 document.getElementById('printShiftBtn')?.addEventListener('click', () => {
   // ★ 念のためバーチカル印刷状態を解除（クラスが残っていてもシフト表印刷を誤らせない保険）
   document.body.classList.remove('printing-vertical');
+  if (isIOSStandalone()) { exportShiftPdf(); return; }
   // エクスポートページから押された場合でも、印刷対象のシフト表を表示状態にしてから印刷する
   activateShiftPageForOutput();
   // 印刷ヘッダーを表示
@@ -6725,14 +6736,159 @@ document.getElementById('printShiftBtn')?.addEventListener('click', () => {
     window.removeEventListener('afterprint', cleanup);
   };
   window.addEventListener('afterprint', cleanup);
-  // ★ DOM 更新後にレンダリングが完了してから print() を呼ぶ。
-  //   即座に呼ぶと印刷プレビューが空白になることがある。
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      window.print();
-    });
-  });
+  // ★ レイアウトを確定させてから、クリック操作の中で同期的に print() を呼ぶ。
+  //   旧実装は requestAnimationFrame の2段後に呼んでいたため、Safari ではユーザー操作の扱いが
+  //   切れて印刷画面が開かないことがあった。offsetHeight の読み出しで描画前の空白も防げる。
+  void document.body.offsetHeight;
+  window.print();
 });
+
+// ---- PDF出力（iOSホーム画面アプリ用の印刷手段）----
+// html2canvas でシフト表を画像化 → jsPDF で A4横に行の切れ目で改ページ（各ページに日付ヘッダーを繰り返す）
+// → 共有シートを開くボタンを表示（共有はユーザーのタップ内でしか呼べないため、生成後にもう一度押してもらう）
+const PDF_LIBS = [
+  'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+];
+function loadScriptOnce(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[data-src="${src}"]`)) return resolve();
+    const el = document.createElement('script');
+    el.src = src; el.async = true; el.dataset.src = src;
+    el.onload = () => resolve();
+    el.onerror = () => { el.remove(); reject(new Error('ライブラリの読み込みに失敗: ' + src)); };
+    document.head.appendChild(el);
+  });
+}
+
+async function exportShiftPdf() {
+  const table = document.getElementById('shiftGrid');
+  if (!table || !table.querySelector('tbody tr')) {
+    showToast('シフト表が読み込まれていません。シフト表を開いてから再度お試しください', 'error');
+    return;
+  }
+  showLoading();
+  let wrap = null;
+  try {
+    for (const src of PDF_LIBS) await loadScriptOnce(src);
+    if (typeof html2canvas !== 'function' || !window.jspdf) throw new Error('PDFライブラリが使えません');
+
+    // 画面外に「印刷用の複製」を作る（画面のスクロール・固定列の影響を受けない全体像）
+    wrap = document.createElement('div');
+    wrap.style.cssText = 'position:absolute;left:-100000px;top:0;background:#fff;padding:0;width:max-content;';
+    const clone = table.cloneNode(true);
+    clone.removeAttribute('id');
+    clone.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
+    clone.querySelectorAll('th,td').forEach(el => { el.style.position = 'static'; el.style.transform = 'none'; });
+    wrap.appendChild(clone);
+    document.body.appendChild(wrap);
+
+    const canvas = await html2canvas(wrap, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+    const pxW = wrap.scrollWidth;                 // CSS px（canvas は scale 倍）
+    const ratio = canvas.width / pxW;
+    const wrapTop = wrap.getBoundingClientRect().top;
+    const thead = clone.querySelector('thead');
+    const headH = thead ? thead.getBoundingClientRect().height : 0;
+    const rows = [...clone.querySelectorAll('tbody tr')].map(tr => {
+      const r = tr.getBoundingClientRect();
+      return { top: r.top - wrapTop, bottom: r.bottom - wrapTop };
+    });
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pageW = 297, pageH = 210, margin = 8, titleH = 12;
+    const imgW = pageW - margin * 2;
+    const mmPerPx = imgW / pxW;
+    const usableH = (pageH - margin * 2 - titleH) / mmPerPx; // 1ページに載るCSS px の高さ（ヘッダー込み）
+    const title = `やちよ総合診療クリニック シフト表　${DEPT_NAMES[currentDept] || ''}　${shiftYear}年${shiftMonth}月`;
+
+    // 行の切れ目で改ページ位置を決める
+    const pages = [];
+    let start = headH, i = 0;
+    while (i < rows.length) {
+      let end = start;
+      while (i < rows.length && (rows[i].bottom - start) + headH <= usableH) { end = rows[i].bottom; i++; }
+      if (end === start) { end = rows[i].bottom; i++; } // 1行が極端に高い場合でも進める
+      pages.push([start, end]);
+      start = end;
+    }
+
+    // 日本語タイトルは jsPDF の標準フォントで描けないので、タイトルも画像にする
+    const titleCanvas = document.createElement('canvas');
+    const tcW = Math.round(imgW / mmPerPx * ratio), tcH = Math.round(titleH / mmPerPx * ratio);
+    titleCanvas.width = tcW; titleCanvas.height = tcH;
+    const tctx = titleCanvas.getContext('2d');
+    tctx.fillStyle = '#fff'; tctx.fillRect(0, 0, tcW, tcH);
+    tctx.fillStyle = '#111'; tctx.textAlign = 'center'; tctx.textBaseline = 'middle';
+    tctx.font = `700 ${Math.round(tcH * 0.42)}px "Noto Sans JP", sans-serif`;
+    tctx.fillText(title, tcW / 2, tcH / 2);
+    const titleImg = titleCanvas.toDataURL('image/png');
+
+    pages.forEach(([y0, y1], pi) => {
+      if (pi > 0) pdf.addPage('a4', 'landscape');
+      const bodyH = y1 - y0;
+      const slice = document.createElement('canvas');
+      slice.width = canvas.width;
+      slice.height = Math.round((headH + bodyH) * ratio);
+      const ctx = slice.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, slice.width, slice.height);
+      if (headH > 0) ctx.drawImage(canvas, 0, 0, canvas.width, Math.round(headH * ratio), 0, 0, canvas.width, Math.round(headH * ratio));
+      ctx.drawImage(canvas, 0, Math.round(y0 * ratio), canvas.width, Math.round(bodyH * ratio),
+                    0, Math.round(headH * ratio), canvas.width, Math.round(bodyH * ratio));
+      pdf.addImage(titleImg, 'PNG', margin, margin, imgW, titleH);
+      pdf.addImage(slice.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin + titleH, imgW, (headH + bodyH) * mmPerPx);
+    });
+
+    const fileName = `シフト表_${DEPT_NAMES[currentDept] || ''}_${shiftYear}年${shiftMonth}月.pdf`;
+    const blob = pdf.output('blob');
+    showPdfReadySheet(blob, fileName, pages.length);
+  } catch (e) {
+    console.error(e);
+    showToast('PDFの作成に失敗しました：' + (e.message || ''), 'error');
+  } finally {
+    if (wrap) wrap.remove();
+    hideLoading();
+  }
+}
+
+// 生成したPDFの受け渡し：共有シート（iOSは「プリント」あり）→ 使えなければダウンロード／新しいタブ
+function showPdfReadySheet(blob, fileName, pageCount) {
+  document.getElementById('pdfReadyOverlay')?.remove();
+  const ov = document.createElement('div');
+  ov.id = 'pdfReadyOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:22px;max-width:360px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.25)">
+      <div style="font-size:16px;font-weight:700;margin-bottom:6px">PDFができました</div>
+      <div style="font-size:13px;color:#6b7280;line-height:1.7;margin-bottom:16px">${escapeHtml(fileName)}（A4横・${pageCount}ページ）<br>「共有して印刷」を押し、表示されたメニューの「プリント」を選んでください。</div>
+      <button id="pdfShareBtn" class="btn btn-primary" style="width:100%;margin-bottom:8px">📤 共有して印刷</button>
+      <button id="pdfCloseBtn" class="btn btn-outline" style="width:100%">閉じる</button>
+    </div>`;
+  document.body.appendChild(ov);
+  const close = () => ov.remove();
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  document.getElementById('pdfCloseBtn').addEventListener('click', close);
+  document.getElementById('pdfShareBtn').addEventListener('click', async () => {
+    const file = new File([blob], fileName, { type: 'application/pdf' });
+    try {
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: fileName });
+        close();
+        return;
+      }
+    } catch (e) {
+      if (e && e.name === 'AbortError') return; // 共有シートを閉じただけ
+      console.warn('share failed, fallback to download', e);
+    }
+    // 共有に対応していない環境：ダウンロード（iOSではPDFビューアが開き、そこから共有→プリント）
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fileName;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    close();
+  });
+}
 
 // MONTH NAV
 document.getElementById('reqPrevMonth').addEventListener('click', async () => { reqMonth--; if(reqMonth<1){reqMonth=12;reqYear--;} updateMonthDisplays(); await loadRequests(); });
