@@ -460,8 +460,11 @@ document.getElementById('adminLoginBtn').addEventListener('click', async () => {
     document.getElementById('sidebarUserRole').textContent =
       account.role === 'master' ? '管理者' :
       account.role === 'leader' ? `${adminUser.deptName} リーダー` : 'スタッフ';
+    // iOS: パスワード入力のキーボードを閉じてから画面を切り替える（開いたまま消すと画面のずれが残る）
+    document.getElementById('adminPassword')?.blur();
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('appScreen').style.display = 'block';
+    resetAppViewportOffset();
     initApp();
   } catch(e) {
     console.error(e);
@@ -493,6 +496,8 @@ async function initApp() {
     await loadShiftGrid();
     setupScrollPausePerf();
     setupShiftPinchZoom();
+    resetAppViewportOffset();
+    setTimeout(resetAppViewportOffset, 350);  // iOS のキーボードが閉じ終わった後にもう一度
   } catch(e) { console.error(e); showToast('初期化エラー','error'); }
   hideLoading();
 }
@@ -510,6 +515,34 @@ function updateMonthDisplays() {
   if (dashTitle) dashTitle.textContent = `${dashYear}年${dashMonth}月`;
   if (document.querySelector('.page.active')?.id === 'page-shift') updateShiftToolbarHeader();
 }
+
+// ===== iOS の画面ずれ対策 =====
+// iPhone/iPad では入力欄をタップするとキーボード表示に合わせて画面が上・左にずらされ、
+// 入力欄が消えた後もそのずれが残ることがある（ログイン直後にシフト表の上部ツールが
+// ヘッダーの下に隠れ、左端も欠ける現象。ツールを開閉すると再計算されて直っていた）。
+// 外枠（window / .layout / .main / .content / 各ページ）のずれだけを 0 に戻す。
+// シフト表本体のスクロール位置（.shift-grid-wrap）や、ツール各行の横スクロールは触らない。
+function resetAppViewportOffset() {
+  const ae = document.activeElement;
+  const typing = ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && ae.offsetParent !== null;
+  if (typing) return; // 入力中は動かさない（入力欄が隠れるため）
+  if (ae && ae !== document.body && ae.offsetParent === null && typeof ae.blur === 'function') ae.blur();
+  if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+  const els = [document.scrollingElement, document.querySelector('.layout'), document.querySelector('.main'),
+               document.querySelector('.content'), document.querySelector('.page.active')];
+  els.forEach(el => { if (el && (el.scrollTop || el.scrollLeft)) { el.scrollTop = 0; el.scrollLeft = 0; } });
+}
+// キーボードが閉じた（表示領域が広がった）タイミングでも、シフト表ならずれを戻す
+(function watchKeyboardClose() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  let lastH = vv.height;
+  vv.addEventListener('resize', () => {
+    const grew = vv.height > lastH + 80; // キーボード分の高さが戻った
+    lastH = vv.height;
+    if (grew && document.body.dataset.page === 'shift') setTimeout(resetAppViewportOffset, 50);
+  });
+})();
 
 // ===== シフト ツールバー折りたたみ＆ヘッダー部署表示 =====
 function updateShiftToolbarHeader() {
@@ -532,6 +565,7 @@ function applyShiftToolbarState() {
   const collapsed = (stored === null) ? true : (stored === '1'); // 既定は閉じる
   tb.classList.toggle('collapsed', collapsed);
   if (btn) btn.textContent = collapsed ? '▼ ツール' : '▲ 閉じる';
+  resetAppViewportOffset();
 }
 
 // スクロール中はヘッダー金魚アニメを止めてコンポジタを解放（カクツキ低減）
@@ -4584,6 +4618,8 @@ document.getElementById('dayNoteDetail')?.addEventListener('input', (e) => {
 });
 
 document.getElementById('verticalPrintBtn')?.addEventListener('click', () => {
+  // iPhone/iPad のホーム画面アプリでは window.print() が無視されるため PDF→共有シートで印刷する
+  if (isIOSStandalone()) { exportVerticalPdf(); return; }
   // ★ バーチカル印刷モード時のみ body にクラスを付与（シフト表印刷との分離）
   document.body.classList.add('printing-vertical');
   // 日付メモ：textarea は高さ固定で全文が印刷されないため、印刷時だけ静的テキストへ置換する
@@ -4604,11 +4640,9 @@ document.getElementById('verticalPrintBtn')?.addEventListener('click', () => {
     window.removeEventListener('afterprint', cleanup);
   };
   window.addEventListener('afterprint', cleanup);
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      window.print();
-    });
-  });
+  // ★ クリック操作の中で同期的に print() を呼ぶ（rAF 後だと Safari で印刷画面が開かないことがある）
+  void document.body.offsetHeight;
+  window.print();
 });
 
 document.getElementById('saveBreaksBtn')?.addEventListener('click', async () => {
@@ -6767,40 +6801,57 @@ async function exportShiftPdf() {
     showToast('シフト表が読み込まれていません。シフト表を開いてから再度お試しください', 'error');
     return;
   }
+  await buildPagedPdf({
+    makeClone: () => {
+      const clone = table.cloneNode(true);
+      clone.querySelectorAll('th,td').forEach(el => { el.style.position = 'static'; el.style.transform = 'none'; });
+      return clone;
+    },
+    headOf: clone => clone.querySelector('thead'),
+    rowsOf: clone => [...clone.querySelectorAll('tbody tr')],
+    title: `やちよ総合診療クリニック シフト表　${DEPT_NAMES[currentDept] || ''}　${shiftYear}年${shiftMonth}月`,
+    fileName: `シフト表_${DEPT_NAMES[currentDept] || ''}_${shiftYear}年${shiftMonth}月.pdf`,
+  });
+}
+
+// 要素を A4横のPDFにする共通処理
+//   makeClone: 画面外に置く印刷用の複製を返す / headOf: 各ページに繰り返す見出し要素 / rowsOf: 改ページ単位の行要素
+//   html2canvas で画像化 → 行の切れ目で改ページ（各ページに見出しを繰り返す）→ 共有シート用のボタンを表示
+async function buildPagedPdf({ makeClone, headOf, rowsOf, title, fileName }) {
   showLoading();
   let wrap = null;
   try {
     for (const src of PDF_LIBS) await loadScriptOnce(src);
     if (typeof html2canvas !== 'function' || !window.jspdf) throw new Error('PDFライブラリが使えません');
 
-    // 画面外に「印刷用の複製」を作る（画面のスクロール・固定列の影響を受けない全体像）
+    // 画面外に「印刷用の複製」を作る（画面のスクロール・固定列・高さ制限の影響を受けない全体像）
     wrap = document.createElement('div');
     wrap.style.cssText = 'position:absolute;left:-100000px;top:0;background:#fff;padding:0;width:max-content;';
-    const clone = table.cloneNode(true);
-    clone.removeAttribute('id');
+    const clone = makeClone();
+    if (clone.id) clone.removeAttribute('id');
     clone.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
-    clone.querySelectorAll('th,td').forEach(el => { el.style.position = 'static'; el.style.transform = 'none'; });
     wrap.appendChild(clone);
     document.body.appendChild(wrap);
 
     const canvas = await html2canvas(wrap, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
-    const pxW = wrap.scrollWidth;                 // CSS px（canvas は scale 倍）
+    // 倍率は「実際に描画された幅」で求める（scrollWidth ははみ出し分を含み、縦位置が数%ずれて行が欠けるため使わない）
+    const pxW = wrap.getBoundingClientRect().width; // CSS px（canvas は scale 倍）
     const ratio = canvas.width / pxW;
     const wrapTop = wrap.getBoundingClientRect().top;
-    const thead = clone.querySelector('thead');
-    const headH = thead ? thead.getBoundingClientRect().height : 0;
-    const rows = [...clone.querySelectorAll('tbody tr')].map(tr => {
-      const r = tr.getBoundingClientRect();
+    const head = headOf(clone);
+    const headH = head ? head.getBoundingClientRect().bottom - wrapTop : 0;
+    const rows = rowsOf(clone).map(el => {
+      const r = el.getBoundingClientRect();
       return { top: r.top - wrapTop, bottom: r.bottom - wrapTop };
-    });
+    }).filter(r => r.bottom > r.top);
+    if (!rows.length) throw new Error('出力する内容がありません');
 
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const pageW = 297, pageH = 210, margin = 8, titleH = 12;
     const imgW = pageW - margin * 2;
     const mmPerPx = imgW / pxW;
-    const usableH = (pageH - margin * 2 - titleH) / mmPerPx; // 1ページに載るCSS px の高さ（ヘッダー込み）
-    const title = `やちよ総合診療クリニック シフト表　${DEPT_NAMES[currentDept] || ''}　${shiftYear}年${shiftMonth}月`;
+    const usableH = (pageH - margin * 2 - titleH) / mmPerPx; // 1ページに載るCSS px の高さ（見出し込み）
 
     // 行の切れ目で改ページ位置を決める
     const pages = [];
@@ -6839,9 +6890,7 @@ async function exportShiftPdf() {
       pdf.addImage(slice.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin + titleH, imgW, (headH + bodyH) * mmPerPx);
     });
 
-    const fileName = `シフト表_${DEPT_NAMES[currentDept] || ''}_${shiftYear}年${shiftMonth}月.pdf`;
-    const blob = pdf.output('blob');
-    showPdfReadySheet(blob, fileName, pages.length);
+    showPdfReadySheet(pdf.output('blob'), fileName, pages.length);
   } catch (e) {
     console.error(e);
     showToast('PDFの作成に失敗しました：' + (e.message || ''), 'error');
@@ -6849,6 +6898,38 @@ async function exportShiftPdf() {
     if (wrap) wrap.remove();
     hideLoading();
   }
+}
+
+// バーチカル表示のPDF（iOSホーム画面アプリ用）：タイムライン＋この日のメモ
+async function exportVerticalPdf() {
+  const content = document.getElementById('verticalViewContent');
+  const inner = content && content.firstElementChild;
+  if (!inner || inner.children.length < 2) { showToast('バーチカル表示が読み込まれていません', 'error'); return; }
+  const title = (document.getElementById('verticalViewTitle')?.textContent || '').replace(/\s*バーチカル表示\s*$/, '');
+  const noteTitle = (document.getElementById('dayNoteTitle')?.value || '').trim();
+  const noteDetail = (document.getElementById('dayNoteDetail')?.value || '').trim();
+  await buildPagedPdf({
+    makeClone: () => {
+      const box = document.createElement('div');
+      box.style.cssText = 'background:#fff;width:max-content;';
+      const c = inner.cloneNode(true);
+      c.style.display = 'block';
+      box.appendChild(c);
+      if (noteTitle || noteDetail) {
+        const note = document.createElement('div');
+        note.className = 'pdf-note';
+        note.style.cssText = 'margin-top:12px;padding:12px 14px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;max-width:100%;box-sizing:border-box';
+        note.innerHTML = `<div style="font-size:13px;font-weight:700;color:#92400e">📝 ${escapeHtml(noteTitle || 'この日のメモ')}</div>` +
+          (noteDetail ? `<div style="font-size:12px;color:#78350f;white-space:pre-wrap;line-height:1.6;margin-top:4px">${escapeHtml(noteDetail)}</div>` : '');
+        box.appendChild(note);
+      }
+      return box;
+    },
+    headOf: box => box.firstElementChild.firstElementChild,                       // 時刻の見出し行
+    rowsOf: box => [...box.firstElementChild.children].slice(1).concat([...box.querySelectorAll('.pdf-note')]),
+    title: `やちよ総合診療クリニック バーチカル表示　${title}`,
+    fileName: `バーチカル_${DEPT_NAMES[currentDept] || ''}_${shiftYear}年${shiftMonth}月${verticalCurrentDay}日.pdf`,
+  });
 }
 
 // 生成したPDFの受け渡し：共有シート（iOSは「プリント」あり）→ 使えなければダウンロード／新しいタブ
