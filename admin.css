@@ -489,6 +489,8 @@
       .main { margin-left:0; }
       .sidebar-toggle { display:flex; }
       .stats-grid { grid-template-columns:repeat(2,1fr); }
+      /* iOS は文字が16px未満の入力欄をタップすると画面を自動拡大し、そのずれが残るため16pxにする */
+      .form-input, .form-select, .number-input, .req-input, input[type="text"], input[type="password"], input[type="number"], select, textarea { font-size:16px; }
       /* モバイルは .layout を定値高さにして .content を唯一のスクロール枠にする。
          バナー・ツールバー・表をまとめて .content でスクロールさせ、表ヘッダ(上)・氏名列(左)を sticky で枠の端に固定する */
       .layout { height:100vh; height:100dvh; }
